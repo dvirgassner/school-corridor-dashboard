@@ -123,10 +123,7 @@
   .pwrap   { display: flex; flex-direction: column;
              transition: transform 0.9s cubic-bezier(.4,0,.2,1);
              will-change: transform; }
-  /* card overflows: the wrapper is translated page by page;
-     bottom fade hints that more rows follow */
-  .periods.paged { -webkit-mask-image: linear-gradient(#000 88%, transparent);
-                   mask-image: linear-gradient(#000 88%, transparent); }
+  /* card overflows: the wrapper is translated page by page */
   /* all of today's classes are over */
   .periods.empty::after { content: "יום הלימודים הסתיים";
                           color: var(--muted); font-size: 24px;

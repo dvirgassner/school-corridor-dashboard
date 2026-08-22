@@ -1,0 +1,211 @@
+  /* ================================================================
+     Corridor dashboard — designed at a fixed 1920×1080 canvas.
+     The TV renders it 1:1; any other window scales it to fit.
+     Dark, OLED-safe: dark surfaces, no pure-white fields, slow
+     pixel drift on the whole canvas.
+     Palette: dataviz reference palette, dark column.
+     Grade count is data-driven: 6 grades → exams panel spans the
+     full left column; 7 grades → 7th card takes the top-left cell
+     and the exams panel moves below it.
+     ================================================================ */
+  :root {
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --ink:         #e8e6df;   /* softened primary — kinder to OLED than #fff */
+    --ink-strong:  #f6f5ef;
+    --ink-2:       #c3c2b7;
+    --muted:       #898781;
+    --hairline:    #2c2c2a;
+    --border:      rgba(255,255,255,0.10);
+    /* grade accents = categorical dark slots 1–7, documented order */
+    --g1: #3987e5;  /* blue    */
+    --g2: #d95926;  /* orange  */
+    --g3: #199e70;  /* aqua    */
+    --g4: #c98500;  /* yellow  */
+    --g5: #d55181;  /* magenta */
+    --g6: #008300;  /* green   */
+    --g7: #9085e9;  /* violet — used only if a 7th grade appears */
+    --critical: #d03b3b;
+    --warning:  #fab219;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--page); overflow: hidden; }
+  body {
+    font-family: "Noto Sans Hebrew", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+  }
+
+  /* -- fixed canvas, scaled to fit the window ---------------------- */
+  #stage {
+    width: 1920px; height: 1080px;
+    position: absolute; top: 50%; left: 50%;
+    transform-origin: center center;
+    display: flex; flex-direction: column;
+    padding: 28px 36px 20px;
+    gap: 18px;
+  }
+  /* slow pixel drift (burn-in): ±3px square, 10-minute lap.
+     min-height:0 is load-bearing — without it this flex child floors
+     at its content height and overflows the 1080px canvas. */
+  #drift { flex: 1; min-height: 0; display: flex; flex-direction: column;
+           gap: 18px; animation: drift 600s steps(1) infinite; }
+  @keyframes drift {
+    0%   { transform: translate( 0px,  0px); }
+    25%  { transform: translate( 3px,  2px); }
+    50%  { transform: translate( 0px,  4px); }
+    75%  { transform: translate(-3px,  2px); }
+    100% { transform: translate( 0px,  0px); }
+  }
+
+  /* -- header: clock + dates on the right, urgent strip (or school
+        name when there is nothing urgent) filling the left ---------- */
+  header { display: flex; align-items: center; gap: 24px; height: 72px; }
+  #clock  { font-size: 60px; font-weight: 700; color: var(--ink-strong);
+            font-variant-numeric: tabular-nums; line-height: 1; flex: none; }
+  .dates  { display: flex; flex-direction: column; gap: 2px; flex: none; }
+  #date   { font-size: 22px; color: var(--ink-2); }
+  #hebdate{ font-size: 20px; color: var(--muted); }
+  #school { margin-inline-start: auto; font-size: 28px; font-weight: 600;
+            color: var(--ink-2); }
+
+  /* urgent strip lives in the header, in lieu of the school name */
+  #urgent {
+    display: none; align-items: center; gap: 14px; flex: 1; min-width: 0;
+    background: rgba(208,59,59,0.16);
+    border: 2px solid var(--critical);
+    border-radius: 12px; padding: 8px 18px;
+  }
+  #urgent.on { display: flex; }
+  #urgent.on ~ #school { display: none; }
+  #urgent .icon { font-size: 26px; line-height: 1; }
+  #urgent .tag  { color: var(--critical); font-size: 20px; font-weight: 700;
+                  border: 1.5px solid var(--critical); border-radius: 8px;
+                  padding: 1px 10px; white-space: nowrap; }
+  #urgenttext   { transition: opacity 0.6s; white-space: nowrap;
+                  overflow: hidden; text-overflow: ellipsis;
+                  font-size: 26px; font-weight: 700; color: var(--ink-strong); }
+
+  /* -- main grid: 3 grade columns (start/right) + left column ------ */
+  main {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 400px;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 18px 12px;
+    display: flex; flex-direction: column;
+    min-height: 0; overflow: hidden;
+  }
+  .card h2 {
+    font-size: 32px; font-weight: 700; color: var(--ink-strong);
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--hairline);
+    margin-bottom: 6px;
+  }
+  .card h2 .chip { width: 15px; height: 30px; border-radius: 4px;
+                   background: var(--accent); flex: none; }
+
+  /* rows always top-aligned at a fixed pitch — identical rhythm in
+     every card whether it is full or half-empty */
+  .periods { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+  .pwrap   { display: flex; flex-direction: column;
+             transition: transform 0.9s cubic-bezier(.4,0,.2,1);
+             will-change: transform; }
+  /* card overflows: the wrapper is translated page by page */
+  /* all of today's classes are over */
+  .periods.empty::after { content: "יום הלימודים הסתיים";
+                          color: var(--muted); font-size: 24px;
+                          text-align: center; margin-top: 42px; }
+  .period  { display: flex; align-items: center; gap: 12px;
+             font-size: 28px; line-height: 1.1; height: 52px; flex: none;
+             padding: 2px 8px; border-radius: 8px; }
+  .period .time { color: var(--muted); font-variant-numeric: tabular-nums;
+                  font-size: 24px; font-weight: 600; width: 142px;
+                  flex: none; }
+  .period .subj { color: var(--ink); font-weight: 600;
+                  white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; }
+  .period.now  { background: color-mix(in srgb, var(--accent) 16%, transparent);
+                 box-shadow: inset 3px 0 0 var(--accent); }
+  .period.now .subj { color: var(--ink-strong); }
+  .period.done { display: none; }   /* passed classes free up space */
+
+  /* the 7th grade card, when present, sits top-left (col 4, row 1) */
+  .card.seventh { grid-column: 4; grid-row: 1; }
+
+  /* -- exams panel: full left column, or bottom-left in 7-grade mode */
+  #exams { grid-column: 4; grid-row: 1 / span 2; }
+  main.grades7 #exams { grid-row: 2; }
+  #exams h2 { font-size: 28px; }
+  #examlist { flex: 1; display: flex; flex-direction: column; gap: 14px;
+              padding-top: 10px; overflow: hidden; }
+  .exam { border: 1px solid var(--hairline); border-radius: 10px;
+          padding: 12px 16px; }
+  .exam .row1 { display: flex; align-items: baseline; gap: 10px;
+                font-size: 26px; font-weight: 700; color: var(--ink-strong);
+                min-width: 0; }
+  .exam .row1 .ttl { white-space: nowrap; overflow: hidden;
+                     text-overflow: ellipsis; }
+  .exam .grade { font-size: 21px; font-weight: 700; color: var(--page);
+                 background: var(--gcolor); border-radius: 7px;
+                 padding: 1px 10px; white-space: nowrap; flex: none; }
+  .exam .row2 { display: flex; gap: 18px; font-size: 22px;
+                color: var(--ink-2); margin-top: 4px;
+                font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* events: compact per-grade chips on their own row */
+  .exam .chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: nowrap; }
+  .exam .chips .gchip { font-size: 19px; font-weight: 700; color: var(--page);
+                        background: var(--gcolor); border-radius: 6px;
+                        padding: 1px 9px; }
+  .exam .chips .gchip.all { background: var(--muted); }
+  #noexams { color: var(--muted); font-size: 26px; text-align: center;
+             margin-top: 40px; }
+
+  /* -- footer: rotating messages + updated stamp -------------------- */
+  footer {
+    height: 66px; display: flex; align-items: center; gap: 24px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 0 24px;
+  }
+  /* continuous ticker: two identical copies slide rightward (RTL
+     reading direction); shifting by exactly one copy loops seamlessly */
+  #msg { flex: 1; font-size: 28px; color: var(--ink);
+         overflow: hidden; min-width: 0; }
+  .ticker { display: flex; width: max-content; white-space: nowrap;
+            animation: tickmove var(--dur, 40s) linear infinite; }
+  @keyframes tickmove { from { transform: translateX(0); }
+                        to   { transform: translateX(50%); } }
+  /* flex children ignore literal text spaces — the gap provides the
+     spacing between bullet, counter, and message text */
+  .titem { display: inline-flex; align-items: baseline; gap: 14px;
+           padding-inline-end: 90px; }
+  .titem .bullet { color: var(--g1); }
+  .count { direction: ltr; unicode-bidi: isolate; color: var(--muted);
+           font-weight: 600; margin-inline-end: 14px; }
+  #stamp { font-size: 20px; color: var(--muted); flex: none;
+           font-variant-numeric: tabular-nums; }
+  #stamp.stale { color: var(--warning); }
+
+  /* Every element whose text comes from the Google Sheet is isolated,
+     so mixed Hebrew/English/digit content can never reorder the UI
+     around it (a message ending in an English word or a "12:30" would
+     otherwise drag punctuation to the wrong end of the line). */
+  .period .subj, .exam .ttl, .exam .grade, .exam .gchip,
+  .exam .row2 span, #urgenttext, .titem > span:last-child, .card h2 {
+    unicode-bidi: isolate;
+  }
+
+  /* -- full-screen video overlay ------------------------------------
+     Sits above the board while a clip plays, then hides again. Video
+     is also the one thing that is GOOD for the OLED panel: moving
+     pixels, unlike the static board. */
+  #videowrap { display: none; position: fixed; inset: 0; z-index: 9;
+               background: #000; }
+  #videowrap.on { display: block; }
+  #video { width: 100%; height: 100%; object-fit: contain;
+           background: #000; }

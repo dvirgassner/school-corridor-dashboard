@@ -85,14 +85,49 @@ One row per (day, period). Columns:
 
 ### Tab `Exams`
 
-| Date | Grade | Subject | Start | End | Room | Notes |
-|------|-------|---------|-------|-----|------|-------|
-| 2026-09-01 | ג | מתמטיקה | 09:00 | 10:30 | חדר 12 | |
+| Date | Grade | Subject | Start | End | Room |
+|------|-------|---------|-------|-----|------|
+| 2026-09-01 | ט׳ | מתמטיקה | 09:00 | 10:30 | חדר 12 |
 
+- One grade per exam. `Grade` must match a Schedule column header.
 - The dashboard shows only rows where `Date` = today.
 - `Date` format: YYYY-MM-DD (the sheet column is formatted as date; the
   parser accepts DD/MM/YYYY as well, since Sheets in Hebrew locale defaults
   to it).
+
+### Tab `Events`
+
+| Date | Grades | Title | Start | End | Location |
+|------|--------|-------|-------|-----|----------|
+| 2026-09-01 | ז׳, ח׳ | חזרה כללית לטקס | 10:40 | 11:25 | אולם ספורט |
+
+- `Grades`: one or more grade names, comma-separated, each matching a
+  Schedule column header. On the dashboard, up to 3 grades render as
+  per-grade color chips; 4 or more collapse to a neutral "כל השכבות" chip.
+- Exams and events are **merged into one panel** ("אירועים ומבחנים היום"),
+  sorted by `Start`.
+- The panel physically fits ~6 entries in the 6-grade layout (~3 in the
+  7-grade layout); later entries are dropped from display — the admin
+  guide states this.
+
+### Field length limits (enforced in the sheet)
+
+Every free-text field gets a Google Sheets **data-validation rule**
+(`=LEN(cell)<=N`, reject with help text) so content can never overflow its
+box. Limits are derived from each element's pixel budget on the 1920×1080
+canvas, using an average Hebrew glyph advance of ≈0.55×font-size (bold);
+the dashboard additionally ellipsizes as a fallback.
+
+| Field | Box budget | Font | Max chars |
+|-------|-----------|------|-----------|
+| Schedule: subject cell | ~281 px | 23 px | **20** |
+| Exams: Subject | ~205 px (beside grade chip) | 26 px | **14** |
+| Exams: Room | ~134 px (beside time) | 22 px | **12** |
+| Events: Title | ~328 px (full row) | 26 px | **22** |
+| Events: Location | ~134 px (beside time) | 22 px | **12** |
+| Messages: normal Text | ~1435 px | 28 px | **90** |
+| Messages: urgent Text | ~1438 px | 34 px | **75** |
+| Grade column header | chip-sized | 21 px | **4** |
 
 ### Tab `Messages`
 
@@ -134,11 +169,11 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 ┌──────────────────────────────────────────────────────────────┐
 │  🕐 clock · Gregorian + Hebrew date       school name: תיכון השיטה│
 ├──────────┬──────────┬──────────┬─────────────────────────────┤
-│ כיתה ז׳  │ כיתה ח׳  │ כיתה ט׳  │                             │
-│ periods  │ periods  │ periods  │   מבחנים היום (exams today)  │
-├──────────┼──────────┼──────────┤   subject · time · room     │
-│ כיתה י׳  │ כיתה י"א │ כיתה י"ב │   (or "אין מבחנים היום")     │
-│ periods  │ periods  │ periods  │                             │
+│ כיתה ז׳  │ כיתה ח׳  │ כיתה ט׳  │  אירועים ומבחנים היום       │
+│ periods  │ periods  │ periods  │  (exams + events merged,    │
+├──────────┼──────────┼──────────┤   sorted by start time)     │
+│ כיתה י׳  │ כיתה י"א │ כיתה י"ב │  subject/title · time · room│
+│ periods  │ periods  │ periods  │  grade chips per event      │
 ├──────────┴──────────┴──────────┴─────────────────────────────┤
 │  rotating messages strip · "עודכן <date> · <time>" stamp     │
 └──────────────────────────────────────────────────────────────┘

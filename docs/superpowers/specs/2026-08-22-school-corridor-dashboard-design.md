@@ -186,8 +186,8 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 - **Overflow paging**: a card holding more remaining classes than fit
   (6 rows at 52px; pane height snaps to whole rows) cycles through them
   page by page with a smooth slide every 8 s, scrolling the minimum
-  needed — the last page anchors to the final class. A bottom fade hints
-  at more rows. Paging engages immediately on load.
+  needed — the last page anchors to the final class. All rows render at
+  full opacity (no fade hint). Paging engages immediately on load.
 - The urgent-messages strip lives in the header (left side), in lieu of
   the school name, which shows only when no urgent message is active.
   Board geometry never shifts when urgent messages appear.

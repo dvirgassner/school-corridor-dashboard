@@ -276,8 +276,12 @@ if (new URLSearchParams(location.search).has("demo7")) {
    ================================================================ */
 const $ = (id) => document.getElementById(id);
 
-/* preview helper: ?time=10:30 simulates the clock (date stays real) */
-const TIME_OVERRIDE = new URLSearchParams(location.search).get("time");
+/* preview helper: ?time=10:30 simulates the clock (date stays real).
+   MOCK DEFAULT: while in mockup mode the clock is pinned to 08:10 so
+   the full-day design logic is visible — delete the fallback ("08:10")
+   when wiring real data. */
+const TIME_OVERRIDE =
+  new URLSearchParams(location.search).get("time") || "08:10";
 function NOW() {
   const d = new Date();
   if (TIME_OVERRIDE) {

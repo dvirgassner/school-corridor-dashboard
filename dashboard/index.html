@@ -125,10 +125,10 @@
                           color: var(--muted); font-size: 24px;
                           text-align: center; margin-top: 42px; }
   .period  { display: flex; align-items: center; gap: 12px;
-             font-size: 23px; line-height: 1.15; height: 44px; flex: none;
+             font-size: 28px; line-height: 1.15; height: 56px; flex: none;
              padding: 2px 8px; border-radius: 8px; }
   .period .time { color: var(--muted); font-variant-numeric: tabular-nums;
-                  font-size: 20px; width: 118px; flex: none; }
+                  font-size: 24px; width: 142px; flex: none; }
   .period .subj { color: var(--ink); font-weight: 600;
                   white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
@@ -446,7 +446,7 @@ function tick() {
 
 /* -- paging: a card with more remaining classes than fit cycles
    through them page by page (smooth scroll) every 8 seconds ------- */
-const ROW_H = 44;   /* must match .period height */
+const ROW_H = 56;   /* must match .period height */
 function pageCycle() {
   document.querySelectorAll(".periods").forEach((c) => {
     const rows = c.querySelectorAll(".period:not(.done)").length;
@@ -472,6 +472,7 @@ renderGrades();
 renderAgenda();
 renderMessages();
 tick();
+pageCycle();               /* engage paging immediately, not after 8s */
 setInterval(tick, 5000);
 fit();
 addEventListener("resize", fit);

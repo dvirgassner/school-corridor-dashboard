@@ -120,7 +120,7 @@ the dashboard additionally ellipsizes as a fallback.
 
 | Field | Box budget | Font | Max chars |
 |-------|-----------|------|-----------|
-| Schedule: subject cell | ~281 px | 23 px | **20** |
+| Schedule: subject cell | ~257 px | 28 px | **16** |
 | Exams: Subject | ~205 px (beside grade chip) | 26 px | **14** |
 | Exams: Room | ~134 px (beside time) | 22 px | **12** |
 | Events: Title | ~328 px (full row) | 26 px | **22** |
@@ -184,8 +184,9 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 - **Passed classes are hidden** as the day progresses, freeing card space;
   a card whose day is over shows "יום הלימודים הסתיים".
 - **Overflow paging**: a card holding more remaining classes than fit
-  (7 rows at 44px) cycles through them page by page with a smooth scroll
-  every 8 s, with a bottom fade hinting at more rows.
+  (~5 rows at 56px) cycles through them page by page with a smooth scroll
+  every 8 s, with a bottom fade hinting at more rows. Paging engages
+  immediately on load, not on the first cycle tick.
 - Preview helpers: `?time=HH:MM` simulates the clock; `?demo7` previews
   the 7-grade layout.
 - **7-grade adaptation**: if the Schedule tab carries a 7th grade column,

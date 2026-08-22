@@ -112,13 +112,15 @@
   .card h2 .chip { width: 14px; height: 26px; border-radius: 4px;
                    background: var(--accent); flex: none; }
 
-  .periods { flex: 1; display: flex; flex-direction: column;
-             justify-content: space-evenly; min-height: 0;
-             overflow: hidden; position: relative; }
-  /* card overflows: top-align and page through rows (JS drives scroll);
+  /* rows always top-aligned at a fixed pitch — identical rhythm in
+     every card whether it is full or half-empty */
+  .periods { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+  .pwrap   { display: flex; flex-direction: column;
+             transition: transform 0.9s cubic-bezier(.4,0,.2,1);
+             will-change: transform; }
+  /* card overflows: the wrapper is translated page by page;
      bottom fade hints that more rows follow */
-  .periods.paged { justify-content: flex-start;
-                   -webkit-mask-image: linear-gradient(#000 88%, transparent);
+  .periods.paged { -webkit-mask-image: linear-gradient(#000 88%, transparent);
                    mask-image: linear-gradient(#000 88%, transparent); }
   /* all of today's classes are over */
   .periods.empty::after { content: "יום הלימודים הסתיים";
@@ -312,7 +314,7 @@ function renderGrades() {
         </div>`).join("");
     card.innerHTML = `
       <h2><span class="chip"></span>כיתה ${name}</h2>
-      <div class="periods">${rows}</div>`;
+      <div class="periods"><div class="pwrap">${rows}</div></div>`;
     grid.insertBefore(card, $("exams"));
   });
 }
@@ -439,27 +441,39 @@ function tick() {
     const left = c.querySelectorAll(".period:not(.done)").length;
     c.classList.toggle("empty", left === 0);
   });
+  layoutPages();   /* row visibility changed → recompute pages */
   /* in mock mode the data is always "fresh"; once wired to the sheet,
      the stamp records the last successful fetch instead */
   stampNow();
 }
 
 /* -- paging: a card with more remaining classes than fit cycles
-   through them page by page (smooth scroll) every 8 seconds ------- */
+   through them page by page every 8 seconds, by translating the
+   row wrapper (CSS transition does the animation) ----------------- */
 const ROW_H = 56;   /* must match .period height */
-function pageCycle() {
+
+function layoutPages() {
   document.querySelectorAll(".periods").forEach((c) => {
-    const rows = c.querySelectorAll(".period:not(.done)").length;
+    const wrap = c.querySelector(".pwrap");
+    if (!wrap) return;
+    const rows = wrap.querySelectorAll(".period:not(.done)").length;
     const perPage = Math.max(1, Math.floor(c.clientHeight / ROW_H));
-    const pages = Math.ceil(rows / perPage);
+    const pages = Math.max(1, Math.ceil(rows / perPage));
+    c.dataset.pages = pages;
     c.classList.toggle("paged", pages > 1);
-    if (pages <= 1) { c.scrollTo({ top: 0 }); return; }
-    const pageH = perPage * ROW_H;
-    const cur = Math.round(c.scrollTop / pageH);
-    c.scrollTo({ top: ((cur + 1) % pages) * pageH, behavior: "smooth" });
+    const cur = Math.min(+(c.dataset.page || 0), pages - 1);
+    c.dataset.page = cur;
+    wrap.style.transform = `translateY(-${cur * perPage * ROW_H}px)`;
   });
 }
-setInterval(pageCycle, 8000);
+
+function advancePages() {
+  document.querySelectorAll(".periods.paged").forEach((c) => {
+    c.dataset.page = (+(c.dataset.page || 0) + 1) % +(c.dataset.pages || 1);
+  });
+  layoutPages();
+}
+setInterval(advancePages, 8000);
 
 /* scale the fixed 1920×1080 stage to fit any preview window */
 function fit() {
@@ -471,8 +485,7 @@ function fit() {
 renderGrades();
 renderAgenda();
 renderMessages();
-tick();
-pageCycle();               /* engage paging immediately, not after 8s */
+tick();                    /* also runs layoutPages(): page 1 shown at load */
 setInterval(tick, 5000);
 fit();
 addEventListener("resize", fit);

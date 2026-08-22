@@ -190,3 +190,13 @@
   #stamp { font-size: 20px; color: var(--muted); flex: none;
            font-variant-numeric: tabular-nums; }
   #stamp.stale { color: var(--warning); }
+
+  /* -- full-screen video overlay ------------------------------------
+     Sits above the board while a clip plays, then hides again. Video
+     is also the one thing that is GOOD for the OLED panel: moving
+     pixels, unlike the static board. */
+  #videowrap { display: none; position: fixed; inset: 0; z-index: 9;
+               background: #000; }
+  #videowrap.on { display: block; }
+  #video { width: 100%; height: 100%; object-fit: contain;
+           background: #000; }

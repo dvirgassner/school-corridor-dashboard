@@ -296,6 +296,55 @@ function advancePages() {
   layoutPages();
 }
 
+/* ================================================================
+   VIDEO — clips the principal adds to the Messages tab play
+   full-screen once per videoIntervalMinutes, then the board returns.
+   ================================================================ */
+const VIDEO_AT_KEY = "dash-video-at";
+let videoPlaying = false;
+let videoIndex = 0;
+
+function readVideoAt() {
+  const v = +(localStorage.getItem(VIDEO_AT_KEY) || 0);
+  return v || null;
+}
+
+function endVideo() {
+  const wrap = $("videowrap"), v = $("video");
+  wrap.classList.remove("on");
+  v.pause();
+  v.removeAttribute("src");
+  v.load();                       /* release the decoder on the Pi */
+  videoPlaying = false;
+}
+
+function maybePlayVideo() {
+  if (videoPlaying || !MODEL) return;
+  const clips = MODEL.messages.videos;
+  if (!clips.length) return;
+  if (!shouldPlayVideo(readVideoAt(), Date.now(), CFG.videoIntervalMinutes)) return;
+
+  const clip = clips[videoIndex % clips.length];
+  videoIndex++;
+  const wrap = $("videowrap"), v = $("video");
+  v.muted = !clip.sound;          /* muted by default; #sound opts in */
+  v.src = clip.url;
+  videoPlaying = true;
+  localStorage.setItem(VIDEO_AT_KEY, String(Date.now()));
+  wrap.classList.add("on");
+  v.onended = endVideo;
+  v.onerror = () => {
+    console.error("video failed:", clip.url);
+    /* a broken link must not retry every minute forever: hold off an
+       hour by back-dating the timestamp */
+    localStorage.setItem(VIDEO_AT_KEY,
+      String(Date.now() + 3600000 - CFG.videoIntervalMinutes * 60000));
+    endVideo();
+  };
+  const p = v.play();
+  if (p && p.catch) p.catch(v.onerror);
+}
+
 /* scale the fixed 1920×1080 stage to fit any window */
 function fit() {
   const s = Math.min(innerWidth / 1920, innerHeight / 1080);
@@ -319,3 +368,4 @@ refresh();
 setInterval(refresh, CFG.refreshSeconds * 1000);
 setInterval(tick, 5000);
 setInterval(advancePages, 8000);
+setInterval(maybePlayVideo, 60000);

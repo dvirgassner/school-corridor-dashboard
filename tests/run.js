@@ -220,6 +220,23 @@ test("buildMessages: skips unknown type, empty text, empty video url", () => {
   assert.deepEqual(m, { normal: [], urgent: [], videos: [] });
 });
 
+/* ---------- shouldPlayVideo ---------- */
+test("shouldPlayVideo: never played → play now", () => {
+  assert.ok(L.shouldPlayVideo(null, 1000000, 10));
+});
+test("shouldPlayVideo: 9 minutes ago → wait", () => {
+  const now = 100000000;
+  assert.ok(!L.shouldPlayVideo(now - 9 * 60000, now, 10));
+});
+test("shouldPlayVideo: exactly 10 minutes ago → play", () => {
+  const now = 100000000;
+  assert.ok(L.shouldPlayVideo(now - 10 * 60000, now, 10));
+});
+test("shouldPlayVideo: clock moved backwards → play (no lockout)", () => {
+  const now = 100000000;
+  assert.ok(L.shouldPlayVideo(now + 5 * 60000, now, 10));
+});
+
 /* ---------- summary ---------- */
 if (process.exitCode) {
   console.error(`\n${passed} passed, some FAILED`);

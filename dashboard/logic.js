@@ -196,7 +196,17 @@
     return out;
   }
 
+  /* Video pacing: play at most once per interval. A timestamp in the
+     future (clock corrected backwards, e.g. after NTP sync on a Pi
+     with no RTC) must not lock playback out for hours. */
+  function shouldPlayVideo(lastPlayedMs, nowMs, intervalMin) {
+    if (!lastPlayedMs) return true;
+    if (lastPlayedMs > nowMs) return true;
+    return nowMs - lastPlayedMs >= intervalMin * 60000;
+  }
+
   var api = {
+    shouldPlayVideo: shouldPlayVideo,
     buildSchedule: buildSchedule,
     buildAgenda: buildAgenda,
     buildMessages: buildMessages,

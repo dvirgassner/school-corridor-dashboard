@@ -38,8 +38,11 @@
   </div>
 </div>
 
+<!-- full-screen video overlay; hidden unless a clip is playing -->
+<div id="videowrap"><video id="video" playsinline></video></div>
+
 <!-- load order matters: config → sample data → CSV parser → pure
-     logic → app. The middle files arrive in later tasks. -->
+     logic → app. -->
 <script src="config.js"></script>
 <script src="sample-data.js"></script>
 <script src="vendor/papaparse.min.js"></script>

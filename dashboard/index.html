@@ -51,9 +51,11 @@
     padding: 28px 36px 20px;
     gap: 18px;
   }
-  /* slow pixel drift (burn-in): ±3px square, 10-minute lap */
-  #drift { flex: 1; display: flex; flex-direction: column; gap: 18px;
-           animation: drift 600s steps(1) infinite; }
+  /* slow pixel drift (burn-in): ±3px square, 10-minute lap.
+     min-height:0 is load-bearing — without it this flex child floors
+     at its content height and overflows the 1080px canvas. */
+  #drift { flex: 1; min-height: 0; display: flex; flex-direction: column;
+           gap: 18px; animation: drift 600s steps(1) infinite; }
   @keyframes drift {
     0%   { transform: translate( 0px,  0px); }
     25%  { transform: translate( 3px,  2px); }
@@ -92,7 +94,7 @@
     flex: 1; min-height: 0;
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 400px;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     gap: 18px;
   }
   .card {

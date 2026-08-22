@@ -1,68 +1,25 @@
 /* ==================================================================
-   MOCK DATA — this block will be replaced by the Google-Sheets CSV
-   fetch in the next phase. The render functions below stay as-is.
+   app.js — everything that touches the DOM, the network, or time.
+   Pure helpers live in logic.js (unit-tested by tests/run.js).
 
-   The grade list is DATA-DRIVEN: it will come from the Schedule
-   tab's column headers. 6 grades → exams fill the left column;
-   7 grades → the 7th card takes top-left and exams move below it.
-   Preview the 7-grade layout by adding ?demo7 to the URL.
+   Data flow, once per refreshSeconds:
+     4 CSV URLs → Papa.parse → logic.js builders → MODEL → render
+   On any fetch failure the last good MODEL is read back from
+   localStorage, so the corridor keeps showing yesterday's truth
+   rather than an error page.
    ================================================================== */
-let GRADES = ["ז׳", "ח׳", "ט׳", "י׳", "י\"א", "י\"ב"];
+const CFG = window.DASH_CONFIG;
+const DEMO = !CFG.sheets;                 /* no sheet URLs → demo mode */
+const CACHE_KEY = "dash-cache";
 const ACCENTS = ["--g1", "--g2", "--g3", "--g4", "--g5", "--g6", "--g7"];
 
-let MOCK_SCHEDULE = [
-  // period, start, end, subjects per grade ז..י"ב ("" = no class)
-  [1, "08:00", "08:45", ["מתמטיקה", "אנגלית",     "פיזיקה",     "ספרות",    "מתמטיקה",  "אזרחות"]],
-  [2, "08:50", "09:35", ["לשון",     "מתמטיקה",   "אנגלית",     "מתמטיקה", "פיזיקה",    "מתמטיקה"]],
-  [3, "09:50", "10:35", ["אנגלית",  "ביולוגיה",   "מתמטיקה",   "היסטוריה", "כימיה",     "אנגלית"]],
-  [4, "10:40", "11:25", ["היסטוריה","לשון",        "ספרות",      "אנגלית",   "אנגלית",    "פיזיקה"]],
-  [5, "11:45", "12:30", ["של\"ח",   "חינוך גופני", "תנ\"ך",      "כימיה",    "היסטוריה",  "ספרות"]],
-  [6, "12:35", "13:20", ["ביולוגיה","תנ\"ך",       "חינוך גופני","ביולוגיה", "ספרות",     "היסטוריה"]],
-  [7, "13:30", "14:15", ["מחשבים",  "מחשבים",     "אזרחות",     "של\"ח",    "לשון",      "תנ\"ך"]],
-  [8, "14:20", "15:05", ["",         "",            "מחשבים",     "חינוך",    "חינוך",     "חינוך"]],
-  [9, "15:15", "16:00", ["",         "",            "",            "מתמטיקה", "פיזיקה",    "מתמטיקה"]],
-  [10,"16:05", "16:50", ["",         "",            "",            "",          "ספרות",     "אזרחות"]],
-];
-
-const MOCK_EXAMS = [
-  { grade: "ט׳",    subject: "מתמטיקה", start: "09:00", end: "10:30", room: "חדר 12" },
-  { grade: "י\"ב", subject: "אנגלית",  start: "11:45", end: "12:30", room: "ספרייה" },
-  { grade: "ח׳",    subject: "ביולוגיה", start: "12:35", end: "13:20", room: "מעבדה" },
-];
-
-const MOCK_EVENTS = [
-  // an event applies to one or more grades; 4+ grades collapse to "כל השכבות"
-  { title: "חזרה כללית לטקס",      grades: ["ז׳", "ח׳"],            start: "10:40", end: "11:25", room: "אולם ספורט" },
-  { title: "הרצאה: בטיחות ברשת",  grades: ["י׳", "י\"א", "י\"ב"], start: "12:35", end: "13:20", room: "אודיטוריום" },
-];
-
-const MOCK_MESSAGES = [
-  { text: "אסיפת הורים תתקיים ביום שלישי בשעה 19:00", type: "normal" },
-  { text: "מחר: יום כחול-לבן — באים בלבוש חגיגי", type: "normal" },
-  { text: "שיעורי שכבת ז׳ מסתיימים היום ב-13:20", type: "urgent" },
-  { text: "ההסעה לקו הדרומי יוצאת היום ב-14:00 מהשער האחורי", type: "urgent" },
-];
-
-/* demo of the 7-grade layout: ?demo7 splits ז׳ into ז׳1 + ז׳2 */
-if (new URLSearchParams(location.search).has("demo7")) {
-  GRADES = ["ז׳1", "ח׳", "ט׳", "י׳", "י\"א", "י\"ב", "ז׳2"];
-  MOCK_SCHEDULE = MOCK_SCHEDULE.map((p) => {
-    const subj = [...p[3], p[3][0]];   // ז׳2 mirrors ז׳1's day for the demo
-    return [p[0], p[1], p[2], subj];
-  });
-}
-
-/* ================================================================
-   RENDERING
-   ================================================================ */
 const $ = (id) => document.getElementById(id);
 
-/* preview helper: ?time=10:30 simulates the clock (date stays real).
-   MOCK DEFAULT: while in mockup mode the clock is pinned to 08:10 so
-   the full-day design logic is visible — delete the fallback ("08:10")
-   when wiring real data. */
-const TIME_OVERRIDE =
-  new URLSearchParams(location.search).get("time") || "08:10";
+/* ---- clock ------------------------------------------------------
+   ?time=HH:MM simulates the clock (the date stays real). In demo mode
+   it defaults to 08:10 so a visitor sees a full school day. */
+const TIME_OVERRIDE = new URLSearchParams(location.search).get("time") ||
+                      (DEMO ? "08:10" : null);
 function NOW() {
   const d = new Date();
   if (TIME_OVERRIDE) {
@@ -72,45 +29,128 @@ function NOW() {
   return d;
 }
 
-/* minutes(), esc(), toGematria(), hebrewDate() and friends come from
-   logic.js, which is loaded before this file and unit-tested by
-   tests/run.js. */
+/* ---- state ------------------------------------------------------ */
+let MODEL = null;        /* { grades, byDay, agenda, messages }      */
+let FETCHED_AT = null;   /* ms timestamp of last successful read     */
+let RENDERED_KEY = "";   /* model fingerprint, to avoid re-rendering */
+
+/* ================================================================
+   DATA
+   ================================================================ */
+function parseCsv(text) {
+  const out = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
+  return { rows: out.data, fields: out.meta.fields || [] };
+}
+
+function buildModel(csv, today) {
+  const sched = parseCsv(csv.schedule);
+  const schedule = buildSchedule(sched.rows, sched.fields);
+  return {
+    grades: schedule.grades,
+    byDay: schedule.byDay,
+    agenda: buildAgenda(parseCsv(csv.exams).rows,
+                        parseCsv(csv.events).rows, today),
+    messages: buildMessages(parseCsv(csv.messages).rows, today)
+  };
+}
+
+/* ?demo7 previews the 7-grade layout by splitting ז׳ into ז׳1 + ז׳2,
+   i.e. exactly what the school would do in the sheet if a grade were
+   split — the board adapts with no code change. */
+function addSeventhGrade(csv) {
+  return csv.split("\n").map((line, i) => {
+    const cells = Papa.parse(line).data[0];
+    if (i === 0) { cells[4] = "ז׳1"; cells.push("ז׳2"); }
+    else cells.push(cells[4]);
+    return Papa.unparse([cells]);
+  }).join("\n");
+}
+
+function sampleCsv(today) {
+  const sub = (s) => s.split("{{TODAY}}").join(today);
+  const seven = new URLSearchParams(location.search).has("demo7");
+  return {
+    schedule: seven ? addSeventhGrade(SAMPLE.scheduleCsv) : SAMPLE.scheduleCsv,
+    exams: sub(SAMPLE.examsCsv),
+    events: sub(SAMPLE.eventsCsv),
+    messages: sub(SAMPLE.messagesCsv)
+  };
+}
+
+async function fetchCsv(url) {
+  /* cache-bust: Chromium on the Pi will happily serve a stale CSV for
+     hours otherwise */
+  const bust = (url.indexOf("?") >= 0 ? "&" : "?") + "_=" + Date.now();
+  const res = await fetch(url + bust, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return res.text();
+}
+
+async function loadData() {
+  const today = dateKey(NOW());
+  if (DEMO) {
+    MODEL = buildModel(sampleCsv(today), today);
+    FETCHED_AT = Date.now();
+    return;
+  }
+  try {
+    const [schedule, exams, events, messages] = await Promise.all([
+      fetchCsv(CFG.sheets.schedule), fetchCsv(CFG.sheets.exams),
+      fetchCsv(CFG.sheets.events),   fetchCsv(CFG.sheets.messages)
+    ]);
+    MODEL = buildModel({ schedule, exams, events, messages }, today);
+    FETCHED_AT = Date.now();
+    try {
+      localStorage.setItem(CACHE_KEY,
+        JSON.stringify({ model: MODEL, fetchedAt: FETCHED_AT }));
+    } catch (e) { /* private mode / quota — cache is a bonus, not a need */ }
+  } catch (err) {
+    console.error("fetch failed, falling back to cache:", err);
+    if (MODEL) return;                     /* keep what we already show */
+    try {
+      const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (c) { MODEL = c.model; FETCHED_AT = c.fetchedAt; }
+    } catch (e) { /* corrupt cache → stay empty, render() handles null */ }
+  }
+}
+
+/* ================================================================
+   RENDERING
+   ================================================================ */
+function gradeColor(name) {
+  const gi = MODEL.grades.indexOf(name);
+  return gi >= 0 ? `var(${ACCENTS[gi]})` : "var(--muted)";
+}
 
 function renderGrades() {
   const grid = $("grid");
-  if (GRADES.length >= 7) grid.classList.add("grades7");
-  GRADES.forEach((name, gi) => {
+  grid.querySelectorAll(".card:not(#exams)").forEach((c) => c.remove());
+  const grades = MODEL.grades;
+  const periods = MODEL.byDay[dayLetter(NOW())] || [];
+  grid.classList.toggle("grades7", grades.length >= 7);
+
+  grades.forEach((name, gi) => {
     const card = document.createElement("section");
     card.className = "card" + (gi === 6 ? " seventh" : "");
-    card.style.setProperty("--accent", `var(${ACCENTS[gi]})`);
-    const rows = MOCK_SCHEDULE
-      .filter((p) => p[3][gi] !== "")
+    card.style.setProperty("--accent", `var(${ACCENTS[gi] || "--muted"})`);
+    const rows = periods
+      .filter((p) => p.subjects[name])
       .map((p) => `
-        <div class="period" data-start="${p[1]}" data-end="${p[2]}">
-          <span class="time">${p[1]}–${p[2]}</span>
-          <span class="subj">${p[3][gi]}</span>
+        <div class="period" data-start="${p.start}" data-end="${p.end}">
+          <span class="time">${p.start}–${p.end}</span>
+          <span class="subj">${esc(p.subjects[name])}</span>
         </div>`).join("");
     card.innerHTML = `
-      <h2><span class="chip"></span>כיתה ${name}</h2>
+      <h2><span class="chip"></span>כיתה ${esc(name)}</h2>
       <div class="periods"><div class="pwrap">${rows}</div></div>`;
     grid.insertBefore(card, $("exams"));
   });
 }
 
-/* exams + events merged into one agenda, sorted by start time */
-function gradeColor(name) {
-  const gi = GRADES.indexOf(name);
-  return gi >= 0 ? `var(${ACCENTS[gi]})` : "var(--muted)";
-}
-
 function renderAgenda() {
   const list = $("examlist");
-  const agenda = [
-    ...MOCK_EXAMS.map((e) => ({ ...e, kind: "exam" })),
-    ...MOCK_EVENTS.map((e) => ({ ...e, kind: "event" })),
-  ].sort((a, b) => minutes(a.start) - minutes(b.start));
-
-  if (agenda.length === 0) {
+  const agenda = MODEL.agenda;
+  if (!agenda.length) {
     list.innerHTML = `<div id="noexams">אין אירועים ומבחנים היום 🎉</div>`;
     return;
   }
@@ -120,14 +160,14 @@ function renderAgenda() {
       /* the sheet holds the bare subject; the board adds the prefix */
       return `
         <div class="exam" style="--gcolor:${gradeColor(e.grade)}">
-          <div class="row1"><span class="grade">${e.grade}</span><span class="ttl">מבחן ב${esc(e.subject)}</span></div>
+          <div class="row1"><span class="grade">${esc(e.grade)}</span><span class="ttl">מבחן ב${esc(e.subject)}</span></div>
           ${row2}
         </div>`;
     }
     const chips = e.grades.length >= 4
       ? `<span class="gchip all">כל השכבות</span>`
       : e.grades.map((g) =>
-          `<span class="gchip" style="--gcolor:${gradeColor(g)}">${g}</span>`).join("");
+          `<span class="gchip" style="--gcolor:${gradeColor(g)}">${esc(g)}</span>`).join("");
     return `
       <div class="exam">
         <div class="row1"><span class="ttl">${esc(e.title)}</span></div>
@@ -137,17 +177,17 @@ function renderAgenda() {
   }).join("");
 }
 
-/* urgent banner + rotating normal messages — both rotate with a fade
-   when the principal enters more than one message of that type, and
-   both show a "(current/total)" counter, e.g. ‎(1/3) */
-function rotate(el, items, prefixHtml) {
-  const set = (i) => {
-    el.innerHTML = `${prefixHtml}<span class="count">(${i + 1}/${items.length})</span> ${esc(items[i].text)}`;
-  };
+/* urgent messages rotate in place with a fade; each shows (n/total) */
+let urgentTimer = null;
+function rotateUrgent(items) {
+  if (urgentTimer) { clearInterval(urgentTimer); urgentTimer = null; }
+  const el = $("urgenttext");
+  const set = (i) =>
+    el.innerHTML = `<span class="count">(${i + 1}/${items.length})</span> ${esc(items[i])}`;
   set(0);
   if (items.length > 1) {
     let i = 1;
-    setInterval(() => {
+    urgentTimer = setInterval(() => {
       el.style.opacity = 0;
       setTimeout(() => { set(i % items.length); i++; el.style.opacity = 1; }, 600);
     }, 8000);
@@ -155,16 +195,15 @@ function rotate(el, items, prefixHtml) {
 }
 
 function renderMessages() {
-  const urgent = MOCK_MESSAGES.filter((m) => m.type === "urgent");
+  const { normal, urgent } = MODEL.messages;
   $("urgent").classList.toggle("on", urgent.length > 0);
-  if (urgent.length) rotate($("urgenttext"), urgent, "");
+  if (urgent.length) rotateUrgent(urgent);
 
   /* bottom strip: all normal messages in one endless scrolling ticker */
-  const normal = MOCK_MESSAGES.filter((m) => m.type === "normal");
   const el = $("msg");
   if (!normal.length) { el.textContent = ""; return; }
-  const seq = normal.map((m, i) =>
-    `<span class="titem"><span class="bullet">●</span><span class="count">(${i + 1}/${normal.length})</span><span>${esc(m.text)}</span></span>`
+  const seq = normal.map((text, i) =>
+    `<span class="titem"><span class="bullet">●</span><span class="count">(${i + 1}/${normal.length})</span><span>${esc(text)}</span></span>`
   ).join("");
   el.innerHTML = `<div class="ticker">${seq}${seq}</div>`;
   /* constant speed regardless of content length: ~80 px/s */
@@ -172,14 +211,32 @@ function renderMessages() {
   t.style.setProperty("--dur", (t.scrollWidth / 2 / 80) + "s");
 }
 
-/* clock, date, current-period highlight, freshness stamp */
-function stampNow() {
-  const now = new Date();
-  const d = now.toLocaleDateString("he-IL",
+/* re-render only when the data actually changed, so the paging
+   position and ticker animation are not reset every minute */
+function render() {
+  if (!MODEL) return;
+  const key = JSON.stringify(MODEL);
+  if (key === RENDERED_KEY) return;
+  RENDERED_KEY = key;
+  renderGrades();
+  renderAgenda();
+  renderMessages();
+  tick();
+}
+
+/* ================================================================
+   CLOCK TICK, PAGING, STAMP
+   ================================================================ */
+function stamp() {
+  const el = $("stamp");
+  if (!FETCHED_AT) { el.textContent = "אין נתונים"; el.classList.add("stale"); return; }
+  const at = new Date(FETCHED_AT);
+  const d = at.toLocaleDateString("he-IL",
     { day: "2-digit", month: "2-digit", year: "numeric" });
-  const t = now.toLocaleTimeString("he-IL",
-    { hour: "2-digit", minute: "2-digit" });
-  $("stamp").textContent = `עודכן ${d} · ${t}`;
+  const t = at.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+  el.textContent = (DEMO ? "מצב הדגמה · " : "") + `עודכן ${d} · ${t}`;
+  const ageMin = (Date.now() - FETCHED_AT) / 60000;
+  el.classList.toggle("stale", !DEMO && ageMin > CFG.staleMinutes);
 }
 
 function tick() {
@@ -189,6 +246,7 @@ function tick() {
   $("date").textContent = now.toLocaleDateString("he-IL",
     { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   $("hebdate").textContent = hebrewDate(now);
+  $("school").textContent = CFG.schoolName;
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   document.querySelectorAll(".period").forEach((p) => {
@@ -196,21 +254,18 @@ function tick() {
     p.classList.toggle("now",  nowMin >= s && nowMin < e);
     p.classList.toggle("done", nowMin >= e);   /* passed → hidden */
   });
-  /* a card whose classes are all over shows the end-of-day note */
   document.querySelectorAll(".periods").forEach((c) => {
     const left = c.querySelectorAll(".period:not(.done)").length;
     c.classList.toggle("empty", left === 0);
   });
   layoutPages();   /* row visibility changed → recompute pages */
-  /* in mock mode the data is always "fresh"; once wired to the sheet,
-     the stamp records the last successful fetch instead */
-  stampNow();
+  stamp();
 }
 
 /* -- paging: a card with more remaining classes than fit cycles
    through them page by page every 8 seconds, by translating the
-   row wrapper (CSS transition does the animation) ----------------- */
-const ROW_H = 52;   /* must match .period height */
+   row wrapper (a CSS transition does the animation) --------------- */
+const ROW_H = 52;   /* must match .period height in style.css */
 
 function layoutPages() {
   document.querySelectorAll(".periods").forEach((c) => {
@@ -240,19 +295,27 @@ function advancePages() {
   });
   layoutPages();
 }
-setInterval(advancePages, 8000);
 
-/* scale the fixed 1920×1080 stage to fit any preview window */
+/* scale the fixed 1920×1080 stage to fit any window */
 function fit() {
   const s = Math.min(innerWidth / 1920, innerHeight / 1080);
-  $("stage").style.transform =
-    `translate(-50%, -50%) scale(${s})`;
+  $("stage").style.transform = `translate(-50%, -50%) scale(${s})`;
 }
 
-renderGrades();
-renderAgenda();
-renderMessages();
-tick();                    /* also runs layoutPages(): page 1 shown at load */
-setInterval(tick, 5000);
+/* ================================================================
+   BOOT
+   ================================================================ */
+async function refresh() {
+  const before = dateKey(NOW());
+  await loadData();
+  /* crossing midnight changes which day's schedule applies */
+  if (MODEL && before !== dateKey(NOW())) RENDERED_KEY = "";
+  render();
+}
+
 fit();
 addEventListener("resize", fit);
+refresh();
+setInterval(refresh, CFG.refreshSeconds * 1000);
+setInterval(tick, 5000);
+setInterval(advancePages, 8000);

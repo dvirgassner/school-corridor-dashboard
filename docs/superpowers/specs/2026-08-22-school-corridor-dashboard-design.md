@@ -126,7 +126,7 @@ the dashboard additionally ellipsizes as a fallback.
 | Events: Title | ~328 px (full row) | 26 px | **22** |
 | Events: Location | ~134 px (beside time) | 22 px | **12** |
 | Messages: normal Text | ~1435 px | 28 px | **90** |
-| Messages: urgent Text | ~1438 px | 34 px | **75** |
+| Messages: urgent Text | ~1140 px (header strip) | 26 px | **75** |
 | Grade column header | chip-sized | 21 px | **4** |
 
 ### Tab `Messages`
@@ -184,9 +184,13 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 - **Passed classes are hidden** as the day progresses, freeing card space;
   a card whose day is over shows "יום הלימודים הסתיים".
 - **Overflow paging**: a card holding more remaining classes than fit
-  (~5 rows at 56px) cycles through them page by page with a smooth scroll
-  every 8 s, with a bottom fade hinting at more rows. Paging engages
-  immediately on load, not on the first cycle tick.
+  (6 rows at 52px; pane height snaps to whole rows) cycles through them
+  page by page with a smooth slide every 8 s, scrolling the minimum
+  needed — the last page anchors to the final class. A bottom fade hints
+  at more rows. Paging engages immediately on load.
+- The urgent-messages strip lives in the header (left side), in lieu of
+  the school name, which shows only when no urgent message is active.
+  Board geometry never shifts when urgent messages appear.
 - Preview helpers: `?time=HH:MM` simulates the clock; `?demo7` previews
   the 7-grade layout.
 - **7-grade adaptation**: if the Schedule tab carries a 7th grade column,

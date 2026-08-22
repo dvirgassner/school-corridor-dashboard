@@ -64,30 +64,33 @@
     100% { transform: translate( 0px,  0px); }
   }
 
-  /* -- header ------------------------------------------------------ */
-  header { display: flex; align-items: baseline; gap: 28px; height: 78px; }
-  #clock  { font-size: 72px; font-weight: 700; color: var(--ink-strong);
-            font-variant-numeric: tabular-nums; line-height: 1; }
-  #date   { font-size: 30px; color: var(--ink-2); }
-  #hebdate{ font-size: 30px; color: var(--muted); }
-  #school { margin-inline-start: auto; font-size: 30px; font-weight: 600;
+  /* -- header: clock + dates on the right, urgent strip (or school
+        name when there is nothing urgent) filling the left ---------- */
+  header { display: flex; align-items: center; gap: 24px; height: 72px; }
+  #clock  { font-size: 48px; font-weight: 700; color: var(--ink-strong);
+            font-variant-numeric: tabular-nums; line-height: 1; flex: none; }
+  .dates  { display: flex; flex-direction: column; gap: 2px; flex: none; }
+  #date   { font-size: 22px; color: var(--ink-2); }
+  #hebdate{ font-size: 20px; color: var(--muted); }
+  #school { margin-inline-start: auto; font-size: 28px; font-weight: 600;
             color: var(--ink-2); }
 
-  /* -- urgent banner (hidden when no urgent messages) -------------- */
+  /* urgent strip lives in the header, in lieu of the school name */
   #urgent {
-    display: none; align-items: center; gap: 18px;
+    display: none; align-items: center; gap: 14px; flex: 1; min-width: 0;
     background: rgba(208,59,59,0.16);
     border: 2px solid var(--critical);
-    border-radius: 12px; padding: 12px 24px;
-    font-size: 34px; font-weight: 700; color: var(--ink-strong);
+    border-radius: 12px; padding: 8px 18px;
   }
   #urgent.on { display: flex; }
-  #urgent .icon { font-size: 36px; line-height: 1; }
-  #urgent .tag  { color: var(--critical); font-size: 26px; font-weight: 700;
+  #urgent.on ~ #school { display: none; }
+  #urgent .icon { font-size: 26px; line-height: 1; }
+  #urgent .tag  { color: var(--critical); font-size: 20px; font-weight: 700;
                   border: 1.5px solid var(--critical); border-radius: 8px;
-                  padding: 2px 12px; white-space: nowrap; }
+                  padding: 1px 10px; white-space: nowrap; }
   #urgenttext   { transition: opacity 0.6s; white-space: nowrap;
-                  overflow: hidden; text-overflow: ellipsis; }
+                  overflow: hidden; text-overflow: ellipsis;
+                  font-size: 26px; font-weight: 700; color: var(--ink-strong); }
 
   /* -- main grid: 3 grade columns (start/right) + left column ------ */
   main {
@@ -129,7 +132,7 @@
                           color: var(--muted); font-size: 24px;
                           text-align: center; margin-top: 42px; }
   .period  { display: flex; align-items: center; gap: 12px;
-             font-size: 28px; line-height: 1.15; height: 56px; flex: none;
+             font-size: 28px; line-height: 1.1; height: 52px; flex: none;
              padding: 2px 8px; border-radius: 8px; }
   .period .time { color: var(--muted); font-variant-numeric: tabular-nums;
                   font-size: 24px; width: 142px; flex: none; }
@@ -194,16 +197,17 @@
   <div id="drift">
     <header>
       <div id="clock">--:--</div>
-      <div id="date"></div>
-      <div id="hebdate"></div>
+      <div class="dates">
+        <div id="date"></div>
+        <div id="hebdate"></div>
+      </div>
+      <div id="urgent">
+        <span class="icon">⚠️</span>
+        <span class="tag">הודעות דחופות</span>
+        <span id="urgenttext"></span>
+      </div>
       <div id="school">תיכון השיטה</div>
     </header>
-
-    <div id="urgent">
-      <span class="icon">⚠️</span>
-      <span class="tag">הודעות דחופות</span>
-      <span id="urgenttext"></span>
-    </div>
 
     <main id="grid">
       <!-- grade cards injected here -->
@@ -452,7 +456,7 @@ function tick() {
 /* -- paging: a card with more remaining classes than fit cycles
    through them page by page every 8 seconds, by translating the
    row wrapper (CSS transition does the animation) ----------------- */
-const ROW_H = 56;   /* must match .period height */
+const ROW_H = 52;   /* must match .period height */
 
 function layoutPages() {
   document.querySelectorAll(".periods").forEach((c) => {
@@ -460,6 +464,10 @@ function layoutPages() {
     if (!wrap) return;
     const rows = wrap.querySelectorAll(".period:not(.done)").length;
     const perPage = Math.max(1, Math.floor(c.clientHeight / ROW_H));
+    /* snap pane height to a whole number of rows so a partial row
+       never peeks out at the bottom */
+    c.style.height = (perPage * ROW_H) + "px";
+    c.style.flex = "none";
     const pages = Math.max(1, Math.ceil(rows / perPage));
     c.dataset.pages = pages;
     c.classList.toggle("paged", pages > 1);

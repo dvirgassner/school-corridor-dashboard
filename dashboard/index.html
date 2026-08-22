@@ -159,6 +159,8 @@
          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
          transition: opacity 0.6s; }
   #msg .bullet { color: var(--g1); margin-inline-end: 12px; }
+  .count { direction: ltr; unicode-bidi: isolate; color: var(--muted);
+           font-weight: 600; margin-inline-end: 10px; }
   #stamp { font-size: 20px; color: var(--muted); flex: none;
            font-variant-numeric: tabular-nums; }
   #stamp.stale { color: var(--warning); }
@@ -291,40 +293,33 @@ function renderExams() {
 }
 
 /* urgent banner + rotating normal messages — both rotate with a fade
-   when the principal enters more than one message of that type */
-let msgIndex = 0, urgentIndex = 0;
+   when the principal enters more than one message of that type, and
+   both show a "(current/total)" counter, e.g. ‎(1/3) */
+const esc = (s) => s.replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function rotate(el, items, prefixHtml) {
+  const set = (i) => {
+    el.innerHTML = `${prefixHtml}<span class="count">(${i + 1}/${items.length})</span>${esc(items[i].text)}`;
+  };
+  set(0);
+  if (items.length > 1) {
+    let i = 1;
+    setInterval(() => {
+      el.style.opacity = 0;
+      setTimeout(() => { set(i % items.length); i++; el.style.opacity = 1; }, 600);
+    }, 8000);
+  }
+}
+
 function renderMessages() {
   const urgent = MOCK_MESSAGES.filter((m) => m.type === "urgent");
-  if (urgent.length) {
-    $("urgent").classList.add("on");
-    $("urgenttext").textContent = urgent[0].text;
-    urgentIndex = 1;
-    if (urgent.length > 1) setInterval(() => {
-      const el = $("urgenttext");
-      el.style.opacity = 0;
-      setTimeout(() => {
-        el.textContent = urgent[urgentIndex % urgent.length].text;
-        el.style.opacity = 1;
-        urgentIndex++;
-      }, 600);
-    }, 8000);
-  } else {
-    $("urgent").classList.remove("on");
-  }
+  $("urgent").classList.toggle("on", urgent.length > 0);
+  if (urgent.length) rotate($("urgenttext"), urgent, "");
+
   const normal = MOCK_MESSAGES.filter((m) => m.type === "normal");
-  const el = $("msg");
-  if (!normal.length) { el.textContent = ""; return; }
-  const show = () => {
-    el.style.opacity = 0;
-    setTimeout(() => {
-      el.innerHTML = `<span class="bullet">●</span>${normal[msgIndex % normal.length].text}`;
-      el.style.opacity = 1;
-      msgIndex++;
-    }, 600);
-  };
-  el.innerHTML = `<span class="bullet">●</span>${normal[0].text}`;
-  msgIndex = 1;
-  if (normal.length > 1) setInterval(show, 8000);
+  if (normal.length) rotate($("msg"), normal, `<span class="bullet">●</span>`);
+  else $("msg").textContent = "";
 }
 
 /* clock, date, current-period highlight, freshness stamp */

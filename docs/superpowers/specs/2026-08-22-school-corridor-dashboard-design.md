@@ -182,10 +182,9 @@ documented step-by-step in `pi/README.md` (the teaching walk-through).
 - **Watchdog**: the systemd service has `Restart=always` — Chromium crash =
   auto-relaunch in seconds. A cron `@daily` reboot at 03:00 clears any slow
   leak.
-- **Power/display schedule** (cron + `cec-ctl`; exact hours to be confirmed
-  with the school before deployment):
+- **Power/display schedule** (cron + `cec-ctl`; hours confirmed 2026-08-22):
   - School days 07:00 — CEC "image view on" (wakes the TV from standby)
-  - Sun–Thu 17:00, Fri 13:30 — CEC "standby"
+  - Sun–Thu 17:00, Fri 15:00 — CEC "standby"
   - The TV's own On/Off timers are configured identically as a belt-and-
     suspenders backup. Overnight the TV sits in standby (not mains-off), so
     its nightly OLED panel-care cycle still runs.

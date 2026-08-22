@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>לוח מסדרון</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ================================================================
+     Corridor dashboard — designed at a fixed 1920×1080 canvas.
+     The TV renders it 1:1; any other window scales it to fit.
+     Dark, OLED-safe: dark surfaces, no pure-white fields, slow
+     pixel drift on the whole canvas.
+     Palette: dataviz reference palette, dark column.
+     ================================================================ */
+  :root {
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --ink:         #e8e6df;   /* softened primary — kinder to OLED than #fff */
+    --ink-strong:  #f6f5ef;
+    --ink-2:       #c3c2b7;
+    --muted:       #898781;
+    --hairline:    #2c2c2a;
+    --border:      rgba(255,255,255,0.10);
+    /* grade accents = categorical dark slots 1–6, documented order */
+    --g1: #3987e5;  /* blue    */
+    --g2: #d95926;  /* orange  */
+    --g3: #199e70;  /* aqua    */
+    --g4: #c98500;  /* yellow  */
+    --g5: #d55181;  /* magenta */
+    --g6: #008300;  /* green   */
+    --critical: #d03b3b;
+    --warning:  #fab219;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--page); overflow: hidden; }
+  body {
+    font-family: "Noto Sans Hebrew", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+  }
+
+  /* -- fixed canvas, scaled to fit the window ---------------------- */
+  #stage {
+    width: 1920px; height: 1080px;
+    position: absolute; top: 50%; left: 50%;
+    transform-origin: center center;
+    display: flex; flex-direction: column;
+    padding: 28px 36px 20px;
+    gap: 18px;
+  }
+  /* slow pixel drift (burn-in): ±3px square, 10-minute lap */
+  #drift { flex: 1; display: flex; flex-direction: column; gap: 18px;
+           animation: drift 600s steps(1) infinite; }
+  @keyframes drift {
+    0%   { transform: translate( 0px,  0px); }
+    25%  { transform: translate( 3px,  2px); }
+    50%  { transform: translate( 0px,  4px); }
+    75%  { transform: translate(-3px,  2px); }
+    100% { transform: translate( 0px,  0px); }
+  }
+
+  /* -- header ------------------------------------------------------ */
+  header { display: flex; align-items: baseline; gap: 28px; height: 78px; }
+  #clock  { font-size: 72px; font-weight: 700; color: var(--ink-strong);
+            font-variant-numeric: tabular-nums; line-height: 1; }
+  #date   { font-size: 30px; color: var(--ink-2); }
+  #hebdate{ font-size: 30px; color: var(--muted); }
+  #school { margin-inline-start: auto; font-size: 30px; font-weight: 600;
+            color: var(--ink-2); }
+
+  /* -- urgent banner (hidden when no urgent messages) -------------- */
+  #urgent {
+    display: none; align-items: center; gap: 18px;
+    background: rgba(208,59,59,0.16);
+    border: 2px solid var(--critical);
+    border-radius: 12px; padding: 12px 24px;
+    font-size: 34px; font-weight: 700; color: var(--ink-strong);
+  }
+  #urgent.on { display: flex; }
+  #urgent .icon { font-size: 36px; line-height: 1; }
+  #urgent .tag  { color: var(--critical); font-size: 26px; font-weight: 700;
+                  border: 1.5px solid var(--critical); border-radius: 8px;
+                  padding: 2px 12px; white-space: nowrap; }
+
+  /* -- main grid: 3 grade columns (start/right) + exams column ----- */
+  main {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 400px;
+    grid-template-rows: 1fr 1fr;
+    gap: 18px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 18px 12px;
+    display: flex; flex-direction: column;
+    min-height: 0; overflow: hidden;
+  }
+  .card h2 {
+    font-size: 27px; font-weight: 700; color: var(--ink-strong);
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--hairline);
+    margin-bottom: 6px;
+  }
+  .card h2 .chip { width: 14px; height: 26px; border-radius: 4px;
+                   background: var(--accent); flex: none; }
+
+  .periods { flex: 1; display: flex; flex-direction: column;
+             justify-content: space-evenly; min-height: 0; }
+  .period  { display: flex; align-items: center; gap: 12px;
+             font-size: 23px; line-height: 1.15;
+             padding: 2px 8px; border-radius: 8px; }
+  .period .time { color: var(--muted); font-variant-numeric: tabular-nums;
+                  font-size: 20px; width: 118px; flex: none; }
+  .period .subj { color: var(--ink); font-weight: 600;
+                  white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; }
+  .period.now  { background: color-mix(in srgb, var(--accent) 16%, transparent);
+                 box-shadow: inset 3px 0 0 var(--accent); }
+  .period.now .subj { color: var(--ink-strong); }
+  .period.done { opacity: 0.42; }
+
+  /* -- exams panel -------------------------------------------------- */
+  #exams { grid-column: 4; grid-row: 1 / span 2; }
+  #exams h2 { font-size: 30px; }
+  #examlist { flex: 1; display: flex; flex-direction: column; gap: 14px;
+              padding-top: 10px; }
+  .exam { border: 1px solid var(--hairline); border-radius: 10px;
+          padding: 12px 16px; }
+  .exam .row1 { display: flex; align-items: baseline; gap: 10px;
+                font-size: 26px; font-weight: 700; color: var(--ink-strong); }
+  .exam .grade { font-size: 21px; font-weight: 700; color: var(--page);
+                 background: var(--gcolor); border-radius: 7px;
+                 padding: 1px 10px; }
+  .exam .row2 { display: flex; gap: 18px; font-size: 22px;
+                color: var(--ink-2); margin-top: 4px;
+                font-variant-numeric: tabular-nums; }
+  #noexams { color: var(--muted); font-size: 26px; text-align: center;
+             margin-top: 40px; }
+
+  /* -- footer: rotating messages + updated stamp -------------------- */
+  footer {
+    height: 66px; display: flex; align-items: center; gap: 24px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 0 24px;
+  }
+  #msg { flex: 1; font-size: 28px; color: var(--ink);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+         transition: opacity 0.6s; }
+  #msg .bullet { color: var(--g1); margin-inline-end: 12px; }
+  #stamp { font-size: 20px; color: var(--muted); flex: none;
+           font-variant-numeric: tabular-nums; }
+  #stamp.stale { color: var(--warning); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="drift">
+    <header>
+      <div id="clock">--:--</div>
+      <div id="date"></div>
+      <div id="hebdate"></div>
+      <div id="school">בית הספר שלנו</div>
+    </header>
+
+    <div id="urgent">
+      <span class="icon">⚠️</span>
+      <span class="tag">הודעה דחופה</span>
+      <span id="urgenttext"></span>
+    </div>
+
+    <main id="grid">
+      <!-- grade cards injected here -->
+      <section class="card" id="exams">
+        <h2>מבחנים היום</h2>
+        <div id="examlist"></div>
+      </section>
+    </main>
+
+    <footer>
+      <div id="msg"></div>
+      <div id="stamp"></div>
+    </footer>
+  </div>
+</div>
+
+<script>
+/* ==================================================================
+   MOCK DATA — this block will be replaced by the Google-Sheets CSV
+   fetch in the next phase. The render functions below stay as-is.
+   ================================================================== */
+const GRADES = ["א", "ב", "ג", "ד", "ה", "ו"];
+const ACCENTS = ["--g1", "--g2", "--g3", "--g4", "--g5", "--g6"];
+
+const MOCK_SCHEDULE = [
+  // period, start, end, subjects per grade א..ו ("" = no class)
+  [1, "08:00", "08:45", ["עברית",      "מתמטיקה",  "אנגלית",   "מדעים",    "תנ\"ך",     "מתמטיקה"]],
+  [2, "08:50", "09:35", ["מתמטיקה",   "עברית",     "מתמטיקה", "אנגלית",   "מתמטיקה",  "עברית"]],
+  [3, "09:50", "10:35", ["אנגלית",    "מדעים",     "עברית",    "מתמטיקה", "אנגלית",    "היסטוריה"]],
+  [4, "10:40", "11:25", ["אמנות",     "חינוך גופני","מדעים",   "עברית",    "גאוגרפיה", "אנגלית"]],
+  [5, "11:45", "12:30", ["חינוך גופני","אנגלית",   "תנ\"ך",    "מוזיקה",   "עברית",     "מדעים"]],
+  [6, "12:35", "13:20", ["מוזיקה",    "תנ\"ך",     "חינוך",    "מדעים",    "מחשבים",   "חינוך גופני"]],
+  [7, "13:30", "14:15", ["",           "",          "אמנות",    "חינוך",    "מדעים",     "מחשבים"]],
+  [8, "14:20", "15:05", ["",           "",          "",          "",          "חינוך",     "חינוך"]],
+];
+
+const MOCK_EXAMS = [
+  { grade: "ה", subject: "מתמטיקה", start: "09:00", end: "10:30", room: "חדר 12" },
+  { grade: "ו", subject: "אנגלית",  start: "11:45", end: "12:30", room: "ספרייה" },
+  { grade: "ג", subject: "מדעים",   start: "12:35", end: "13:20", room: "מעבדה" },
+];
+
+const MOCK_MESSAGES = [
+  { text: "אסיפת הורים תתקיים ביום שלישי בשעה 19:00", type: "normal" },
+  { text: "מחר: יום כחול-לבן — באים בלבוש חגיגי", type: "normal" },
+  { text: "שיעורי שכבה ג׳ מסתיימים היום ב-13:20", type: "urgent" },
+];
+
+/* ================================================================
+   RENDERING
+   ================================================================ */
+const $ = (id) => document.getElementById(id);
+
+function minutes(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function renderGrades() {
+  const grid = $("grid");
+  GRADES.forEach((name, gi) => {
+    const card = document.createElement("section");
+    card.className = "card";
+    card.style.setProperty("--accent", `var(${ACCENTS[gi]})`);
+    const rows = MOCK_SCHEDULE
+      .filter((p) => p[3][gi] !== "")
+      .map((p) => `
+        <div class="period" data-start="${p[1]}" data-end="${p[2]}">
+          <span class="time">${p[1]}–${p[2]}</span>
+          <span class="subj">${p[3][gi]}</span>
+        </div>`).join("");
+    card.innerHTML = `
+      <h2><span class="chip"></span>כיתה ${name}</h2>
+      <div class="periods">${rows}</div>`;
+    grid.insertBefore(card, $("exams"));
+  });
+}
+
+function renderExams() {
+  const list = $("examlist");
+  if (MOCK_EXAMS.length === 0) {
+    list.innerHTML = `<div id="noexams">אין מבחנים היום 🎉</div>`;
+    return;
+  }
+  list.innerHTML = MOCK_EXAMS.map((e) => {
+    const gi = GRADES.indexOf(e.grade);
+    const color = gi >= 0 ? `var(${ACCENTS[gi]})` : "var(--muted)";
+    return `
+      <div class="exam" style="--gcolor:${color}">
+        <div class="row1"><span class="grade">כיתה ${e.grade}</span>${e.subject}</div>
+        <div class="row2"><span>🕐 ${e.start}–${e.end}</span><span>📍 ${e.room}</span></div>
+      </div>`;
+  }).join("");
+}
+
+/* urgent banner + rotating normal messages */
+let msgIndex = 0;
+function renderMessages() {
+  const urgent = MOCK_MESSAGES.filter((m) => m.type === "urgent");
+  if (urgent.length) {
+    $("urgent").classList.add("on");
+    $("urgenttext").textContent = urgent[0].text;
+  } else {
+    $("urgent").classList.remove("on");
+  }
+  const normal = MOCK_MESSAGES.filter((m) => m.type === "normal");
+  const el = $("msg");
+  if (!normal.length) { el.textContent = ""; return; }
+  const show = () => {
+    el.style.opacity = 0;
+    setTimeout(() => {
+      el.innerHTML = `<span class="bullet">●</span>${normal[msgIndex % normal.length].text}`;
+      el.style.opacity = 1;
+      msgIndex++;
+    }, 600);
+  };
+  el.innerHTML = `<span class="bullet">●</span>${normal[0].text}`;
+  msgIndex = 1;
+  if (normal.length > 1) setInterval(show, 8000);
+}
+
+/* clock, date, current-period highlight */
+function tick() {
+  const now = new Date();
+  $("clock").textContent = now.toLocaleTimeString("he-IL",
+    { hour: "2-digit", minute: "2-digit" });
+  $("date").textContent = now.toLocaleDateString("he-IL",
+    { weekday: "long", day: "numeric", month: "long" });
+  $("hebdate").textContent = new Intl.DateTimeFormat("he-u-ca-hebrew",
+    { day: "numeric", month: "long", year: "numeric" }).format(now);
+
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  document.querySelectorAll(".period").forEach((p) => {
+    const s = minutes(p.dataset.start), e = minutes(p.dataset.end);
+    p.classList.toggle("now",  nowMin >= s && nowMin < e);
+    p.classList.toggle("done", nowMin >= e);
+  });
+  $("stamp").textContent = "עודכן " + now.toLocaleTimeString("he-IL",
+    { hour: "2-digit", minute: "2-digit" });
+}
+
+/* scale the fixed 1920×1080 stage to fit any preview window */
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  $("stage").style.transform =
+    `translate(-50%, -50%) scale(${s})`;
+}
+
+renderGrades();
+renderExams();
+renderMessages();
+tick();
+setInterval(tick, 5000);
+fit();
+addEventListener("resize", fit);
+</script>
+</body>
+</html>

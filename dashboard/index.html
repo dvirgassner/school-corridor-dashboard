@@ -179,10 +179,19 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 14px; padding: 0 24px;
   }
+  /* continuous ticker: two identical copies slide rightward (RTL
+     reading direction); shifting by exactly one copy loops seamlessly */
   #msg { flex: 1; font-size: 28px; color: var(--ink);
-         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-         transition: opacity 0.6s; }
-  #msg .bullet { color: var(--g1); margin-inline-end: 12px; }
+         overflow: hidden; min-width: 0; }
+  .ticker { display: flex; width: max-content; white-space: nowrap;
+            animation: tickmove var(--dur, 40s) linear infinite; }
+  @keyframes tickmove { from { transform: translateX(0); }
+                        to   { transform: translateX(50%); } }
+  /* flex children ignore literal text spaces — the gap provides the
+     spacing between bullet, counter, and message text */
+  .titem { display: inline-flex; align-items: baseline; gap: 14px;
+           padding-inline-end: 90px; }
+  .titem .bullet { color: var(--g1); }
   .count { direction: ltr; unicode-bidi: isolate; color: var(--muted);
            font-weight: 600; margin-inline-end: 14px; }
   #stamp { font-size: 20px; color: var(--muted); flex: none;
@@ -387,9 +396,17 @@ function renderMessages() {
   $("urgent").classList.toggle("on", urgent.length > 0);
   if (urgent.length) rotate($("urgenttext"), urgent, "");
 
+  /* bottom strip: all normal messages in one endless scrolling ticker */
   const normal = MOCK_MESSAGES.filter((m) => m.type === "normal");
-  if (normal.length) rotate($("msg"), normal, `<span class="bullet">●</span>`);
-  else $("msg").textContent = "";
+  const el = $("msg");
+  if (!normal.length) { el.textContent = ""; return; }
+  const seq = normal.map((m, i) =>
+    `<span class="titem"><span class="bullet">●</span><span class="count">(${i + 1}/${normal.length})</span><span>${esc(m.text)}</span></span>`
+  ).join("");
+  el.innerHTML = `<div class="ticker">${seq}${seq}</div>`;
+  /* constant speed regardless of content length: ~55 px/s */
+  const t = el.querySelector(".ticker");
+  t.style.setProperty("--dur", (t.scrollWidth / 2 / 55) + "s");
 }
 
 /* Hebrew-letter (gematria) date: Intl computes the hebrew-calendar

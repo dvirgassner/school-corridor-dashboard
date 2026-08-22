@@ -84,6 +84,8 @@
   #urgent .tag  { color: var(--critical); font-size: 26px; font-weight: 700;
                   border: 1.5px solid var(--critical); border-radius: 8px;
                   padding: 2px 12px; white-space: nowrap; }
+  #urgenttext   { transition: opacity 0.6s; white-space: nowrap;
+                  overflow: hidden; text-overflow: ellipsis; }
 
   /* -- main grid: 3 grade columns (start/right) + left column ------ */
   main {
@@ -228,6 +230,7 @@ const MOCK_MESSAGES = [
   { text: "אסיפת הורים תתקיים ביום שלישי בשעה 19:00", type: "normal" },
   { text: "מחר: יום כחול-לבן — באים בלבוש חגיגי", type: "normal" },
   { text: "שיעורי שכבת ז׳ מסתיימים היום ב-13:20", type: "urgent" },
+  { text: "ההסעה לקו הדרומי יוצאת היום ב-14:00 מהשער האחורי", type: "urgent" },
 ];
 
 /* demo of the 7-grade layout: ?demo7 splits ז׳ into ז׳1 + ז׳2 */
@@ -287,13 +290,24 @@ function renderExams() {
   }).join("");
 }
 
-/* urgent banner + rotating normal messages */
-let msgIndex = 0;
+/* urgent banner + rotating normal messages — both rotate with a fade
+   when the principal enters more than one message of that type */
+let msgIndex = 0, urgentIndex = 0;
 function renderMessages() {
   const urgent = MOCK_MESSAGES.filter((m) => m.type === "urgent");
   if (urgent.length) {
     $("urgent").classList.add("on");
     $("urgenttext").textContent = urgent[0].text;
+    urgentIndex = 1;
+    if (urgent.length > 1) setInterval(() => {
+      const el = $("urgenttext");
+      el.style.opacity = 0;
+      setTimeout(() => {
+        el.textContent = urgent[urgentIndex % urgent.length].text;
+        el.style.opacity = 1;
+        urgentIndex++;
+      }, 600);
+    }, 8000);
   } else {
     $("urgent").classList.remove("on");
   }

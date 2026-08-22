@@ -322,6 +322,30 @@ function renderMessages() {
   else $("msg").textContent = "";
 }
 
+/* Hebrew-letter (gematria) date: Intl computes the hebrew-calendar
+   day/month/year, but ECMA-402 can't render the algorithmic "hebr"
+   numbering system (it silently falls back to digits) — so the
+   day and year are converted to Hebrew letters here. */
+const GERESH = "׳", GERSHAYIM = "״";
+function toGematria(n) {
+  const ones = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+  const tens = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
+  const hundreds = ["", "ק", "ר", "ש", "ת"];
+  let s = "";
+  while (n >= 500) { s += "ת"; n -= 400; }
+  s += hundreds[Math.floor(n / 100)]; n %= 100;
+  if (n === 15) s += "טו";        /* avoid spelling parts of the divine name */
+  else if (n === 16) s += "טז";
+  else s += tens[Math.floor(n / 10)] + ones[n % 10];
+  return s.length === 1 ? s + GERESH : s.slice(0, -1) + GERSHAYIM + s.slice(-1);
+}
+function hebrewDate(d) {
+  const parts = new Intl.DateTimeFormat("he-u-ca-hebrew",
+    { day: "numeric", month: "long", year: "numeric" }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${toGematria(+get("day"))} ${get("month")} ${toGematria(+get("year") % 1000)}`;
+}
+
 /* clock, date, current-period highlight, freshness stamp */
 function stampNow() {
   const now = new Date();
@@ -337,10 +361,8 @@ function tick() {
   $("clock").textContent = now.toLocaleTimeString("he-IL",
     { hour: "2-digit", minute: "2-digit" });
   $("date").textContent = now.toLocaleDateString("he-IL",
-    { weekday: "long", day: "numeric", month: "long" });
-  /* nu-hebr = Hebrew numerals (gematria): day and year in Hebrew letters */
-  $("hebdate").textContent = new Intl.DateTimeFormat("he-u-ca-hebrew-nu-hebr",
-    { day: "numeric", month: "long", year: "numeric" }).format(now);
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  $("hebdate").textContent = hebrewDate(now);
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   document.querySelectorAll(".period").forEach((p) => {

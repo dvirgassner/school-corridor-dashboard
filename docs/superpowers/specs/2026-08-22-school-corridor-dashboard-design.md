@@ -121,7 +121,7 @@ the dashboard additionally ellipsizes as a fallback.
 | Field | Box budget | Font | Max chars |
 |-------|-----------|------|-----------|
 | Schedule: subject cell | ~257 px | 28 px | **16** |
-| Exams: Subject | ~205 px (beside grade chip) | 26 px | **14** |
+| Exams: Subject | ~268 px beside compact grade chip; board prepends "מבחן ב" | 26 px | **12** |
 | Exams: Room | ~134 px (beside time) | 22 px | **12** |
 | Events: Title | ~328 px (full row) | 26 px | **22** |
 | Events: Location | ~134 px (beside time) | 22 px | **12** |

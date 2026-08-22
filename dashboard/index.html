@@ -352,9 +352,10 @@ function renderAgenda() {
   list.innerHTML = agenda.map((e) => {
     const row2 = `<div class="row2"><span>🕐 ${e.start}–${e.end}</span><span>📍 ${esc(e.room)}</span></div>`;
     if (e.kind === "exam") {
+      /* the sheet holds the bare subject; the board adds the prefix */
       return `
         <div class="exam" style="--gcolor:${gradeColor(e.grade)}">
-          <div class="row1"><span class="grade">כיתה ${e.grade}</span><span class="ttl">${esc(e.subject)}</span></div>
+          <div class="row1"><span class="grade">${e.grade}</span><span class="ttl">מבחן ב${esc(e.subject)}</span></div>
           ${row2}
         </div>`;
     }

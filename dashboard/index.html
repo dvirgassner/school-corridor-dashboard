@@ -11,6 +11,9 @@
      Dark, OLED-safe: dark surfaces, no pure-white fields, slow
      pixel drift on the whole canvas.
      Palette: dataviz reference palette, dark column.
+     Grade count is data-driven: 6 grades → exams panel spans the
+     full left column; 7 grades → 7th card takes the top-left cell
+     and the exams panel moves below it.
      ================================================================ */
   :root {
     --page:        #0d0d0d;
@@ -21,13 +24,14 @@
     --muted:       #898781;
     --hairline:    #2c2c2a;
     --border:      rgba(255,255,255,0.10);
-    /* grade accents = categorical dark slots 1–6, documented order */
+    /* grade accents = categorical dark slots 1–7, documented order */
     --g1: #3987e5;  /* blue    */
     --g2: #d95926;  /* orange  */
     --g3: #199e70;  /* aqua    */
     --g4: #c98500;  /* yellow  */
     --g5: #d55181;  /* magenta */
     --g6: #008300;  /* green   */
+    --g7: #9085e9;  /* violet — used only if a 7th grade appears */
     --critical: #d03b3b;
     --warning:  #fab219;
   }
@@ -81,7 +85,7 @@
                   border: 1.5px solid var(--critical); border-radius: 8px;
                   padding: 2px 12px; white-space: nowrap; }
 
-  /* -- main grid: 3 grade columns (start/right) + exams column ----- */
+  /* -- main grid: 3 grade columns (start/right) + left column ------ */
   main {
     flex: 1; min-height: 0;
     display: grid;
@@ -121,18 +125,22 @@
   .period.now .subj { color: var(--ink-strong); }
   .period.done { opacity: 0.42; }
 
-  /* -- exams panel -------------------------------------------------- */
+  /* the 7th grade card, when present, sits top-left (col 4, row 1) */
+  .card.seventh { grid-column: 4; grid-row: 1; }
+
+  /* -- exams panel: full left column, or bottom-left in 7-grade mode */
   #exams { grid-column: 4; grid-row: 1 / span 2; }
+  main.grades7 #exams { grid-row: 2; }
   #exams h2 { font-size: 30px; }
   #examlist { flex: 1; display: flex; flex-direction: column; gap: 14px;
-              padding-top: 10px; }
+              padding-top: 10px; overflow: hidden; }
   .exam { border: 1px solid var(--hairline); border-radius: 10px;
           padding: 12px 16px; }
   .exam .row1 { display: flex; align-items: baseline; gap: 10px;
                 font-size: 26px; font-weight: 700; color: var(--ink-strong); }
   .exam .grade { font-size: 21px; font-weight: 700; color: var(--page);
                  background: var(--gcolor); border-radius: 7px;
-                 padding: 1px 10px; }
+                 padding: 1px 10px; white-space: nowrap; }
   .exam .row2 { display: flex; gap: 18px; font-size: 22px;
                 color: var(--ink-2); margin-top: 4px;
                 font-variant-numeric: tabular-nums; }
@@ -161,7 +169,7 @@
       <div id="clock">--:--</div>
       <div id="date"></div>
       <div id="hebdate"></div>
-      <div id="school">בית הספר שלנו</div>
+      <div id="school">תיכון השיטה</div>
     </header>
 
     <div id="urgent">
@@ -189,33 +197,47 @@
 /* ==================================================================
    MOCK DATA — this block will be replaced by the Google-Sheets CSV
    fetch in the next phase. The render functions below stay as-is.
-   ================================================================== */
-const GRADES = ["א", "ב", "ג", "ד", "ה", "ו"];
-const ACCENTS = ["--g1", "--g2", "--g3", "--g4", "--g5", "--g6"];
 
-const MOCK_SCHEDULE = [
-  // period, start, end, subjects per grade א..ו ("" = no class)
-  [1, "08:00", "08:45", ["עברית",      "מתמטיקה",  "אנגלית",   "מדעים",    "תנ\"ך",     "מתמטיקה"]],
-  [2, "08:50", "09:35", ["מתמטיקה",   "עברית",     "מתמטיקה", "אנגלית",   "מתמטיקה",  "עברית"]],
-  [3, "09:50", "10:35", ["אנגלית",    "מדעים",     "עברית",    "מתמטיקה", "אנגלית",    "היסטוריה"]],
-  [4, "10:40", "11:25", ["אמנות",     "חינוך גופני","מדעים",   "עברית",    "גאוגרפיה", "אנגלית"]],
-  [5, "11:45", "12:30", ["חינוך גופני","אנגלית",   "תנ\"ך",    "מוזיקה",   "עברית",     "מדעים"]],
-  [6, "12:35", "13:20", ["מוזיקה",    "תנ\"ך",     "חינוך",    "מדעים",    "מחשבים",   "חינוך גופני"]],
-  [7, "13:30", "14:15", ["",           "",          "אמנות",    "חינוך",    "מדעים",     "מחשבים"]],
-  [8, "14:20", "15:05", ["",           "",          "",          "",          "חינוך",     "חינוך"]],
+   The grade list is DATA-DRIVEN: it will come from the Schedule
+   tab's column headers. 6 grades → exams fill the left column;
+   7 grades → the 7th card takes top-left and exams move below it.
+   Preview the 7-grade layout by adding ?demo7 to the URL.
+   ================================================================== */
+let GRADES = ["ז׳", "ח׳", "ט׳", "י׳", "י\"א", "י\"ב"];
+const ACCENTS = ["--g1", "--g2", "--g3", "--g4", "--g5", "--g6", "--g7"];
+
+let MOCK_SCHEDULE = [
+  // period, start, end, subjects per grade ז..י"ב ("" = no class)
+  [1, "08:00", "08:45", ["מתמטיקה", "אנגלית",     "פיזיקה",     "ספרות",    "מתמטיקה",  "אזרחות"]],
+  [2, "08:50", "09:35", ["לשון",     "מתמטיקה",   "אנגלית",     "מתמטיקה", "פיזיקה",    "מתמטיקה"]],
+  [3, "09:50", "10:35", ["אנגלית",  "ביולוגיה",   "מתמטיקה",   "היסטוריה", "כימיה",     "אנגלית"]],
+  [4, "10:40", "11:25", ["היסטוריה","לשון",        "ספרות",      "אנגלית",   "אנגלית",    "פיזיקה"]],
+  [5, "11:45", "12:30", ["של\"ח",   "חינוך גופני", "תנ\"ך",      "כימיה",    "היסטוריה",  "ספרות"]],
+  [6, "12:35", "13:20", ["ביולוגיה","תנ\"ך",       "חינוך גופני","ביולוגיה", "ספרות",     "היסטוריה"]],
+  [7, "13:30", "14:15", ["מחשבים",  "מחשבים",     "אזרחות",     "של\"ח",    "לשון",      "תנ\"ך"]],
+  [8, "14:20", "15:05", ["",         "",            "מחשבים",     "חינוך",    "חינוך",     "חינוך"]],
 ];
 
 const MOCK_EXAMS = [
-  { grade: "ה", subject: "מתמטיקה", start: "09:00", end: "10:30", room: "חדר 12" },
-  { grade: "ו", subject: "אנגלית",  start: "11:45", end: "12:30", room: "ספרייה" },
-  { grade: "ג", subject: "מדעים",   start: "12:35", end: "13:20", room: "מעבדה" },
+  { grade: "ט׳",    subject: "מתמטיקה", start: "09:00", end: "10:30", room: "חדר 12" },
+  { grade: "י\"ב", subject: "אנגלית",  start: "11:45", end: "12:30", room: "ספרייה" },
+  { grade: "ח׳",    subject: "ביולוגיה", start: "12:35", end: "13:20", room: "מעבדה" },
 ];
 
 const MOCK_MESSAGES = [
   { text: "אסיפת הורים תתקיים ביום שלישי בשעה 19:00", type: "normal" },
   { text: "מחר: יום כחול-לבן — באים בלבוש חגיגי", type: "normal" },
-  { text: "שיעורי שכבה ג׳ מסתיימים היום ב-13:20", type: "urgent" },
+  { text: "שיעורי שכבת ז׳ מסתיימים היום ב-13:20", type: "urgent" },
 ];
+
+/* demo of the 7-grade layout: ?demo7 splits ז׳ into ז׳1 + ז׳2 */
+if (new URLSearchParams(location.search).has("demo7")) {
+  GRADES = ["ז׳1", "ח׳", "ט׳", "י׳", "י\"א", "י\"ב", "ז׳2"];
+  MOCK_SCHEDULE = MOCK_SCHEDULE.map((p) => {
+    const subj = [...p[3], p[3][0]];   // ז׳2 mirrors ז׳1's day for the demo
+    return [p[0], p[1], p[2], subj];
+  });
+}
 
 /* ================================================================
    RENDERING
@@ -229,9 +251,10 @@ function minutes(hhmm) {
 
 function renderGrades() {
   const grid = $("grid");
+  if (GRADES.length >= 7) grid.classList.add("grades7");
   GRADES.forEach((name, gi) => {
     const card = document.createElement("section");
-    card.className = "card";
+    card.className = "card" + (gi === 6 ? " seventh" : "");
     card.style.setProperty("--accent", `var(${ACCENTS[gi]})`);
     const rows = MOCK_SCHEDULE
       .filter((p) => p[3][gi] !== "")
@@ -290,14 +313,24 @@ function renderMessages() {
   if (normal.length > 1) setInterval(show, 8000);
 }
 
-/* clock, date, current-period highlight */
+/* clock, date, current-period highlight, freshness stamp */
+function stampNow() {
+  const now = new Date();
+  const d = now.toLocaleDateString("he-IL",
+    { day: "2-digit", month: "2-digit", year: "numeric" });
+  const t = now.toLocaleTimeString("he-IL",
+    { hour: "2-digit", minute: "2-digit" });
+  $("stamp").textContent = `עודכן ${d} · ${t}`;
+}
+
 function tick() {
   const now = new Date();
   $("clock").textContent = now.toLocaleTimeString("he-IL",
     { hour: "2-digit", minute: "2-digit" });
   $("date").textContent = now.toLocaleDateString("he-IL",
     { weekday: "long", day: "numeric", month: "long" });
-  $("hebdate").textContent = new Intl.DateTimeFormat("he-u-ca-hebrew",
+  /* nu-hebr = Hebrew numerals (gematria): day and year in Hebrew letters */
+  $("hebdate").textContent = new Intl.DateTimeFormat("he-u-ca-hebrew-nu-hebr",
     { day: "numeric", month: "long", year: "numeric" }).format(now);
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -306,8 +339,9 @@ function tick() {
     p.classList.toggle("now",  nowMin >= s && nowMin < e);
     p.classList.toggle("done", nowMin >= e);
   });
-  $("stamp").textContent = "עודכן " + now.toLocaleTimeString("he-IL",
-    { hour: "2-digit", minute: "2-digit" });
+  /* in mock mode the data is always "fresh"; once wired to the sheet,
+     the stamp records the last successful fetch instead */
+  stampNow();
 }
 
 /* scale the fixed 1920×1080 stage to fit any preview window */

@@ -69,11 +69,16 @@ their Google accounts. Three tabs. All text may be Hebrew.
 
 One row per (day, period). Columns:
 
-| Day | Period | Start | End | Grade1 | Grade2 | Grade3 | Grade4 | Grade5 | Grade6 |
-|-----|--------|-------|-----|--------|--------|--------|--------|--------|--------|
-| א   | 1      | 08:00 | 08:45| מתמטיקה| אנגלית | ...    |        |        |        |
+| Day | Period | Start | End | ז׳ | ח׳ | ט׳ | י׳ | י"א | י"ב |
+|-----|--------|-------|-----|----|----|----|----|-----|-----|
+| א   | 1      | 08:00 | 08:45| מתמטיקה| אנגלית | ...| | | |
 
 - `Day`: א–ו (Sunday–Friday, Israeli school week).
+- **Grade columns are data-driven**: every column after `End` is a grade
+  card, named by its header (currently ז׳–י"ב, i.e., the school's 6
+  grades). Adding a 7th column (e.g., a grade split into ז׳1/ז׳2) makes the
+  dashboard adapt automatically — see §4. The dashboard supports 6 or 7
+  grade columns.
 - Grade columns hold the subject (and optionally room, free-text).
 - Empty cell = no class that period. The dashboard shows only *today's*
   column set, filtered by `Day`.
@@ -127,20 +132,29 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  🕐 clock · full Hebrew date            [urgent banner if any]│
+│  🕐 clock · Gregorian + Hebrew date       school name: תיכון השיטה│
 ├──────────┬──────────┬──────────┬─────────────────────────────┤
-│ Grade 1  │ Grade 2  │ Grade 3  │                             │
+│ כיתה ז׳  │ כיתה ח׳  │ כיתה ט׳  │                             │
 │ periods  │ periods  │ periods  │   מבחנים היום (exams today)  │
 ├──────────┼──────────┼──────────┤   subject · time · room     │
-│ Grade 4  │ Grade 5  │ Grade 6  │   (or "אין מבחנים היום")     │
+│ כיתה י׳  │ כיתה י"א │ כיתה י"ב │   (or "אין מבחנים היום")     │
 │ periods  │ periods  │ periods  │                             │
 ├──────────┴──────────┴──────────┴─────────────────────────────┤
-│  ← rotating normal messages strip · "עודכן 12:04" stamp      │
+│  rotating messages strip · "עודכן <date> · <time>" stamp     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- Six grade cards in a 2×3 grid; the *current period* row is highlighted
-  based on the clock.
+- Grade cards in a 2×3 grid (currently ז׳–י"ב); the *current period* row
+  is highlighted based on the clock.
+- **7-grade adaptation**: if the Schedule tab carries a 7th grade column,
+  its card automatically takes the top-left cell (where the exams panel
+  starts) and the exams panel shrinks to the bottom-left cell. No code
+  change needed — the layout follows the sheet. (Preview: `?demo7`.)
+- The header's Hebrew date renders with Hebrew numerals (gematria) — day
+  and year in Hebrew letters (e.g., כ"ט באב תשפ"ו) via
+  `Intl.DateTimeFormat("he-u-ca-hebrew-nu-hebr")`.
+- The freshness stamp includes the date and time of the last successful
+  data fetch: `עודכן DD.MM.YYYY · HH:MM`.
 - Urgent message: full-width high-contrast banner under the header, cannot
   be missed. Multiple urgent messages rotate.
 - Video: takes over the full screen for the clip's duration, then the

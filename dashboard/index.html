@@ -404,9 +404,9 @@ function renderMessages() {
     `<span class="titem"><span class="bullet">●</span><span class="count">(${i + 1}/${normal.length})</span><span>${esc(m.text)}</span></span>`
   ).join("");
   el.innerHTML = `<div class="ticker">${seq}${seq}</div>`;
-  /* constant speed regardless of content length: ~55 px/s */
+  /* constant speed regardless of content length: ~80 px/s */
   const t = el.querySelector(".ticker");
-  t.style.setProperty("--dur", (t.scrollWidth / 2 / 55) + "s");
+  t.style.setProperty("--dur", (t.scrollWidth / 2 / 80) + "s");
 }
 
 /* Hebrew-letter (gematria) date: Intl computes the hebrew-calendar

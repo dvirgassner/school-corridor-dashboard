@@ -220,6 +220,46 @@ test("buildMessages: skips unknown type, empty text, empty video url", () => {
   assert.deepEqual(m, { normal: [], urgent: [], videos: [] });
 });
 
+/* ---------- Hebrew column headers (what the real sheet uses) ---------- */
+test("buildSchedule: reads Hebrew headers", () => {
+  const fields = ["יום", "שיעור", "התחלה", "סיום", "ז׳", "ח׳"];
+  const rows = [
+    { "יום": "א", "שיעור": "1", "התחלה": "08:00", "סיום": "08:45", "ז׳": "מתמטיקה", "ח׳": "אנגלית" },
+  ];
+  const s = L.buildSchedule(rows, fields);
+  assert.deepEqual(s.grades, ["ז׳", "ח׳"]);
+  assert.equal(s.byDay["א"][0].subjects["ז׳"], "מתמטיקה");
+  assert.equal(s.byDay["א"][0].start, "08:00");
+});
+test("buildAgenda: reads Hebrew headers for exams and events", () => {
+  const exams = [
+    { "תאריך": TODAY, "שכבה": "ט׳", "מקצוע": "מתמטיקה", "התחלה": "12:00", "סיום": "13:00", "חדר": "חדר 12" },
+  ];
+  const events = [
+    { "תאריך": TODAY, "שכבות": "ז׳, ח׳", "כותרת": "טקס", "התחלה": "09:00", "סיום": "10:00", "מקום": "אולם" },
+  ];
+  const a = L.buildAgenda(exams, events, TODAY);
+  assert.equal(a.length, 2);
+  assert.equal(a[0].kind, "event");
+  assert.equal(a[0].title, "טקס");
+  assert.equal(a[0].room, "אולם");
+  assert.deepEqual(a[0].grades, ["ז׳", "ח׳"]);
+  assert.equal(a[1].subject, "מתמטיקה");
+  assert.equal(a[1].room, "חדר 12");
+});
+test("buildMessages: reads Hebrew headers", () => {
+  const rows = [
+    { "הודעה": "שלום", "סוג": "רגילה", "קישור": "", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
+    { "הודעה": "דחוף", "סוג": "דחופה", "קישור": "", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
+    { "הודעה": "", "סוג": "וידאו", "קישור": "https://x/y.mp4#sound", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
+    { "הודעה": "כבוי", "סוג": "רגילה", "קישור": "", "מתאריך": "", "עד תאריך": "", "פעיל": "לא" },
+  ];
+  const m = L.buildMessages(rows, TODAY);
+  assert.deepEqual(m.normal, ["שלום"]);
+  assert.deepEqual(m.urgent, ["דחוף"]);
+  assert.deepEqual(m.videos, [{ url: "https://x/y.mp4", sound: true }]);
+});
+
 /* ---------- shouldPlayVideo ---------- */
 test("shouldPlayVideo: never played → play now", () => {
   assert.ok(L.shouldPlayVideo(null, 1000000, 10));
@@ -235,6 +275,77 @@ test("shouldPlayVideo: exactly 10 minutes ago → play", () => {
 test("shouldPlayVideo: clock moved backwards → play (no lockout)", () => {
   const now = 100000000;
   assert.ok(L.shouldPlayVideo(now + 5 * 60000, now, 10));
+});
+
+/* ==================================================================
+   Special characters. The principal types free text into the sheet;
+   none of it may break the board. These tests cover the full path:
+   CSV text → PapaParse → builders → escaped HTML.
+   ================================================================== */
+const Papa = require("../dashboard/vendor/papaparse.min.js");
+
+test("clean: collapses newlines and repeated whitespace", () => {
+  assert.equal(L.clean("שורה\nשנייה"), "שורה שנייה");
+  assert.equal(L.clean("  a\t\t b  "), "a b");
+});
+test("clean: strips bidi override/embedding controls", () => {
+  assert.equal(L.clean("שלום‮evil"), "שלוםevil");
+  assert.equal(L.clean("⁦x⁩"), "x");
+});
+test("clean: keeps emoji, quotes, ampersands, plain RLM", () => {
+  assert.equal(L.clean('מסיבה 🎉 "כיתה" & עוד'), 'מסיבה 🎉 "כיתה" & עוד');
+  assert.equal(L.clean("א‏ב"), "א‏ב");
+});
+test("esc: neutralizes a script tag typed into a cell", () => {
+  assert.equal(L.esc('<script>alert(1)</script>'),
+    "&lt;script&gt;alert(1)&lt;/script&gt;");
+});
+test("esc: escapes quotes so they cannot break out of an attribute", () => {
+  assert.equal(L.esc('" onerror="x'), "&quot; onerror=&quot;x");
+});
+
+test("CSV round-trip: quotes, commas, newlines, emoji survive", () => {
+  /* exactly what Google Sheets publishes for such cells */
+  const csv = [
+    "הודעה,סוג,קישור,מתאריך,עד תאריך,פעיל",
+    '"מבחן ב""לשון"", אולם 3 🎉",רגילה,,,,כן',
+    '"שורה\nשנייה",דחופה,,,,כן'
+  ].join("\n");
+  const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+  const m = L.buildMessages(parsed.data, TODAY);
+  assert.deepEqual(m.normal, ['מבחן ב"לשון", אולם 3 🎉']);
+  assert.deepEqual(m.urgent, ["שורה שנייה"]);   /* newline → space */
+});
+
+test("CSV round-trip: grade names containing quotes match schedule columns", () => {
+  const csv = [
+    'יום,שיעור,התחלה,סיום,ז׳,"י""א"',
+    'א,1,08:00,08:45,מתמטיקה,פיזיקה'
+  ].join("\n");
+  const p = Papa.parse(csv, { header: true, skipEmptyLines: true });
+  const s = L.buildSchedule(p.data, p.meta.fields);
+  assert.deepEqual(s.grades, ["ז׳", 'י"א']);
+  assert.equal(s.byDay["א"][0].subjects['י"א'], "פיזיקה");
+});
+
+test("CSV round-trip: comma inside an event location is not a column break", () => {
+  const csv = [
+    "תאריך,שכבות,כותרת,התחלה,סיום,מקום",
+    `${TODAY},"ז׳, ח׳",טקס,09:00,10:00,"אולם ספורט, קומה 2"`
+  ].join("\n");
+  const p = Papa.parse(csv, { header: true, skipEmptyLines: true });
+  const a = L.buildAgenda([], p.data, TODAY);
+  assert.equal(a.length, 1);
+  assert.deepEqual(a[0].grades, ["ז׳", "ח׳"]);
+  assert.equal(a[0].room, "אולם ספורט, קומה 2");
+});
+
+test("video URL with query string and #sound is parsed correctly", () => {
+  const rows = [{ "הודעה": "", "סוג": "וידאו",
+    "קישור": "https://x/y.mp4?token=a&b=c#sound",
+    "מתאריך": "", "עד תאריך": "", "פעיל": "כן" }];
+  const m = L.buildMessages(rows, TODAY);
+  assert.deepEqual(m.videos, [{ url: "https://x/y.mp4?token=a&b=c", sound: true }]);
 });
 
 /* ---------- summary ---------- */

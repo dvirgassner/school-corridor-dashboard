@@ -117,20 +117,73 @@
   function validTime(s) { return TIME_RE.test(String(s || "").trim()); }
   function txt(v) { return String(v == null ? "" : v).trim(); }
 
+  /* Column headers are Hebrew in the real sheet (the principal edits it,
+     so it should read like Hebrew). English names stay accepted as
+     aliases so an English-headed sheet — or an older one — still works. */
+  var ALIASES = {
+    day:      ["יום", "Day"],
+    period:   ["שיעור", "Period"],
+    start:    ["התחלה", "Start"],
+    end:      ["סיום", "End"],
+    date:     ["תאריך", "Date"],
+    grade:    ["שכבה", "Grade"],
+    grades:   ["שכבות", "Grades"],
+    subject:  ["מקצוע", "Subject"],
+    title:    ["כותרת", "Title"],
+    place:    ["מקום", "חדר", "Location", "Room"],
+    text:     ["הודעה", "Text"],
+    type:     ["סוג", "Type"],
+    videoUrl: ["קישור", "VideoURL"],
+    from:     ["מתאריך", "From"],
+    until:    ["עד תאריך", "Until"],
+    active:   ["פעיל", "Active"]
+  };
+
+  /* Sheet text is written by school staff, so it can contain anything:
+     quotes, commas, emoji, newlines from Alt+Enter, angle brackets.
+     clean() makes any cell safe to lay out on one line:
+       • newlines/tabs/repeated spaces collapse to single spaces
+       • Unicode bidi OVERRIDE and EMBEDDING controls are removed —
+         an unterminated one would scramble the rest of the board's
+         layout (the "Trojan Source" trick). Plain RLM/LRM marks are
+         kept: they are harmless and occasionally intentional.
+     HTML-escaping happens separately, in esc(). */
+  var BIDI_CONTROLS = /[‪-‮⁦-⁩]/g;
+  function clean(v) {
+    return String(v == null ? "" : v)
+      .replace(BIDI_CONTROLS, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /* first non-empty value among a field's accepted header names */
+  function pick(row, key) {
+    var names = ALIASES[key];
+    for (var i = 0; i < names.length; i++) {
+      var v = row[names[i]];
+      if (v !== undefined && v !== null && clean(v) !== "") return clean(v);
+    }
+    return "";
+  }
+
+  /* how many leading columns are fixed before the grade columns start */
+  var SCHEDULE_FIXED_COLS = 4;
+
   /* Schedule: columns are Day, Period, Start, End, then one column per
      grade — so the grade list is whatever the school put in the header. */
   function buildSchedule(rows, fields) {
-    var grades = (fields || []).slice(4).map(txt).filter(Boolean);
+    var grades = (fields || []).slice(SCHEDULE_FIXED_COLS).map(txt).filter(Boolean);
     var byDay = {};
     (rows || []).forEach(function (r) {
-      var day = txt(r.Day);
-      if (!day || !validTime(r.Start) || !validTime(r.End)) return;
+      var day = pick(r, "day");
+      var start = pick(r, "start"), end = pick(r, "end");
+      if (!day || !validTime(start) || !validTime(end)) return;
       var subjects = {};
-      grades.forEach(function (g) { subjects[g] = txt(r[g]); });
+      grades.forEach(function (g) { subjects[g] = clean(r[g]); });
       (byDay[day] = byDay[day] || []).push({
-        period: txt(r.Period),
-        start: txt(r.Start),
-        end: txt(r.End),
+        period: pick(r, "period"),
+        start: start,
+        end: end,
         subjects: subjects
       });
     });
@@ -144,30 +197,31 @@
   function buildAgenda(examRows, eventRows, todayKey) {
     var out = [];
     (examRows || []).forEach(function (r) {
-      if (parseSheetDate(r.Date) !== todayKey) return;
-      if (!validTime(r.Start) || !validTime(r.End)) return;
-      if (!txt(r.Subject) || !txt(r.Grade)) return;
+      var start = pick(r, "start"), end = pick(r, "end");
+      if (parseSheetDate(pick(r, "date")) !== todayKey) return;
+      if (!validTime(start) || !validTime(end)) return;
+      if (!pick(r, "subject") || !pick(r, "grade")) return;
       out.push({
         kind: "exam",
-        grade: txt(r.Grade),
-        subject: txt(r.Subject),
-        start: txt(r.Start),
-        end: txt(r.End),
-        room: txt(r.Room)
+        grade: pick(r, "grade"),
+        subject: pick(r, "subject"),
+        start: start,
+        end: end,
+        room: pick(r, "place")
       });
     });
     (eventRows || []).forEach(function (r) {
-      if (parseSheetDate(r.Date) !== todayKey) return;
-      if (!validTime(r.Start) || !validTime(r.End)) return;
-      if (!txt(r.Title)) return;
-      var grades = txt(r.Grades).split(",").map(txt).filter(Boolean);
+      var start = pick(r, "start"), end = pick(r, "end");
+      if (parseSheetDate(pick(r, "date")) !== todayKey) return;
+      if (!validTime(start) || !validTime(end)) return;
+      if (!pick(r, "title")) return;
       out.push({
         kind: "event",
-        grades: grades,
-        title: txt(r.Title),
-        start: txt(r.Start),
-        end: txt(r.End),
-        room: txt(r.Location)
+        grades: pick(r, "grades").split(",").map(clean).filter(Boolean),
+        title: pick(r, "title"),
+        start: start,
+        end: end,
+        room: pick(r, "place")
       });
     });
     out.sort(function (a, b) { return minutes(a.start) - minutes(b.start); });
@@ -178,17 +232,17 @@
   function buildMessages(rows, todayKey) {
     var out = { normal: [], urgent: [], videos: [] };
     (rows || []).forEach(function (r) {
-      if (!isActive(r.Active)) return;
-      if (!inRange(r.From, r.Until, todayKey)) return;
-      var type = normalizeType(r.Type);
+      if (!isActive(pick(r, "active"))) return;
+      if (!inRange(pick(r, "from"), pick(r, "until"), todayKey)) return;
+      var type = normalizeType(pick(r, "type"));
       if (!type) return;
       if (type === "video") {
-        var url = txt(r.VideoURL);
+        var url = pick(r, "videoUrl");
         if (!url) return;
         var sound = /#sound$/i.test(url);
         out.videos.push({ url: url.replace(/#sound$/i, ""), sound: sound });
       } else {
-        var text = txt(r.Text);
+        var text = pick(r, "text");
         if (!text) return;
         out[type].push(text);
       }
@@ -206,6 +260,7 @@
   }
 
   var api = {
+    clean: clean,
     shouldPlayVideo: shouldPlayVideo,
     buildSchedule: buildSchedule,
     buildAgenda: buildAgenda,

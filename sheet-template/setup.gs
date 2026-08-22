@@ -118,7 +118,7 @@ function dateRule_(sh, col) {
 /* ---------- tab builders ---------- */
 
 function buildSchedule_(sh) {
-  var headers = ['Day', 'Period', 'Start', 'End'].concat(GRADES);
+  var headers = ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
   header_(sh, headers);
 
   /* one sample day so the board has something to show immediately */
@@ -145,11 +145,11 @@ function buildSchedule_(sh) {
   sh.setColumnWidths(5, GRADES.length, 130);
   sh.getRange('A1').setNote(
     'שורה לכל (יום, שיעור). תא ריק = אין שיעור.\n' +
-    'כל עמודה אחרי End היא שכבה — הלוח מתאים את עצמו אוטומטית.');
+    'כל עמודה אחרי "סיום" היא שכבה — הלוח מתאים את עצמו אוטומטית.');
 }
 
 function buildExams_(sh) {
-  var headers = ['Date', 'Grade', 'Subject', 'Start', 'End', 'Room'];
+  var headers = ['תאריך', 'שכבה', 'מקצוע', 'התחלה', 'סיום', 'חדר'];
   header_(sh, headers);
   sh.getRange(2, 1, 1, headers.length).setValues([
     [new Date(), GRADES[2], 'מתמטיקה', '09:00', '10:30', 'חדר 12']
@@ -167,7 +167,7 @@ function buildExams_(sh) {
 }
 
 function buildEvents_(sh) {
-  var headers = ['Date', 'Grades', 'Title', 'Start', 'End', 'Location'];
+  var headers = ['תאריך', 'שכבות', 'כותרת', 'התחלה', 'סיום', 'מקום'];
   header_(sh, headers);
   sh.getRange(2, 1, 1, headers.length).setValues([
     [new Date(), GRADES[0] + ', ' + GRADES[1], 'חזרה לטקס', '10:40', '11:25', 'אולם ספורט']
@@ -185,7 +185,7 @@ function buildEvents_(sh) {
 }
 
 function buildMessages_(sh) {
-  var headers = ['Text', 'Type', 'VideoURL', 'From', 'Until', 'Active'];
+  var headers = ['הודעה', 'סוג', 'קישור', 'מתאריך', 'עד תאריך', 'פעיל'];
   header_(sh, headers);
   sh.getRange(2, 1, 2, headers.length).setValues([
     ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', '', '', 'כן'],

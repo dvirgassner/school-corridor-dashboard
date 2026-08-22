@@ -70,14 +70,28 @@ Editing stays restricted to the accounts you shared it with; only
 
 ## Field reference
 
+Headers are in Hebrew, since the principal is the one editing. (The
+dashboard also accepts the English equivalents, so an older
+English-headed sheet keeps working.)
+
 | Tab | Column | Meaning |
 |---|---|---|
-| מערכת | `Day` | א–ו (Sunday–Friday) |
-| | `Period`, `Start`, `End` | period number and `HH:MM` times |
+| מערכת | `יום` | א–ו (Sunday–Friday) |
+| | `שיעור`, `התחלה`, `סיום` | period number and `HH:MM` times |
 | | one column per grade | the subject; empty = no class |
-| מבחנים | `Date`, `Grade`, `Subject`, `Start`, `End`, `Room` | one grade per exam; enter the subject only — the board displays "מבחן ב…" |
-| אירועים | `Date`, `Grades`, `Title`, `Start`, `End`, `Location` | `Grades` is comma-separated; 4+ grades display as "כל השכבות" |
-| הודעות | `Text`, `Type`, `VideoURL`, `From`, `Until`, `Active` | `Type`: רגילה / דחופה / וידאו · `Active`: כן / לא · empty dates = always |
+| מבחנים | `תאריך`, `שכבה`, `מקצוע`, `התחלה`, `סיום`, `חדר` | one grade per exam; enter the subject only — the board displays "מבחן ב…" |
+| אירועים | `תאריך`, `שכבות`, `כותרת`, `התחלה`, `סיום`, `מקום` | `שכבות` is comma-separated; 4+ grades display as "כל השכבות" |
+| הודעות | `הודעה`, `סוג`, `קישור`, `מתאריך`, `עד תאריך`, `פעיל` | `סוג`: רגילה / דחופה / וידאו · `פעיל`: כן / לא · empty dates = always |
+
+### Special characters are safe
+
+Type freely: commas, quotation marks, apostrophes, emoji, parentheses,
+`&`, and mixed Hebrew/English/numbers all display correctly. Google
+publishes such cells as properly quoted CSV, the board parses them with
+PapaParse, and all text is HTML-escaped and bidi-isolated before it is
+drawn — so no cell content can break the layout or the page. Line breaks
+inside a cell (Alt+Enter) become single spaces, since every field on the
+board is one line.
 
 ### Length limits (enforced by the sheet)
 

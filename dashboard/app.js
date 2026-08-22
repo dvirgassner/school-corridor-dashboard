@@ -136,8 +136,8 @@ function renderGrades() {
     const rows = periods
       .filter((p) => p.subjects[name])
       .map((p) => `
-        <div class="period" data-start="${p.start}" data-end="${p.end}">
-          <span class="time">${p.start}–${p.end}</span>
+        <div class="period" data-start="${esc(p.start)}" data-end="${esc(p.end)}">
+          <span class="time">${esc(p.start)}–${esc(p.end)}</span>
           <span class="subj">${esc(p.subjects[name])}</span>
         </div>`).join("");
     card.innerHTML = `
@@ -155,7 +155,7 @@ function renderAgenda() {
     return;
   }
   list.innerHTML = agenda.map((e) => {
-    const row2 = `<div class="row2"><span>🕐 ${e.start}–${e.end}</span><span>📍 ${esc(e.room)}</span></div>`;
+    const row2 = `<div class="row2"><span>🕐 ${esc(e.start)}–${esc(e.end)}</span><span>📍 ${esc(e.room)}</span></div>`;
     if (e.kind === "exam") {
       /* the sheet holds the bare subject; the board adds the prefix */
       return `

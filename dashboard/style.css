@@ -191,6 +191,15 @@
            font-variant-numeric: tabular-nums; }
   #stamp.stale { color: var(--warning); }
 
+  /* Every element whose text comes from the Google Sheet is isolated,
+     so mixed Hebrew/English/digit content can never reorder the UI
+     around it (a message ending in an English word or a "12:30" would
+     otherwise drag punctuation to the wrong end of the line). */
+  .period .subj, .exam .ttl, .exam .grade, .exam .gchip,
+  .exam .row2 span, #urgenttext, .titem > span:last-child, .card h2 {
+    unicode-bidi: isolate;
+  }
+
   /* -- full-screen video overlay ------------------------------------
      Sits above the board while a clip plays, then hides again. Video
      is also the one thing that is GOOD for the OLED panel: moving

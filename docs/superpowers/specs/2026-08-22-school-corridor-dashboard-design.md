@@ -67,14 +67,18 @@ their Google accounts. Three tabs. All text may be Hebrew.
 
 ### Tab `Schedule` — the weekly timetable grid
 
+Column headers are **Hebrew** — the principal edits this sheet, so it
+reads as Hebrew end to end. (The parser also accepts the English names
+as aliases, so an English-headed sheet keeps working.)
+
 One row per (day, period). Columns:
 
-| Day | Period | Start | End | ז׳ | ח׳ | ט׳ | י׳ | י"א | י"ב |
+| יום | שיעור | התחלה | סיום | ז׳ | ח׳ | ט׳ | י׳ | י"א | י"ב |
 |-----|--------|-------|-----|----|----|----|----|-----|-----|
 | א   | 1      | 08:00 | 08:45| מתמטיקה| אנגלית | ...| | | |
 
-- `Day`: א–ו (Sunday–Friday, Israeli school week).
-- **Grade columns are data-driven**: every column after `End` is a grade
+- `יום`: א–ו (Sunday–Friday, Israeli school week).
+- **Grade columns are data-driven**: every column after `סיום` is a grade
   card, named by its header (currently ז׳–י"ב, i.e., the school's 6
   grades). Adding a 7th column (e.g., a grade split into ז׳1/ז׳2) makes the
   dashboard adapt automatically — see §4. The dashboard supports 6 or 7
@@ -83,25 +87,26 @@ One row per (day, period). Columns:
 - Empty cell = no class that period. The dashboard shows only *today's*
   column set, filtered by `Day`.
 
-### Tab `Exams`
+### Tab `מבחנים` (Exams)
 
-| Date | Grade | Subject | Start | End | Room |
+| תאריך | שכבה | מקצוע | התחלה | סיום | חדר |
 |------|-------|---------|-------|-----|------|
 | 2026-09-01 | ט׳ | מתמטיקה | 09:00 | 10:30 | חדר 12 |
 
-- One grade per exam. `Grade` must match a Schedule column header.
-- The dashboard shows only rows where `Date` = today.
-- `Date` format: YYYY-MM-DD (the sheet column is formatted as date; the
+- One grade per exam. `שכבה` must match a Schedule column header.
+- `מקצוע` holds the bare subject; the board prepends `מבחן ב`.
+- The dashboard shows only rows where `תאריך` = today.
+- Date format: YYYY-MM-DD (the sheet column is formatted as date; the
   parser accepts DD/MM/YYYY as well, since Sheets in Hebrew locale defaults
   to it).
 
-### Tab `Events`
+### Tab `אירועים` (Events)
 
-| Date | Grades | Title | Start | End | Location |
+| תאריך | שכבות | כותרת | התחלה | סיום | מקום |
 |------|--------|-------|-------|-----|----------|
 | 2026-09-01 | ז׳, ח׳ | חזרה כללית לטקס | 10:40 | 11:25 | אולם ספורט |
 
-- `Grades`: one or more grade names, comma-separated, each matching a
+- `שכבות`: one or more grade names, comma-separated, each matching a
   Schedule column header. On the dashboard, up to 3 grades render as
   per-grade color chips; 4 or more collapse to a neutral "כל השכבות" chip.
 - Exams and events are **merged into one panel** ("אירועים ומבחנים היום"),
@@ -129,18 +134,18 @@ the dashboard additionally ellipsizes as a fallback.
 | Messages: urgent Text | ~1140 px (header strip) | 26 px | **75** |
 | Grade column header | chip-sized | 21 px | **4** |
 
-### Tab `Messages`
+### Tab `הודעות` (Messages)
 
-| Text | Type | VideoURL | From | Until | Active |
+| הודעה | סוג | קישור | מתאריך | עד תאריך | פעיל |
 |------|------|----------|------|-------|--------|
-| אסיפת הורים ביום שלישי | normal | | 2026-09-01 | 2026-09-03 | yes |
-| | video | https://.../clip.mp4 | 2026-09-02 | 2026-09-02 | yes |
+| אסיפת הורים ביום שלישי | רגילה | | 2026-09-01 | 2026-09-03 | כן |
+| | וידאו | https://.../clip.mp4 | 2026-09-02 | 2026-09-02 | כן |
 
-- `Type`: `normal` (rotating message strip), `urgent` (prominent banner,
-  attention-styled), `video` (plays full-screen, muted by default; append
-  `#sound` to the URL to opt into audio).
-- `From`/`Until`: date range the item is shown (inclusive); empty = always.
-- `Active`: `yes`/`no` — lets the principal stage or retire items without
+- `סוג`: `רגילה` (scrolling ticker), `דחופה` (prominent header banner),
+  `וידאו` (plays full-screen, muted by default; append `#sound` to the
+  URL to opt into audio).
+- `מתאריך`/`עד תאריך`: date range shown (inclusive); empty = always.
+- `פעיל`: `כן`/`לא` — lets the principal stage or retire items without
   deleting rows.
 - Video rule (documented in the admin guide): MP4, H.264, ≤1080p30, ≤50 MB,
   hosted at a direct-download URL (Dropbox "raw" link or similar). Clips

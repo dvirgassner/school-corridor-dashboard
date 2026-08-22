@@ -181,6 +181,13 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 
 - Grade cards in a 2×3 grid (currently ז׳–י"ב); the *current period* row
   is highlighted based on the clock.
+- **Passed classes are hidden** as the day progresses, freeing card space;
+  a card whose day is over shows "יום הלימודים הסתיים".
+- **Overflow paging**: a card holding more remaining classes than fit
+  (7 rows at 44px) cycles through them page by page with a smooth scroll
+  every 8 s, with a bottom fade hinting at more rows.
+- Preview helpers: `?time=HH:MM` simulates the clock; `?demo7` previews
+  the 7-grade layout.
 - **7-grade adaptation**: if the Schedule tab carries a 7th grade column,
   its card automatically takes the top-left cell (where the exams panel
   starts) and the exams panel shrinks to the bottom-left cell. No code

@@ -113,9 +113,19 @@
                    background: var(--accent); flex: none; }
 
   .periods { flex: 1; display: flex; flex-direction: column;
-             justify-content: space-evenly; min-height: 0; }
+             justify-content: space-evenly; min-height: 0;
+             overflow: hidden; position: relative; }
+  /* card overflows: top-align and page through rows (JS drives scroll);
+     bottom fade hints that more rows follow */
+  .periods.paged { justify-content: flex-start;
+                   -webkit-mask-image: linear-gradient(#000 88%, transparent);
+                   mask-image: linear-gradient(#000 88%, transparent); }
+  /* all of today's classes are over */
+  .periods.empty::after { content: "יום הלימודים הסתיים";
+                          color: var(--muted); font-size: 24px;
+                          text-align: center; margin-top: 42px; }
   .period  { display: flex; align-items: center; gap: 12px;
-             font-size: 23px; line-height: 1.15;
+             font-size: 23px; line-height: 1.15; height: 44px; flex: none;
              padding: 2px 8px; border-radius: 8px; }
   .period .time { color: var(--muted); font-variant-numeric: tabular-nums;
                   font-size: 20px; width: 118px; flex: none; }
@@ -125,7 +135,7 @@
   .period.now  { background: color-mix(in srgb, var(--accent) 16%, transparent);
                  box-shadow: inset 3px 0 0 var(--accent); }
   .period.now .subj { color: var(--ink-strong); }
-  .period.done { opacity: 0.42; }
+  .period.done { display: none; }   /* passed classes free up space */
 
   /* the 7th grade card, when present, sits top-left (col 4, row 1) */
   .card.seventh { grid-column: 4; grid-row: 1; }
@@ -229,6 +239,8 @@ let MOCK_SCHEDULE = [
   [6, "12:35", "13:20", ["ביולוגיה","תנ\"ך",       "חינוך גופני","ביולוגיה", "ספרות",     "היסטוריה"]],
   [7, "13:30", "14:15", ["מחשבים",  "מחשבים",     "אזרחות",     "של\"ח",    "לשון",      "תנ\"ך"]],
   [8, "14:20", "15:05", ["",         "",            "מחשבים",     "חינוך",    "חינוך",     "חינוך"]],
+  [9, "15:15", "16:00", ["",         "",            "",            "מתמטיקה", "פיזיקה",    "מתמטיקה"]],
+  [10,"16:05", "16:50", ["",         "",            "",            "",          "ספרות",     "אזרחות"]],
 ];
 
 const MOCK_EXAMS = [
@@ -263,6 +275,17 @@ if (new URLSearchParams(location.search).has("demo7")) {
    RENDERING
    ================================================================ */
 const $ = (id) => document.getElementById(id);
+
+/* preview helper: ?time=10:30 simulates the clock (date stays real) */
+const TIME_OVERRIDE = new URLSearchParams(location.search).get("time");
+function NOW() {
+  const d = new Date();
+  if (TIME_OVERRIDE) {
+    const [h, m] = TIME_OVERRIDE.split(":").map(Number);
+    d.setHours(h, m, 0, 0);
+  }
+  return d;
+}
 
 function minutes(hhmm) {
   const [h, m] = hhmm.split(":").map(Number);
@@ -394,7 +417,7 @@ function stampNow() {
 }
 
 function tick() {
-  const now = new Date();
+  const now = NOW();
   $("clock").textContent = now.toLocaleTimeString("he-IL",
     { hour: "2-digit", minute: "2-digit" });
   $("date").textContent = now.toLocaleDateString("he-IL",
@@ -405,12 +428,34 @@ function tick() {
   document.querySelectorAll(".period").forEach((p) => {
     const s = minutes(p.dataset.start), e = minutes(p.dataset.end);
     p.classList.toggle("now",  nowMin >= s && nowMin < e);
-    p.classList.toggle("done", nowMin >= e);
+    p.classList.toggle("done", nowMin >= e);   /* passed → hidden */
+  });
+  /* a card whose classes are all over shows the end-of-day note */
+  document.querySelectorAll(".periods").forEach((c) => {
+    const left = c.querySelectorAll(".period:not(.done)").length;
+    c.classList.toggle("empty", left === 0);
   });
   /* in mock mode the data is always "fresh"; once wired to the sheet,
      the stamp records the last successful fetch instead */
   stampNow();
 }
+
+/* -- paging: a card with more remaining classes than fit cycles
+   through them page by page (smooth scroll) every 8 seconds ------- */
+const ROW_H = 44;   /* must match .period height */
+function pageCycle() {
+  document.querySelectorAll(".periods").forEach((c) => {
+    const rows = c.querySelectorAll(".period:not(.done)").length;
+    const perPage = Math.max(1, Math.floor(c.clientHeight / ROW_H));
+    const pages = Math.ceil(rows / perPage);
+    c.classList.toggle("paged", pages > 1);
+    if (pages <= 1) { c.scrollTo({ top: 0 }); return; }
+    const pageH = perPage * ROW_H;
+    const cur = Math.round(c.scrollTop / pageH);
+    c.scrollTo({ top: ((cur + 1) % pages) * pageH, behavior: "smooth" });
+  });
+}
+setInterval(pageCycle, 8000);
 
 /* scale the fixed 1920×1080 stage to fit any preview window */
 function fit() {

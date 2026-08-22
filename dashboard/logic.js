@@ -72,6 +72,41 @@
   var DAY_LETTERS = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
   function dayLetter(d) { return DAY_LETTERS[d.getDay()]; }
 
+  /* ---------- wall-clock time in a named timezone ----------
+     The board must show Israeli wall-clock time and switch with daylight
+     saving on its own. Two things could go wrong if we just used the
+     machine's local time: a Pi whose timezone was never set (Raspberry Pi
+     OS ships as UTC) would be off by 2-3 hours, and any hard-coded offset
+     would break twice a year.
+
+     zonedNow() takes the real instant, asks Intl what the wall clock reads
+     in the configured zone, and returns a Date whose LOCAL fields carry
+     those values — so getHours(), getDay() and dateKey() are all correct
+     and consistent. DST comes from the IANA timezone database, which is
+     maintained by the OS and the browser, so nothing here needs updating
+     when the switch dates change.
+
+     `base` is injectable so this is testable with a fixed instant. */
+  function zonedNow(tz, base) {
+    var now = base || new Date();
+    if (!tz) return now;
+    var parts;
+    try {
+      parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz, hour12: false,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit"
+      }).formatToParts(now);
+    } catch (e) {
+      return now;               /* unknown zone name → machine local time */
+    }
+    var v = {};
+    parts.forEach(function (p) { if (p.type !== "literal") v[p.type] = p.value; });
+    /* hour can come back as "24" at midnight in some engines */
+    var hour = +v.hour % 24;
+    return new Date(+v.year, +v.month - 1, +v.day, hour, +v.minute, +v.second);
+  }
+
   /* ---------- sheet field semantics ---------- */
   /* Inclusive on both ends; an empty bound means "unbounded". */
   function inRange(fromStr, untilStr, todayKey) {
@@ -271,6 +306,7 @@
     dateKey: dateKey,
     parseSheetDate: parseSheetDate,
     dayLetter: dayLetter,
+    zonedNow: zonedNow,
     inRange: inRange,
     isActive: isActive,
     normalizeType: normalizeType,

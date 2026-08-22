@@ -43,9 +43,10 @@ the piece that makes the board come back by itself after a power cut:
 the Pi boots, logs in on its own, and the autostart entry launches the
 browser.
 
-While you are there, under **Localisation Options**, set the timezone to
-`Asia/Jerusalem` — the board's clock and "today" logic follow the Pi's
-system time.
+(`pi/setup.sh` sets the timezone to `Asia/Jerusalem` and turns on network
+time sync for you, so you do not need to do it here. Daylight saving is
+handled automatically from the timezone database — there is nothing to
+adjust twice a year.)
 
 ## 3. Install the board
 

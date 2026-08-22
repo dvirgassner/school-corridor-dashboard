@@ -66,6 +66,42 @@ test("dayLetter maps weekdays to Hebrew letters", () => {
   assert.equal(L.dayLetter(new Date(2026, 7, 22)), "ש"); /* Saturday */
 });
 
+/* ---------- timezone / daylight saving ---------- */
+test("zonedNow: summer instant → Israel Daylight Time (UTC+3)", () => {
+  /* 2026-08-23 22:30 UTC is already 01:30 the next day in Israel */
+  const d = L.zonedNow("Asia/Jerusalem", new Date("2026-08-23T22:30:00Z"));
+  assert.equal(L.dateKey(d), "2026-08-24");
+  assert.equal(d.getHours(), 1);
+  assert.equal(d.getMinutes(), 30);
+});
+test("zonedNow: winter instant → Israel Standard Time (UTC+2)", () => {
+  /* same clock time in January is only +2, so still the same date */
+  const d = L.zonedNow("Asia/Jerusalem", new Date("2026-01-15T22:30:00Z"));
+  assert.equal(L.dateKey(d), "2026-01-16");
+  assert.equal(d.getHours(), 0);
+  assert.equal(d.getMinutes(), 30);
+});
+test("zonedNow: DST switch is handled by the tz database, not by us", () => {
+  /* 08:00 UTC in winter is 10:00 in Israel; in summer it is 11:00 */
+  const w = L.zonedNow("Asia/Jerusalem", new Date("2026-01-15T08:00:00Z"));
+  const s = L.zonedNow("Asia/Jerusalem", new Date("2026-07-15T08:00:00Z"));
+  assert.equal(w.getHours(), 10);
+  assert.equal(s.getHours(), 11);
+});
+test("zonedNow: day-of-week follows the zone, not UTC", () => {
+  /* Saturday 23:00 UTC is already Sunday in Israel — a school day */
+  const d = L.zonedNow("Asia/Jerusalem", new Date("2026-08-22T22:00:00Z"));
+  assert.equal(L.dayLetter(d), "א");
+});
+test("zonedNow: unknown zone falls back to machine local time", () => {
+  const base = new Date("2026-08-23T10:00:00Z");
+  assert.equal(L.zonedNow("Not/AZone", base).getTime(), base.getTime());
+});
+test("zonedNow: no zone configured returns the instant unchanged", () => {
+  const base = new Date("2026-08-23T10:00:00Z");
+  assert.equal(L.zonedNow(null, base).getTime(), base.getTime());
+});
+
 /* ---------- sheet field semantics ---------- */
 test("inRange: empty bounds always in range", () => {
   assert.ok(L.inRange("", "", "2026-09-01"));

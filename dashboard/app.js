@@ -16,12 +16,16 @@ const ACCENTS = ["--g1", "--g2", "--g3", "--g4", "--g5", "--g6", "--g7"];
 const $ = (id) => document.getElementById(id);
 
 /* ---- clock ------------------------------------------------------
-   ?time=HH:MM simulates the clock (the date stays real). In demo mode
-   it defaults to 08:10 so a visitor sees a full school day. */
+   The board runs on real time in the configured timezone, so it follows
+   daylight saving automatically (see zonedNow() in logic.js). The Pi
+   keeps the underlying clock accurate over NTP.
+
+   ?time=HH:MM overrides the clock for previewing a different hour; in
+   demo mode it defaults to 08:10 so a visitor sees a full school day. */
 const TIME_OVERRIDE = new URLSearchParams(location.search).get("time") ||
                       (DEMO ? "08:10" : null);
 function NOW() {
-  const d = new Date();
+  const d = zonedNow(CFG.timeZone);
   if (TIME_OVERRIDE) {
     const [h, m] = TIME_OVERRIDE.split(":").map(Number);
     d.setHours(h, m, 0, 0);
@@ -230,7 +234,7 @@ function render() {
 function stamp() {
   const el = $("stamp");
   if (!FETCHED_AT) { el.textContent = "אין נתונים"; el.classList.add("stale"); return; }
-  const at = new Date(FETCHED_AT);
+  const at = zonedNow(CFG.timeZone, new Date(FETCHED_AT));
   const d = at.toLocaleDateString("he-IL",
     { day: "2-digit", month: "2-digit", year: "numeric" });
   const t = at.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });

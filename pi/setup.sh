@@ -26,6 +26,17 @@ sudo apt-get install -y --no-install-recommends \
   2>/dev/null || sudo apt-get install -y --no-install-recommends \
   chromium cec-utils curl unclutter
 
+echo "==> Setting the clock (timezone + NTP)"
+# The board's "today" and its current-class highlight follow this clock,
+# so it has to be both correct and self-correcting. Daylight saving is
+# handled by the timezone database — nothing to change twice a year.
+sudo timedatectl set-timezone Asia/Jerusalem
+sudo timedatectl set-ntp true
+sudo systemctl enable --now systemd-timesyncd 2>/dev/null || true
+# Cron jobs below fire on this clock too, so a wrong timezone would put
+# the TV's on/off schedule hours out.
+timedatectl status | sed -n '1,6p' || true
+
 echo "==> Writing ~/.dashboard-env"
 cat > "$HOME/.dashboard-env" <<EOF
 # Written by pi/setup.sh — edit and reboot to change the board URL.

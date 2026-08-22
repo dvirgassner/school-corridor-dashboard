@@ -25,5 +25,11 @@ window.DASH_CONFIG = {
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   staleMinutes: 10,          /* stamp turns amber after this long     */
   videoIntervalMinutes: 10,  /* minimum gap between video plays       */
-  schoolName: "תיכון השיטה"
+  schoolName: "תיכון השיטה",
+
+  /* Wall-clock timezone for the board. Daylight saving is applied
+     automatically from the timezone database — there is nothing to
+     change twice a year. Setting this explicitly means the board is
+     right even if the Pi's own timezone was never configured. */
+  timeZone: "Asia/Jerusalem"
 };

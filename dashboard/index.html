@@ -465,7 +465,10 @@ function layoutPages() {
     c.classList.toggle("paged", pages > 1);
     const cur = Math.min(+(c.dataset.page || 0), pages - 1);
     c.dataset.page = cur;
-    wrap.style.transform = `translateY(-${cur * perPage * ROW_H}px)`;
+    /* scroll the minimum needed: the last page anchors to the final
+       row instead of jumping a full page and leaving empty space */
+    const start = Math.min(cur * perPage, Math.max(0, rows - perPage));
+    wrap.style.transform = `translateY(-${start * ROW_H}px)`;
   });
 }
 

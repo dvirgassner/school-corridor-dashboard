@@ -160,7 +160,7 @@
          transition: opacity 0.6s; }
   #msg .bullet { color: var(--g1); margin-inline-end: 12px; }
   .count { direction: ltr; unicode-bidi: isolate; color: var(--muted);
-           font-weight: 600; margin-inline-end: 10px; }
+           font-weight: 600; margin-inline-end: 14px; }
   #stamp { font-size: 20px; color: var(--muted); flex: none;
            font-variant-numeric: tabular-nums; }
   #stamp.stale { color: var(--warning); }
@@ -300,7 +300,7 @@ const esc = (s) => s.replace(/[&<>"']/g,
 
 function rotate(el, items, prefixHtml) {
   const set = (i) => {
-    el.innerHTML = `${prefixHtml}<span class="count">(${i + 1}/${items.length})</span>${esc(items[i].text)}`;
+    el.innerHTML = `${prefixHtml}<span class="count">(${i + 1}/${items.length})</span> ${esc(items[i].text)}`;
   };
   set(0);
   if (items.length > 1) {

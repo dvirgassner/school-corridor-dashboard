@@ -107,7 +107,99 @@
     });
   }
 
+  /* ==================================================================
+     Model builders — turn parsed CSV rows into what the board renders.
+
+     House rule: one bad row must never blank the board. Every builder
+     validates per row and silently drops what it cannot use.
+     ================================================================== */
+  var TIME_RE = /^\d{1,2}:\d{2}$/;
+  function validTime(s) { return TIME_RE.test(String(s || "").trim()); }
+  function txt(v) { return String(v == null ? "" : v).trim(); }
+
+  /* Schedule: columns are Day, Period, Start, End, then one column per
+     grade — so the grade list is whatever the school put in the header. */
+  function buildSchedule(rows, fields) {
+    var grades = (fields || []).slice(4).map(txt).filter(Boolean);
+    var byDay = {};
+    (rows || []).forEach(function (r) {
+      var day = txt(r.Day);
+      if (!day || !validTime(r.Start) || !validTime(r.End)) return;
+      var subjects = {};
+      grades.forEach(function (g) { subjects[g] = txt(r[g]); });
+      (byDay[day] = byDay[day] || []).push({
+        period: txt(r.Period),
+        start: txt(r.Start),
+        end: txt(r.End),
+        subjects: subjects
+      });
+    });
+    Object.keys(byDay).forEach(function (d) {
+      byDay[d].sort(function (a, b) { return minutes(a.start) - minutes(b.start); });
+    });
+    return { grades: grades, byDay: byDay };
+  }
+
+  /* Exams + events for today, merged and sorted by start time. */
+  function buildAgenda(examRows, eventRows, todayKey) {
+    var out = [];
+    (examRows || []).forEach(function (r) {
+      if (parseSheetDate(r.Date) !== todayKey) return;
+      if (!validTime(r.Start) || !validTime(r.End)) return;
+      if (!txt(r.Subject) || !txt(r.Grade)) return;
+      out.push({
+        kind: "exam",
+        grade: txt(r.Grade),
+        subject: txt(r.Subject),
+        start: txt(r.Start),
+        end: txt(r.End),
+        room: txt(r.Room)
+      });
+    });
+    (eventRows || []).forEach(function (r) {
+      if (parseSheetDate(r.Date) !== todayKey) return;
+      if (!validTime(r.Start) || !validTime(r.End)) return;
+      if (!txt(r.Title)) return;
+      var grades = txt(r.Grades).split(",").map(txt).filter(Boolean);
+      out.push({
+        kind: "event",
+        grades: grades,
+        title: txt(r.Title),
+        start: txt(r.Start),
+        end: txt(r.End),
+        room: txt(r.Location)
+      });
+    });
+    out.sort(function (a, b) { return minutes(a.start) - minutes(b.start); });
+    return out;
+  }
+
+  /* Messages: active, in-range rows split into the three channels. */
+  function buildMessages(rows, todayKey) {
+    var out = { normal: [], urgent: [], videos: [] };
+    (rows || []).forEach(function (r) {
+      if (!isActive(r.Active)) return;
+      if (!inRange(r.From, r.Until, todayKey)) return;
+      var type = normalizeType(r.Type);
+      if (!type) return;
+      if (type === "video") {
+        var url = txt(r.VideoURL);
+        if (!url) return;
+        var sound = /#sound$/i.test(url);
+        out.videos.push({ url: url.replace(/#sound$/i, ""), sound: sound });
+      } else {
+        var text = txt(r.Text);
+        if (!text) return;
+        out[type].push(text);
+      }
+    });
+    return out;
+  }
+
   var api = {
+    buildSchedule: buildSchedule,
+    buildAgenda: buildAgenda,
+    buildMessages: buildMessages,
     toGematria: toGematria,
     hebrewDate: hebrewDate,
     minutes: minutes,

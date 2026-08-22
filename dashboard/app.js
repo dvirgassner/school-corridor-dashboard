@@ -72,10 +72,9 @@ function NOW() {
   return d;
 }
 
-function minutes(hhmm) {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
+/* minutes(), esc(), toGematria(), hebrewDate() and friends come from
+   logic.js, which is loaded before this file and unit-tested by
+   tests/run.js. */
 
 function renderGrades() {
   const grid = $("grid");
@@ -141,9 +140,6 @@ function renderAgenda() {
 /* urgent banner + rotating normal messages — both rotate with a fade
    when the principal enters more than one message of that type, and
    both show a "(current/total)" counter, e.g. ‎(1/3) */
-const esc = (s) => s.replace(/[&<>"']/g,
-  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
 function rotate(el, items, prefixHtml) {
   const set = (i) => {
     el.innerHTML = `${prefixHtml}<span class="count">(${i + 1}/${items.length})</span> ${esc(items[i].text)}`;
@@ -174,30 +170,6 @@ function renderMessages() {
   /* constant speed regardless of content length: ~80 px/s */
   const t = el.querySelector(".ticker");
   t.style.setProperty("--dur", (t.scrollWidth / 2 / 80) + "s");
-}
-
-/* Hebrew-letter (gematria) date: Intl computes the hebrew-calendar
-   day/month/year, but ECMA-402 can't render the algorithmic "hebr"
-   numbering system (it silently falls back to digits) — so the
-   day and year are converted to Hebrew letters here. */
-const GERESH = "׳", GERSHAYIM = "״";
-function toGematria(n) {
-  const ones = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
-  const tens = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
-  const hundreds = ["", "ק", "ר", "ש", "ת"];
-  let s = "";
-  while (n >= 500) { s += "ת"; n -= 400; }
-  s += hundreds[Math.floor(n / 100)]; n %= 100;
-  if (n === 15) s += "טו";        /* avoid spelling parts of the divine name */
-  else if (n === 16) s += "טז";
-  else s += tens[Math.floor(n / 10)] + ones[n % 10];
-  return s.length === 1 ? s + GERESH : s.slice(0, -1) + GERSHAYIM + s.slice(-1);
-}
-function hebrewDate(d) {
-  const parts = new Intl.DateTimeFormat("he-u-ca-hebrew",
-    { day: "numeric", month: "long", year: "numeric" }).formatToParts(d);
-  const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
-  return `${toGematria(+get("day"))} ${get("month")} ${toGematria(+get("year") % 1000)}`;
 }
 
 /* clock, date, current-period highlight, freshness stamp */

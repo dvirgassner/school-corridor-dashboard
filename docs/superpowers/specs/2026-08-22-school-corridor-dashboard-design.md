@@ -1,7 +1,9 @@
 # School Corridor Dashboard — Design
 
 **Date:** 2026-08-22
-**Status:** Draft for review
+**Status:** Implemented — see "Changes since the original design" at the
+end for everything added during the build. Where this document and that
+section disagree, the section wins.
 **Owner:** Dvir (remote maintainer) · School principal (content owner)
 
 ## 1. Purpose
@@ -37,9 +39,10 @@ Google Sheet ──publish-to-web CSV──►  Raspberry Pi 4 ──HDMI──�
 - **Dashboard page**: a single static HTML/CSS/JS page (Hebrew, RTL, dark
   theme, 1080p) hosted free on **GitHub Pages** from this repo. No server,
   no database, no build step.
-- **Data source**: one **Google Sheet** with three tabs (Schedule, Exams,
-  Messages), each *published to the web as CSV*. The page fetches the CSVs
-  every 60 seconds and re-renders. No API keys, no backend.
+- **Data source**: one **Google Sheet**, read as CSV feeds every 60
+  seconds. No API keys, no backend. (Built as five tabs — מערכת, מבחנים,
+  אירועים, הודעות, הגדרות — reachable either by link sharing or
+  publish-to-web; see the addendum.)
 - **Player**: **Raspberry Pi 4** (any RAM; used OK) running Raspberry Pi OS,
   auto-logging in and launching Chromium in kiosk mode at the dashboard URL.
 - **TV**: acts as a dumb monitor on one HDMI input. Power schedule handled
@@ -63,7 +66,7 @@ Google Sheet ──publish-to-web CSV──►  Raspberry Pi 4 ──HDMI──�
 ## 3. Data model — the Google Sheet
 
 One spreadsheet, shared for editing with the principal (and office staff) via
-their Google accounts. Three tabs. All text may be Hebrew.
+their Google accounts. Five tabs. All text may be Hebrew.
 
 ### Tab `Schedule` — the weekly timetable grid
 
@@ -376,3 +379,85 @@ school-corridor-dashboard/
 | Official PSU, case, HDMI cable | ~$20 |
 | Hosting (GitHub Pages), backend (Google Sheets), Tailscale, healthchecks.io | $0 |
 | **Total, one-time** | **~$60–80** |
+
+---
+
+## Changes since the original design
+
+Everything below was added or changed while building, and supersedes the
+sections above where they conflict.
+
+### Data source and privacy
+
+- **Five tabs**, not three: מערכת, מבחנים, אירועים, הודעות, הגדרות.
+  Column headers are Hebrew; English names still parse as aliases.
+- **Two ways to expose the sheet**, both verified to allow the
+  cross-origin read a browser needs: publish-to-web (`#t=<token>`) or
+  plain link sharing (`#d=<documentId>`). Link sharing is one setting
+  instead of five publishes and is now the recommended route.
+  `/gviz/tq` was measured to send **no** CORS header — it works in curl
+  and fails in a browser, so it must not be used.
+- **The sheet's address never enters this repository.** The Pi passes it
+  in the URL fragment, which browsers do not transmit to the server
+  (verified against a real request log). The public page therefore shows
+  demo data, and the repo can stay public.
+
+### Board features not in the original design
+
+- **Three colour themes** (`כהה` / `בהירה` / `צבעונית`), chosen by the
+  principal in the הגדרות tab. Same structure and fonts; colours only,
+  from a validated colourblind-safe palette.
+- **Day-of-the-day strip** above the agenda pane: today's Israeli day or
+  Jewish holiday, else an age-appropriate international day, else hidden.
+  Israeli entries are keyed to the *Hebrew* calendar so they need no
+  yearly maintenance, and days when school is closed show nothing.
+  Icons are emoji, or inline SVG where no emoji exists (Jerusalem, Herzl,
+  π, the Israeli flag — the flag emoji renders as the letters "IL" on
+  Windows).
+- **Version number and fault indicator** bottom-left: `אין אינטרנט` /
+  `מנותק מגוגל שיטס` / `מנותק מגיטהאב`, shown only when something is
+  wrong, so the principal can report it.
+- **"עודכן" badge** on a class whose subject changes during the day. The
+  board snapshots the timetable per date in localStorage; filling an
+  empty cell does not count as a change.
+- **Agenda entries lead with grade chips**, and a `כולם` checkbox marks a
+  whole-school event. The pane scrolls when entries overflow.
+- **Explicit timezone** (`Asia/Jerusalem`) rather than machine local
+  time: Raspberry Pi OS ships as UTC, which would have rolled the board
+  over to tomorrow's timetable at 21:00. DST comes from the tz database.
+- **Video** accepts YouTube and Google Drive links (Drive share URLs are
+  rewritten to their direct-download form). YouTube plays through its
+  official embed — downloading it with yt-dlp would breach YouTube's
+  terms and put a self-updating scraper on a school device. Sound is a
+  `כן`/`לא` column, defaulting to `לא`.
+
+### Sheet behaviour
+
+- **מערכת ships ten period rows per day**, pre-filled with day, period
+  and times, no day dropdown. An empty subject means no class, so the day
+  ends after the last one entered. Day and period columns are locked.
+- **אירועים starts with five rows** and grows its checkboxes as rows are
+  filled. Checkbox *validation* is used, never
+  `Range.insertCheckboxes()` — the latter sets every cell in its range to
+  false and would have wiped existing grade ticks on any paste or reopen.
+- **Protected ranges** on every header row and the settings-name column.
+  Protection and validation are native Sheets features stored in the
+  document: they survive the Apps Script project being deleted.
+- **onEdit** keeps `כולם` mutually exclusive with the grade boxes and
+  re-applies validation after a paste (a paste carries the source cell's
+  validation and would otherwise strip dropdowns and checkboxes).
+  Conditional formatting flags the conflicting state instantly, since it
+  is evaluated in the browser while onEdit runs server-side.
+- **onOpen auto-applies** rule changes once per script version, so a
+  pushed script update needs nobody to press Run. It deliberately does
+  not call `setup()`, which rebuilds tabs and would erase the timetable.
+- **The script is deployed with `clasp push`**, not copy-paste.
+
+### Known limitations
+
+- `clasp run` cannot invoke functions without a Cloud project and an
+  API-executable deployment, so `setup()` is still run by hand.
+- A cell with checkbox validation exports as `FALSE` even when never
+  ticked, so spare event rows appear in the CSV as filler.
+- The agenda pane holds ~6 entries in the 6-grade layout; the day strip
+  and a 7th grade both reduce that.

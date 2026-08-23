@@ -9,10 +9,10 @@ nobody standing next to it.
 Principal (phone)                          You (anywhere)
      │ edits                                    │ Tailscale SSH
      ▼                                          ▼
-Google Sheet ──published CSV──►  Raspberry Pi ──HDMI──►  Samsung TV
-(4 tabs)                         Chromium kiosk           (dumb screen)
-                                 showing this page
-                                 hosted on GitHub Pages
+Google Sheet ──── CSV ────►  Raspberry Pi ──HDMI──►  Samsung TV
+(5 tabs)                     Chromium kiosk           (dumb screen)
+                             showing this page
+                             hosted on GitHub Pages
 ```
 
 ## How it actually works
@@ -20,11 +20,13 @@ Google Sheet ──published CSV──►  Raspberry Pi ──HDMI──►  Sam
 There is no server and no database anywhere in this project. That is the
 whole design idea:
 
-- **The Google Sheet is the admin app.** The principal edits four tabs
-  from a phone. Google handles the accounts and the permissions.
-- **The dashboard is one static web page.** It reads the sheet as four
-  CSV feeds every 60 seconds and redraws itself. GitHub Pages hosts it
-  for free and never goes down.
+- **The Google Sheet is the admin app.** The principal edits five tabs —
+  timetable, exams, events, messages and one settings tab that switches
+  the board's colour theme — from a phone. Google handles the accounts
+  and the permissions.
+- **The dashboard is one static web page.** It reads the sheet as CSV
+  feeds every 60 seconds and redraws itself. GitHub Pages hosts it for
+  free and never goes down.
 - **The sheet's address is not in this repository.** The Pi passes it in
   the URL fragment, which browsers never send to the server — so this
   repo stays public while the school's data stays unlisted. Opening the
@@ -53,6 +55,8 @@ Useful URL parameters:
 | `?date=2027-03-14` | pretend it is another date (day-of-the-day strip, weekday) |
 | `?theme=light` | preview a theme (`dark`, `light`, `colorful`) |
 | `?demo7` | preview the layout with a 7th grade added |
+| `?upd` | preview the "עודכן" badge on a changed class |
+| `?err=sheets` | preview the fault indicator (`sheets`, `github`, `offline`) |
 
 ## Repository layout
 
@@ -65,7 +69,7 @@ Useful URL parameters:
 | `dashboard/app.js` | everything touching the DOM, network, and clock |
 | [`sheet-template/`](sheet-template/) | Apps Script that builds the Google Sheet, plus setup steps |
 | [`pi/`](pi/) | Raspberry Pi provisioning scripts and walk-through |
-| [`tests/`](tests/) | `node tests/run.js` — 39 tests, no dependencies |
+| [`tests/`](tests/) | `node tests/run.js` — 111 tests, no dependencies |
 | [`docs/`](docs/) | design spec, decisions, admin guide, TV settings, exercises |
 
 ## Running the tests
@@ -82,15 +86,25 @@ rules for which rows to show.
 ## Deploying it
 
 1. **The sheet**: follow [`sheet-template/README.md`](sheet-template/README.md).
-   You end with one token and four gids — do **not** commit them.
+   You end with a document id (or publish token) and five gids — do
+   **not** commit them.
 2. **The page**: push this repo to GitHub, then **Settings → Pages →
    Deploy from a branch → `main` / root**. Your board lives at
    `https://<your-user>.github.io/<your-repo>/dashboard/`.
 3. **The Pi**: follow [`pi/README.md`](pi/README.md), giving it
-   `DASH_URL` = the Pages URL **plus** the `#t=…&g=…` fragment.
+   `DASH_URL` = the Pages URL **plus** the `#d=…&g=…` fragment.
 4. **The TV**: follow [`docs/tv-setup.md`](docs/tv-setup.md).
 
 Do them in that order — each step wants the output of the one before it.
+
+## Editing the sheet's script
+
+The Apps Script that builds and maintains the spreadsheet lives in
+[`sheet-template/setup.gs`](sheet-template/setup.gs) and is deployed with
+`clasp push` rather than copy-paste — see
+[`sheet-template/PUSHING.md`](sheet-template/PUSHING.md). Rule changes
+apply themselves the next time the sheet is opened; only structural
+changes need `setup` run by hand.
 
 ## Learning your way in
 

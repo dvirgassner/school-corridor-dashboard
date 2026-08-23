@@ -211,25 +211,46 @@ function buildExams_(sh) {
   sh.getRange('B1').setNote(NO_PII_NOTE);
 }
 
+/* An event can apply to several grades. Google Sheets cannot multi-select
+   inside one cell, so each grade gets its own checkbox column — tick as
+   many as apply, and the board shows whichever are ticked. */
 function buildEvents_(sh) {
-  var headers = ['תאריך', 'שכבות', 'כותרת', 'התחלה', 'סיום', 'מקום'];
+  var FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
+  var headers = FIXED.concat(GRADES);
   header_(sh, headers);
+
   var today = new Date();
-  sh.getRange(2, 1, 2, headers.length).setValues([
-    [today, GRADES[0] + ', ' + GRADES[1], 'חזרה כללית לטקס', '10:40', '11:25', 'אולם ספורט'],
-    [today, GRADES[3] + ', ' + GRADES[4] + ', ' + GRADES[5],
-     'הרצאה: בטיחות ברשת', '12:35', '13:20', 'אודיטוריום']
-  ]);
+  var first = [today, 'חזרה כללית לטקס', '10:40', '11:25', 'אולם ספורט'];
+  var second = [today, 'הרצאה: בטיחות ברשת', '12:35', '13:20', 'אודיטוריום'];
+  GRADES.forEach(function (g, gi) {
+    first.push(gi < 2);              /* ז׳, ח׳            */
+    second.push(gi >= 3);            /* י׳ ומעלה          */
+  });
+  sh.getRange(2, 1, 2, headers.length).setValues([first, second]);
 
   dateRule_(sh, 1);
-  lenRule_(sh, 3, LIMITS.eventTitle, 'כותרת');
+  lenRule_(sh, 2, LIMITS.eventTitle, 'כותרת');
+  timeRule_(sh, 3);
   timeRule_(sh, 4);
-  timeRule_(sh, 5);
-  lenRule_(sh, 6, LIMITS.eventLocation, 'מקום');
-  sh.setColumnWidths(1, headers.length, 130);
-  sh.getRange('B1').setNote(
-    'שכבה אחת או יותר, מופרדות בפסיק, למשל: ז׳, ח׳\n' +
+  lenRule_(sh, 5, LIMITS.eventLocation, 'מקום');
+
+  /* real checkboxes down each grade column */
+  var firstGradeCol = FIXED.length + 1;
+  var boxes = sh.getRange(2, firstGradeCol, 200, GRADES.length);
+  boxes.insertCheckboxes();
+  boxes.setHorizontalAlignment('center');
+
+  sh.setColumnWidths(1, FIXED.length, 130);
+  sh.setColumnWidths(firstGradeCol, GRADES.length, 55);
+  sh.getRange(1, firstGradeCol, 1, GRADES.length).setNote(
+    'לסמן ✓ בכל שכבה שהאירוע מיועד לה.\n' +
     'מארבע שכבות ומעלה הלוח מציג "כל השכבות".');
+
+  /* verify rather than assume — a missing checkbox column is the kind of
+     failure nobody notices until an event shows no grades at all */
+  if (!sh.getRange(2, firstGradeCol).getDataValidation()) {
+    throw new Error('לא נוצרו תיבות סימון בגיליון "אירועים".');
+  }
 }
 
 function buildMessages_(sh) {

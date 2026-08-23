@@ -57,10 +57,11 @@ window.SAMPLE = {
     '{{TODAY}},ח׳,ביולוגיה,12:35,13:20,מעבדה'
   ].join("\n"),
 
+  /* one checkbox column per grade, exactly as the sheet exports them */
   eventsCsv: [
-    "תאריך,שכבות,כותרת,התחלה,סיום,מקום",
-    '{{TODAY}},"ז׳, ח׳",חזרה כללית לטקס,10:40,11:25,אולם ספורט',
-    '{{TODAY}},"י׳, י""א, י""ב",הרצאה: בטיחות ברשת,12:35,13:20,אודיטוריום'
+    'תאריך,כותרת,התחלה,סיום,מקום,ז׳,ח׳,ט׳,י׳,"י""א","י""ב"',
+    '{{TODAY}},חזרה כללית לטקס,10:40,11:25,אולם ספורט,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE',
+    '{{TODAY}},הרצאה: בטיחות ברשת,12:35,13:20,אודיטוריום,FALSE,FALSE,FALSE,TRUE,TRUE,TRUE'
   ].join("\n"),
 
   /* the first message deliberately contains a comma, quotes and an

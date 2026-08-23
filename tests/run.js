@@ -223,6 +223,57 @@ test("buildAgenda: accepts DD/MM/YYYY dates from Sheets", () => {
   assert.equal(L.buildAgenda(exams, [], TODAY).length, 1);
 });
 
+/* ---------- events: a checkbox column per grade ---------- */
+const EGRADES = ["ז׳", "ח׳", "ט׳", "י׳"];
+
+test("isChecked: accepts TRUE and hand-typed equivalents", () => {
+  assert.ok(L.isChecked("TRUE") && L.isChecked("true"));
+  assert.ok(L.isChecked("כן") && L.isChecked("✓") && L.isChecked("1"));
+  assert.ok(!L.isChecked("FALSE") && !L.isChecked("") && !L.isChecked(undefined));
+});
+test("buildAgenda: ticked checkbox columns become the event's grades", () => {
+  const events = [{
+    "תאריך": TODAY, "כותרת": "טקס", "התחלה": "09:00", "סיום": "10:00",
+    "מקום": "אולם",
+    "ז׳": "TRUE", "ח׳": "FALSE", "ט׳": "TRUE", "י׳": "FALSE"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.deepEqual(a[0].grades, ["ז׳", "ט׳"]);
+});
+test("buildAgenda: grade order follows the schedule, not the sheet", () => {
+  const events = [{
+    "תאריך": TODAY, "כותרת": "טקס", "התחלה": "09:00", "סיום": "10:00",
+    "י׳": "TRUE", "ז׳": "TRUE"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.deepEqual(a[0].grades, ["ז׳", "י׳"]);
+});
+test("buildAgenda: no boxes ticked leaves an event with no grades", () => {
+  const events = [{
+    "תאריך": TODAY, "כותרת": "טקס", "התחלה": "09:00", "סיום": "10:00",
+    "ז׳": "FALSE"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.equal(a.length, 1);            /* still shown — it is an event */
+  assert.deepEqual(a[0].grades, []);
+});
+test("buildAgenda: old comma-separated שכבות column still works", () => {
+  const events = [{
+    "תאריך": TODAY, "שכבות": "ז׳, ט׳", "כותרת": "טקס",
+    "התחלה": "09:00", "סיום": "10:00", "מקום": "אולם"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.deepEqual(a[0].grades, ["ז׳", "ט׳"]);
+});
+test("buildAgenda: checkboxes win over a stale שכבות cell", () => {
+  const events = [{
+    "תאריך": TODAY, "שכבות": "ח׳", "כותרת": "טקס",
+    "התחלה": "09:00", "סיום": "10:00", "ז׳": "TRUE"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.deepEqual(a[0].grades, ["ז׳"]);
+});
+
 /* ---------- buildMessages ---------- */
 test("buildMessages: splits by type, honors Active and range", () => {
   const rows = [

@@ -102,11 +102,18 @@ One row per (day, period). Columns:
 
 ### Tab `אירועים` (Events)
 
-| תאריך | שכבות | כותרת | התחלה | סיום | מקום |
-|------|--------|-------|-------|-----|----------|
-| 2026-09-01 | ז׳, ח׳ | חזרה כללית לטקס | 10:40 | 11:25 | אולם ספורט |
+| תאריך | כותרת | התחלה | סיום | מקום | ז׳ | ח׳ | ט׳ | … |
+|------|-------|-------|-----|------|----|----|----|---|
+| 2026-09-01 | חזרה כללית לטקס | 10:40 | 11:25 | אולם ספורט | ✓ | ✓ | | |
 
-- `שכבות`: one or more grade names, comma-separated, each matching a
+- **One checkbox column per grade.** Google Sheets cannot multi-select
+  inside a single cell, so ticking a box per grade is the native way to
+  attach an event to several grades at once. The column headers must
+  match the Schedule tab's grade names; the board reads whichever are
+  ticked, in schedule order.
+- Legacy: a single comma-separated `שכבות` column is still honoured, so
+  an older sheet keeps working. Checkboxes win if both are present.
+- Grade names, when listed the legacy way: comma-separated, each matching a
   Schedule column header. On the dashboard, up to 3 grades render as
   per-grade color chips; 4 or more collapse to a neutral "כל השכבות" chip.
 - Exams and events are **merged into one panel** ("אירועים ומבחנים היום"),

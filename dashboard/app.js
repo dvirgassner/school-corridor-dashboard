@@ -78,7 +78,7 @@ function buildModel(csv, today) {
     grades: schedule.grades,
     byDay: schedule.byDay,
     agenda: buildAgenda(parseCsv(csv.exams).rows,
-                        parseCsv(csv.events).rows, today),
+                        parseCsv(csv.events).rows, today, schedule.grades),
     messages: buildMessages(parseCsv(csv.messages).rows, today),
     /* settings tab is optional — absent means defaults */
     settings: buildSettings(csv.settings ? parseCsv(csv.settings).rows : [])

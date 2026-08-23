@@ -122,6 +122,14 @@
     return v === "כן" || v === "yes" || v === "true";
   }
 
+  /* A Google Sheets checkbox exports as TRUE/FALSE. Accept the obvious
+     hand-typed equivalents too, so a column of ✓ or כן still works. */
+  function isChecked(v) {
+    var s = String(v == null ? "" : v).trim().toLowerCase();
+    return s === "true" || s === "כן" || s === "yes" ||
+           s === "v" || s === "x" || s === "✓" || s === "✔" || s === "1";
+  }
+
   var TYPES = {
     "רגילה": "normal", "normal": "normal",
     "דחופה": "urgent", "urgent": "urgent",
@@ -230,8 +238,17 @@
     return { grades: grades, byDay: byDay };
   }
 
-  /* Exams + events for today, merged and sorted by start time. */
-  function buildAgenda(examRows, eventRows, todayKey) {
+  /* Exams + events for today, merged and sorted by start time.
+
+     `grades` is the grade list from the schedule tab. Events name their
+     grades one of two ways, checked in this order:
+       1. a checkbox column per grade (what the template builds now —
+          Sheets cannot multi-select inside one cell, so a column of
+          checkboxes is the native way to tick several grades)
+       2. a single comma-separated שכבות cell (the original shape; still
+          honoured so an older sheet keeps working) */
+  function buildAgenda(examRows, eventRows, todayKey, grades) {
+    grades = grades || [];
     var out = [];
     (examRows || []).forEach(function (r) {
       var start = pick(r, "start"), end = pick(r, "end");
@@ -252,9 +269,11 @@
       if (parseSheetDate(pick(r, "date")) !== todayKey) return;
       if (!validTime(start) || !validTime(end)) return;
       if (!pick(r, "title")) return;
+      var ticked = grades.filter(function (g) { return isChecked(r[g]); });
+      var listed = pick(r, "grades").split(",").map(clean).filter(Boolean);
       out.push({
         kind: "event",
-        grades: pick(r, "grades").split(",").map(clean).filter(Boolean),
+        grades: ticked.length ? ticked : listed,
         title: pick(r, "title"),
         start: start,
         end: end,
@@ -474,6 +493,7 @@
     zonedNow: zonedNow,
     inRange: inRange,
     isActive: isActive,
+    isChecked: isChecked,
     normalizeType: normalizeType,
     esc: esc
   };

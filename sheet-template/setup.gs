@@ -10,6 +10,20 @@
  * authorize when asked. Safe to re-run: it clears and rebuilds the tabs.
  */
 
+/* Bump when this file changes. Run checkVersion() to see which copy the
+   Apps Script project is actually executing — Apps Script merges every
+   file in the project, so an old Code.gs left behind will quietly win
+   over a newer paste. */
+var SCRIPT_VERSION = '0.144';
+
+/** Run this to confirm which version of the script is loaded. */
+function checkVersion() {
+  SpreadsheetApp.getUi().alert(
+    'גרסת הסקריפט: ' + SCRIPT_VERSION + '\n\n' +
+    'אם המספר אינו 0.144, קיים בפרויקט קובץ נוסף עם גרסה ישנה —\n' +
+    'יש למחוק אותו ולהשאיר קובץ אחד בלבד.');
+}
+
 /* Grade columns. Change these if the school renames or splits grades —
    add a 7th and the dashboard adapts on its own (the 7th card takes the
    top-left cell and the agenda panel moves below it). Keep names <= 4
@@ -76,7 +90,7 @@ function setup() {
   }
 
   SpreadsheetApp.getUi().alert(
-    'הגיליון נבנה בהצלחה.\n\n' +
+    'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
     'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
     'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
     'ראו את ההוראות המלאות בקובץ README.\n\n' +

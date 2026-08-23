@@ -135,15 +135,30 @@ function buildSchedule_(sh) {
   var headers = ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
   header_(sh, headers);
 
-  /* one sample day so the board has something to show immediately */
-  var rows = [
-    ['א', 1, '08:00', '08:45'],
-    ['א', 2, '08:50', '09:35'],
-    ['א', 3, '09:50', '10:35']
-  ].map(function (r, i) {
-    return r.concat(GRADES.map(function (g, gi) {
-      return ['מתמטיקה', 'אנגלית', 'לשון'][(i + gi) % 3];
-    }));
+  /* Seed a full plausible week, so the board looks like a real board
+     the moment the sheet is published — easier to sanity-check on the
+     TV than three lonely rows. Replace with the real timetable. */
+  var PERIODS = [
+    [1, '08:00', '08:45'], [2, '08:50', '09:35'], [3, '09:50', '10:35'],
+    [4, '10:40', '11:25'], [5, '11:45', '12:30'], [6, '12:35', '13:20'],
+    [7, '13:30', '14:15'], [8, '14:20', '15:05']
+  ];
+  var SUBJECTS = ['מתמטיקה', 'אנגלית', 'לשון', 'היסטוריה', 'ביולוגיה',
+                  'פיזיקה', 'כימיה', 'ספרות', 'תנ"ך', 'אזרחות',
+                  'חינוך גופני', 'מחשבים'];
+  var rows = [];
+  DAYS.forEach(function (day, di) {
+    /* Friday is a short day; other days run 6-8 periods */
+    var count = day === 'ו' ? 4 : (di % 2 === 0 ? 8 : 6);
+    for (var p = 0; p < count; p++) {
+      var row = [day].concat(PERIODS[p]);
+      GRADES.forEach(function (g, gi) {
+        /* upper grades keep going in the last periods; lower ones stop */
+        var late = p >= 6 && gi < 2;
+        row.push(late ? '' : SUBJECTS[(di * 5 + p * 3 + gi * 7) % SUBJECTS.length]);
+      });
+      rows.push(row);
+    }
   });
   sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
 
@@ -165,8 +180,12 @@ function buildSchedule_(sh) {
 function buildExams_(sh) {
   var headers = ['תאריך', 'שכבה', 'מקצוע', 'התחלה', 'סיום', 'חדר'];
   header_(sh, headers);
-  sh.getRange(2, 1, 1, headers.length).setValues([
-    [new Date(), GRADES[2], 'מתמטיקה', '09:00', '10:30', 'חדר 12']
+  /* dated today so they appear on the board straight away */
+  var today = new Date();
+  sh.getRange(2, 1, 3, headers.length).setValues([
+    [today, GRADES[2], 'מתמטיקה', '09:00', '10:30', 'חדר 12'],
+    [today, GRADES[5], 'אנגלית', '11:45', '12:30', 'ספרייה'],
+    [today, GRADES[1], 'ביולוגיה', '12:35', '13:20', 'מעבדה']
   ]);
 
   dateRule_(sh, 1);
@@ -184,8 +203,11 @@ function buildExams_(sh) {
 function buildEvents_(sh) {
   var headers = ['תאריך', 'שכבות', 'כותרת', 'התחלה', 'סיום', 'מקום'];
   header_(sh, headers);
-  sh.getRange(2, 1, 1, headers.length).setValues([
-    [new Date(), GRADES[0] + ', ' + GRADES[1], 'חזרה לטקס', '10:40', '11:25', 'אולם ספורט']
+  var today = new Date();
+  sh.getRange(2, 1, 2, headers.length).setValues([
+    [today, GRADES[0] + ', ' + GRADES[1], 'חזרה כללית לטקס', '10:40', '11:25', 'אולם ספורט'],
+    [today, GRADES[3] + ', ' + GRADES[4] + ', ' + GRADES[5],
+     'הרצאה: בטיחות ברשת', '12:35', '13:20', 'אודיטוריום']
   ]);
 
   dateRule_(sh, 1);
@@ -202,9 +224,11 @@ function buildEvents_(sh) {
 function buildMessages_(sh) {
   var headers = ['הודעה', 'סוג', 'קישור', 'מתאריך', 'עד תאריך', 'פעיל'];
   header_(sh, headers);
-  sh.getRange(2, 1, 2, headers.length).setValues([
+  sh.getRange(2, 1, 4, headers.length).setValues([
     ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', '', '', 'כן'],
-    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', '', '', 'כן']
+    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', '', '', 'כן'],
+    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', '', '', 'כן'],
+    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '', '', 'כן']
   ]);
 
   /* length depends on the type: urgent text is displayed larger */

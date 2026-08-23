@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.158';
+var SCRIPT_VERSION = '0.159';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -713,7 +713,8 @@ function buildSettings_(sh) {
      until someone tries to change the theme on a live board */
   var check = sh.getRange('B2').getDataValidation();
   if (!check) {
-    throw new Error('התפריט הנפתח של ערכת הנושא לא נוצר — יש להריץ fix-settings.gs');
+    throw new Error('התפריט הנפתח של ערכת הנושא לא נוצר — ' +
+                    'יש לבחור בתפריט "לוח מסדרון" → "תיקון חוקי הגיליון"');
   }
 
   sh.setColumnWidth(1, 180);

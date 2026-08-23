@@ -46,8 +46,8 @@ cd sheet-template
 clasp push -f
 ```
 
-That uploads `setup.gs`, `fix-settings.gs` and `appsscript.json`,
-replacing what is in the editor. Reload the spreadsheet afterwards so
+That uploads `setup.gs` and `appsscript.json`, replacing what is in the
+editor. Reload the spreadsheet afterwards so
 the `לוח מסדרון` menu is rebuilt, then run `setup` (or `checkVersion` to
 confirm which version landed).
 

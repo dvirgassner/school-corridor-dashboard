@@ -326,14 +326,25 @@ test("buildMessages: video rows carry src and sound flag", () => {
 });
 
 /* ---------- video link normalisation ---------- */
-test("normalizeVideo: plain mp4 link passes through", () => {
+test("normalizeVideo: direct media file link passes through", () => {
   assert.deepEqual(L.normalizeVideo("https://x/a.mp4"),
     { kind: "file", src: "https://x/a.mp4", sound: false });
 });
-test("normalizeVideo: #sound opts into audio and is stripped", () => {
+test("normalizeVideo: sound comes from the sheet column", () => {
+  assert.equal(L.normalizeVideo("https://x/a.mp4", true).sound, true);
+  assert.equal(L.normalizeVideo("https://x/a.mp4", false).sound, false);
+  assert.equal(L.normalizeVideo("https://youtu.be/abc123XYZ", true).sound, true);
+});
+test("normalizeVideo: legacy #sound suffix still works and is stripped", () => {
   const v = L.normalizeVideo("https://x/a.mp4#sound");
   assert.equal(v.sound, true);
   assert.equal(v.src, "https://x/a.mp4");
+});
+test("normalizeVideo: a web page or Drive folder is rejected", () => {
+  /* the principal only has Drive/YouTube links, so anything else here
+     is a mistake — better skipped than handed to a <video> element */
+  assert.equal(L.normalizeVideo("https://example.com/some/page"), null);
+  assert.equal(L.normalizeVideo("https://drive.google.com/drive/folders/1AbCdEfGhIj"), null);
 });
 test("normalizeVideo: YouTube watch link", () => {
   const v = L.normalizeVideo("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
@@ -422,11 +433,12 @@ test("buildAgenda: reads Hebrew headers for exams and events", () => {
   assert.equal(a[1].room, "חדר 12");
 });
 test("buildMessages: reads Hebrew headers", () => {
+  const LINK = "קישור לוידאו (Google Drive או YouTube)";
   const rows = [
-    { "הודעה": "שלום", "סוג": "רגילה", "קישור": "", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
-    { "הודעה": "דחוף", "סוג": "דחופה", "קישור": "", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
-    { "הודעה": "", "סוג": "וידאו", "קישור": "https://x/y.mp4#sound", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
-    { "הודעה": "כבוי", "סוג": "רגילה", "קישור": "", "מתאריך": "", "עד תאריך": "", "פעיל": "לא" },
+    { "הודעה": "שלום", "סוג": "רגילה", [LINK]: "", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
+    { "הודעה": "דחוף", "סוג": "דחופה", [LINK]: "", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
+    { "הודעה": "", "סוג": "וידאו", [LINK]: "https://x/y.mp4#sound", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" },
+    { "הודעה": "כבוי", "סוג": "רגילה", [LINK]: "", "מתאריך": "", "עד תאריך": "", "פעיל": "לא" },
   ];
   const m = L.buildMessages(rows, TODAY);
   assert.deepEqual(m.normal, ["שלום"]);
@@ -662,13 +674,27 @@ test("CSV round-trip: comma inside an event location is not a column break", () 
   assert.equal(a[0].room, "אולם ספורט, קומה 2");
 });
 
-test("video URL with query string and #sound is parsed correctly", () => {
+test("buildMessages: the long link header is matched by its prefix", () => {
   const rows = [{ "הודעה": "", "סוג": "וידאו",
-    "קישור": "https://x/y.mp4?token=a&b=c#sound",
-    "מתאריך": "", "עד תאריך": "", "פעיל": "כן" }];
+    "קישור לוידאו (Google Drive או YouTube)": "https://youtu.be/abc123XYZ",
+    "סאונד": "לא", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" }];
   const m = L.buildMessages(rows, TODAY);
-  assert.deepEqual(m.videos,
-    [{ kind: "file", src: "https://x/y.mp4?token=a&b=c", sound: true }]);
+  assert.deepEqual(m.videos, [{ kind: "youtube", id: "abc123XYZ", sound: false }]);
+});
+test("buildMessages: the סאונד column turns audio on", () => {
+  const rows = [{ "הודעה": "", "סוג": "וידאו",
+    "קישור לוידאו (Google Drive או YouTube)": "https://youtu.be/abc123XYZ",
+    "סאונד": "כן", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" }];
+  assert.equal(L.buildMessages(rows, TODAY).videos[0].sound, true);
+});
+test("buildMessages: a Drive share link becomes playable", () => {
+  const rows = [{ "הודעה": "", "סוג": "וידאו",
+    "קישור לוידאו (Google Drive או YouTube)":
+      "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=drive_link",
+    "סאונד": "לא", "מתאריך": "", "עד תאריך": "", "פעיל": "כן" }];
+  const v = L.buildMessages(rows, TODAY).videos[0];
+  assert.equal(v.kind, "file");
+  assert.ok(v.src.indexOf("uc?export=download&id=1AbCdEfGhIjKlMnOp") > 0);
 });
 
 /* ---------- summary ---------- */

@@ -178,7 +178,10 @@
     setting:  ["הגדרה", "Setting"],
     value:    ["ערך", "Value"],
     type:     ["סוג", "Type"],
+    /* the real header is long ("קישור לוידאו (Google Drive או YouTube)"),
+       so this field is matched by PREFIX as well — see pickPrefix() */
     videoUrl: ["קישור", "VideoURL"],
+    sound:    ["סאונד", "קול", "Sound"],
     from:     ["מתאריך", "From"],
     until:    ["עד תאריך", "Until"],
     active:   ["פעיל", "Active"]
@@ -207,6 +210,20 @@
     for (var i = 0; i < names.length; i++) {
       var v = row[names[i]];
       if (v !== undefined && v !== null && clean(v) !== "") return clean(v);
+    }
+    return "";
+  }
+
+  /* Some headers carry an explanation in the text itself, e.g.
+     "קישור לוידאו (Google Drive או YouTube)". Matching on the leading
+     word keeps the parser working when that wording is reworded. */
+  function pickPrefix(row, prefix) {
+    for (var k in row) {
+      if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
+      if (clean(k).indexOf(prefix) === 0) {
+        var v = clean(row[k]);
+        if (v) return v;
+      }
     }
     return "";
   }
@@ -309,11 +326,14 @@
                   element cannot play.
        anything → treated as a direct media file URL.
 
+     `wantSound` comes from the sheet's סאונד column (כן/לא); the legacy
+     "#sound" URL suffix still works but nobody has to know about it.
+
      Returns null for an empty/unusable value. */
-  function normalizeVideo(raw) {
+  function normalizeVideo(raw, wantSound) {
     var url = clean(raw);
     if (!url) return null;
-    var sound = /#sound$/i.test(url);
+    var sound = wantSound === true || /#sound$/i.test(url);
     url = url.replace(/#sound$/i, "");
 
     var yt = url.match(
@@ -330,8 +350,14 @@
       };
     }
 
-    if (!/^https?:\/\//i.test(url)) return null;
-    return { kind: "file", src: url, sound: sound };
+    /* Anything else must look like an actual media file. The principal
+       only ever has Drive or YouTube links, so a different URL here is
+       almost always a mistake (a Drive FOLDER, or a web page) — better
+       to skip it than to hand a web page to a <video> element. */
+    if (/^https?:\/\/\S+\.(mp4|webm|m4v|mov)(\?\S*)?$/i.test(url)) {
+      return { kind: "file", src: url, sound: sound };
+    }
+    return null;
   }
 
   /* Messages: active, in-range rows split into the three channels. */
@@ -343,7 +369,8 @@
       var type = normalizeType(pick(r, "type"));
       if (!type) return;
       if (type === "video") {
-        var clip = normalizeVideo(pick(r, "videoUrl"));
+        var link = pick(r, "videoUrl") || pickPrefix(r, "קישור");
+        var clip = normalizeVideo(link, isActive(pick(r, "sound")));
         if (clip) out.videos.push(clip);
       } else {
         var text = pick(r, "text");

@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.150';
+var SCRIPT_VERSION = '0.151';
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
@@ -61,6 +61,13 @@ var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקו
 
 /* tabs whose validation onEdit knows how to restore after a paste */
 var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות', 'הגדרות'];
+
+/* The link header spells out what belongs in it, because "קישור" alone
+   invites any URL. The board matches this column by its leading word,
+   so the parenthetical can be reworded freely. */
+var MESSAGE_HEADERS = ['הודעה', 'סוג',
+                       'קישור לוידאו (Google Drive או YouTube)', 'סאונד',
+                       'מתאריך', 'עד תאריך', 'פעיל'];
 
 /** Re-apply one tab's dropdowns, checkboxes and limits. */
 function applyRules_(sh, name) {
@@ -353,9 +360,10 @@ function rulesMessages_(sh) {
   sh.getRange(2, 1, 500).setDataValidation(textRule);
 
   listRule_(sh, 2, TYPES, 'סוג');
-  dateRule_(sh, 4);
+  listRule_(sh, 4, YESNO, 'סאונד');   /* audio on/off, default לא */
   dateRule_(sh, 5);
-  listRule_(sh, 6, YESNO, 'פעיל');
+  dateRule_(sh, 6);
+  listRule_(sh, 7, YESNO, 'פעיל');
 }
 
 function rulesSettings_(sh) {
@@ -536,26 +544,34 @@ function buildEvents_(sh) {
 }
 
 function buildMessages_(sh) {
-  var headers = ['הודעה', 'סוג', 'קישור', 'מתאריך', 'עד תאריך', 'פעיל'];
+  var headers = MESSAGE_HEADERS;
   header_(sh, headers);
   sh.getRange(2, 1, 4, headers.length).setValues([
-    ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', '', '', 'כן'],
-    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', '', '', 'כן'],
-    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', '', '', 'כן'],
-    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '', '', 'כן']
+    ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', 'לא', '', '', 'כן'],
+    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', 'לא', '', '', 'כן'],
+    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', 'לא', '', '', 'כן'],
+    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', 'לא', '', '', 'כן']
   ]);
 
   rulesMessages_(sh);
-  sh.setColumnWidth(1, 420);
+  sh.setColumnWidth(1, 400);
   sh.setColumnWidth(2, 90);
-  sh.setColumnWidth(3, 260);
-  sh.setColumnWidths(4, 2, 110);
-  sh.setColumnWidth(6, 70);
+  sh.setColumnWidth(3, 300);
+  sh.setColumnWidth(4, 80);
+  sh.setColumnWidths(5, 2, 110);
+  sh.setColumnWidth(7, 70);
   sh.getRange('C1').setNote(
-    'רק לסוג "וידאו": קישור ישיר לקובץ MP4 (H.264, עד 1080p30).\n' +
-    'הסרטון מושתק כברירת מחדל; להוספת סאונד יש לסיים את הקישור ב-#sound');
-  sh.getRange('D1').setNote('טווח תאריכים להצגה. ריק = תמיד.');
-  sh.getRange('F1').setNote('"לא" מסתיר את ההודעה בלי למחוק אותה.');
+    'רק לסוג "וידאו".\n\n' +
+    'מותר להדביק כאן:\n' +
+    '  • קישור יוטיוב (מהדפדפן — watch, youtu.be או Shorts)\n' +
+    '  • קישור שיתוף של קובץ וידאו בגוגל דרייב\n\n' +
+    'חשוב: קובץ בדרייב חייב להיות משותף ל"כל מי שיש לו הקישור".\n' +
+    'קישור לתיקייה או לדף אינטרנט לא יעבוד.');
+  sh.getRange('D1').setNote(
+    'האם להשמיע את הסאונד של הסרטון.\n' +
+    'ברירת המחדל "לא" — סרטון מושתק, כדי לא להפריע במסדרון.');
+  sh.getRange('E1').setNote('טווח תאריכים להצגה. ריק = תמיד.');
+  sh.getRange('G1').setNote('"לא" מסתיר את ההודעה בלי למחוק אותה.');
   sh.getRange('A1').setNote(NO_PII_NOTE);
 }
 

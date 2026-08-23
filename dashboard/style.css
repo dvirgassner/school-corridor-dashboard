@@ -327,5 +327,8 @@
   #videowrap { display: none; position: fixed; inset: 0; z-index: 9;
                background: #000; }
   #videowrap.on { display: block; }
-  #video { width: 100%; height: 100%; object-fit: contain;
-           background: #000; }
+  #video, #ytframe { width: 100%; height: 100%; background: #000;
+                     border: 0; display: none; }
+  #video { object-fit: contain; }
+  #videowrap.file #video { display: block; }
+  #videowrap.yt #ytframe { display: block; }

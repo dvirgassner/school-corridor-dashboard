@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.146';
+var SCRIPT_VERSION = '0.150';
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
@@ -58,6 +58,18 @@ var THEMES = ['כהה', 'בהירה', 'צבעונית'];
 
 /* the אירועים tab's fixed columns, before the per-grade checkboxes */
 var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
+
+/* tabs whose validation onEdit knows how to restore after a paste */
+var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות', 'הגדרות'];
+
+/** Re-apply one tab's dropdowns, checkboxes and limits. */
+function applyRules_(sh, name) {
+  if (name === 'מערכת')  return rulesSchedule_(sh);
+  if (name === 'מבחנים') return rulesExams_(sh);
+  if (name === 'אירועים') return rulesEvents_(sh);
+  if (name === 'הודעות') return rulesMessages_(sh);
+  if (name === 'הגדרות') return rulesSettings_(sh);
+}
 
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -114,29 +126,75 @@ function onEdit(e) {
   try {
     if (!e || !e.range) return;
     var sh = e.range.getSheet();
-    if (sh.getName() !== 'אירועים') return;
-    /* ignore header edits and multi-cell pastes */
-    if (e.range.getRow() < 2 || e.range.getNumRows() !== 1 ||
-        e.range.getNumColumns() !== 1) return;
-    if (e.range.getValue() !== true) return;   /* only a tick matters */
+    var name = sh.getName();
+    if (TAB_RULES.indexOf(name) < 0) return;
+    if (e.range.getLastRow() < 2) return;          /* header row is locked */
 
-    var cols = eventColumns_(sh);
-    if (!cols) return;
-    var col = e.range.getColumn(), row = e.range.getRow();
+    var pasted = e.range.getNumRows() > 1 || e.range.getNumColumns() > 1;
 
-    if (col === cols.allCol) {
-      /* כולם was ticked → clear the individual grades */
-      sh.getRange(row, cols.firstGrade, 1, cols.gradeCount)
-        .setValue(false);
-    } else if (col >= cols.firstGrade &&
-               col < cols.firstGrade + cols.gradeCount) {
-      /* a grade was ticked → clear כולם */
-      sh.getRange(row, cols.allCol).setValue(false);
-    }
+    /* A paste carries the SOURCE cell's formatting and data validation
+       with it, which silently strips checkboxes and dropdowns from the
+       destination. Rather than trying to forbid pasting, put the rules
+       back afterwards — self-healing beats prohibition, and the office
+       will paste no matter what the documentation says. */
+    if (pasted) applyRules_(sh, name);
+
+    if (name === 'אירועים') enforceExclusive_(sh, e.range);
   } catch (err) {
     /* a trigger must never leave the sheet unusable — log and move on */
     console.error('onEdit: ' + err.message);
   }
+}
+
+/** Adds a "לוח מסדרון" menu, so a human can repair the sheet unaided. */
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('לוח מסדרון')
+      .addItem('תיקון חוקי הגיליון (תפריטים ותיבות סימון)', 'repairRules')
+      .addItem('גרסת הסקריפט', 'checkVersion')
+      .addToUi();
+  } catch (e) {}
+}
+
+/** Re-apply every tab's validation. Safe to run at any time. */
+function repairRules() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var done = [];
+  TAB_RULES.forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    applyRules_(sh, name);
+    if (name === 'אירועים') enforceExclusive_(sh, null);
+    done.push(name);
+  });
+  SpreadsheetApp.getUi().alert('החוקים הוחזרו בגיליונות: ' + done.join(', '));
+}
+
+/**
+ * כולם and the individual grades are mutually exclusive. If both are set
+ * in a row — by a tick or by a paste — כולם wins and the grades clear.
+ * Pass a range to check only the rows it touches, or null for every row.
+ */
+function enforceExclusive_(sh, range) {
+  var cols = eventColumns_(sh);
+  if (!cols) return;
+  var from = range ? Math.max(2, range.getRow()) : 2;
+  var to = range ? range.getLastRow() : sh.getLastRow();
+  if (to < from) return;
+
+  var grades = sh.getRange(from, cols.firstGrade, to - from + 1, cols.gradeCount);
+  var all = sh.getRange(from, cols.allCol, to - from + 1);
+  var gv = grades.getValues(), av = all.getValues();
+  var touched = false;
+
+  for (var r = 0; r < gv.length; r++) {
+    if (av[r][0] !== true) continue;
+    for (var c = 0; c < gv[r].length; c++) {
+      if (gv[r][c] === true) { gv[r][c] = false; touched = true; }
+    }
+  }
+  if (touched) grades.setValues(gv);
 }
 
 /** Locate the grade columns and the כולם column from the header row. */
@@ -267,6 +325,110 @@ function dateRule_(sh, col) {
   sh.getRange(2, col, 500).setNumberFormat('yyyy-mm-dd');
 }
 
+/* ---------- validation rules, separated so they can be restored ----------
+   Everything here is NATIVE Google Sheets validation, which lives in the
+   document itself. It survives the Apps Script project being deleted; only
+   the automatic re-application after a paste needs the script. */
+
+function rulesSchedule_(sh) {
+  listRule_(sh, 1, DAYS, 'יום');
+  timeRule_(sh, 3);
+  timeRule_(sh, 4);
+  var last = Math.max(5, sh.getLastColumn());
+  for (var c = 5; c <= last; c++) {
+    lenRule_(sh, c, LIMITS.scheduleSubject, 'שם מקצוע');
+  }
+}
+
+function rulesMessages_(sh) {
+  /* length depends on the type: urgent text is displayed larger */
+  var textRule = SpreadsheetApp.newDataValidation()
+    .requireFormulaSatisfied(
+      '=LEN(INDIRECT("RC", FALSE))<=IF(INDIRECT("RC[1]", FALSE)="דחופה",' +
+      LIMITS.messageUrgent + ',' + LIMITS.messageNormal + ')')
+    .setAllowInvalid(false)
+    .setHelpText('הודעה רגילה: עד ' + LIMITS.messageNormal + ' תווים. ' +
+                 'הודעה דחופה: עד ' + LIMITS.messageUrgent + ' תווים.')
+    .build();
+  sh.getRange(2, 1, 500).setDataValidation(textRule);
+
+  listRule_(sh, 2, TYPES, 'סוג');
+  dateRule_(sh, 4);
+  dateRule_(sh, 5);
+  listRule_(sh, 6, YESNO, 'פעיל');
+}
+
+function rulesSettings_(sh) {
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(THEMES, true)
+    .setAllowInvalid(false)
+    .setHelpText('ערכת נושא: ' + THEMES.join(' / '))
+    .build();
+  sh.getRange(2, 2, Math.max(2, sh.getMaxRows() - 1)).setDataValidation(rule);
+}
+
+function rulesExams_(sh) {
+  dateRule_(sh, 1);
+  listRule_(sh, 2, GRADES, 'שכבה');
+  lenRule_(sh, 3, LIMITS.examSubject, 'מקצוע');
+  timeRule_(sh, 4);
+  timeRule_(sh, 5);
+  lenRule_(sh, 6, LIMITS.examRoom, 'מקום');
+}
+
+function rulesEvents_(sh) {
+  dateRule_(sh, 1);
+  lenRule_(sh, 2, LIMITS.eventTitle, 'כותרת');
+  timeRule_(sh, 3);
+  timeRule_(sh, 4);
+  lenRule_(sh, 5, LIMITS.eventLocation, 'מקום');
+
+  /* checkboxes down each grade column and under כולם */
+  var tickCount = GRADES.length + 1;
+  var firstGradeCol = EVENT_FIXED.length + 1;
+  var boxes = sh.getRange(2, firstGradeCol, 200, tickCount);
+  boxes.insertCheckboxes();
+  boxes.setHorizontalAlignment('center');
+
+  /* Native conditional formatting flags the contradictory state in red.
+     This is the part that keeps working with no script at all: if the
+     Apps Script project is ever deleted, a conflicting row still shows
+     as obviously wrong instead of quietly misleading anyone. */
+  var lastCol = firstGradeCol + tickCount - 1;
+  var a1All = colLetter_(lastCol);
+  var a1From = colLetter_(firstGradeCol);
+  var a1To = colLetter_(lastCol - 1);
+  var target = sh.getRange(2, 1, 200, lastCol);
+  var rule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND($' + a1All + '2=TRUE, COUNTIF($' + a1From +
+                          '2:$' + a1To + '2, TRUE)>0)')
+    .setBackground('#f4c7c3')
+    .setRanges([target])
+    .build();
+  var rules = sh.getConditionalFormatRules().filter(function (r) {
+    /* drop our previous copy so re-running does not stack rules */
+    return String(r.getBooleanCondition() &&
+      r.getBooleanCondition().getCriteriaValues()).indexOf('COUNTIF($' + a1From) < 0;
+  });
+  rules.push(rule);
+  sh.setConditionalFormatRules(rules);
+
+  if (!sh.getRange(2, firstGradeCol).getDataValidation()) {
+    throw new Error('לא נוצרו תיבות סימון בגיליון "אירועים".');
+  }
+}
+
+/** 1 -> A, 27 -> AA */
+function colLetter_(n) {
+  var s = '';
+  while (n > 0) {
+    var m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = (n - m - 1) / 26;
+  }
+  return s;
+}
+
 /* ---------- tab builders ---------- */
 
 function buildSchedule_(sh) {
@@ -300,12 +462,7 @@ function buildSchedule_(sh) {
   });
   sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
 
-  listRule_(sh, 1, DAYS, 'יום');
-  timeRule_(sh, 3);
-  timeRule_(sh, 4);
-  for (var c = 5; c <= headers.length; c++) {
-    lenRule_(sh, c, LIMITS.scheduleSubject, 'שם מקצוע');
-  }
+  rulesSchedule_(sh);
   sh.setColumnWidth(1, 60);
   sh.setColumnWidth(2, 70);
   sh.setColumnWidths(3, 2, 80);
@@ -326,12 +483,7 @@ function buildExams_(sh) {
     [today, GRADES[1], 'ביולוגיה', '12:35', '13:20', 'מעבדה']
   ]);
 
-  dateRule_(sh, 1);
-  listRule_(sh, 2, GRADES, 'שכבה');
-  lenRule_(sh, 3, LIMITS.examSubject, 'מקצוע');
-  timeRule_(sh, 4);
-  timeRule_(sh, 5);
-  lenRule_(sh, 6, LIMITS.examRoom, 'מקום');
+  rulesExams_(sh);
   sh.setColumnWidths(1, headers.length, 110);
   sh.getRange('C1').setNote(
     'להזין את שם המקצוע בלבד — הלוח מוסיף מעצמו "מבחן ב".');
@@ -364,18 +516,9 @@ function buildEvents_(sh) {
   third.push(true);                  /* the כולם box      */
   sh.getRange(2, 1, 3, headers.length).setValues([first, second, third]);
 
-  dateRule_(sh, 1);
-  lenRule_(sh, 2, LIMITS.eventTitle, 'כותרת');
-  timeRule_(sh, 3);
-  timeRule_(sh, 4);
-  lenRule_(sh, 5, LIMITS.eventLocation, 'מקום');
+  rulesEvents_(sh);
 
-  /* real checkboxes down each grade column, and under כולם */
   var firstGradeCol = FIXED.length + 1;
-  var boxes = sh.getRange(2, firstGradeCol, 200, TICKS.length);
-  boxes.insertCheckboxes();
-  boxes.setHorizontalAlignment('center');
-
   sh.setColumnWidths(1, FIXED.length, 130);
   sh.setColumnWidths(firstGradeCol, TICKS.length, 60);
   sh.getRange(1, firstGradeCol, 1, GRADES.length).setNote(
@@ -402,22 +545,7 @@ function buildMessages_(sh) {
     ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '', '', 'כן']
   ]);
 
-  /* length depends on the type: urgent text is displayed larger */
-  var textRule = SpreadsheetApp.newDataValidation()
-    .requireFormulaSatisfied(
-      '=LEN(INDIRECT("RC", FALSE))<=IF(INDIRECT("RC[1]", FALSE)="דחופה",' +
-      LIMITS.messageUrgent + ',' + LIMITS.messageNormal + ')')
-    .setAllowInvalid(false)
-    .setHelpText('הודעה רגילה: עד ' + LIMITS.messageNormal + ' תווים. ' +
-                 'הודעה דחופה: עד ' + LIMITS.messageUrgent + ' תווים.')
-    .build();
-  sh.getRange(2, 1, 500).setDataValidation(textRule);
-
-  listRule_(sh, 2, TYPES, 'סוג');
-  dateRule_(sh, 4);
-  dateRule_(sh, 5);
-  listRule_(sh, 6, YESNO, 'פעיל');
-
+  rulesMessages_(sh);
   sh.setColumnWidth(1, 420);
   sh.setColumnWidth(2, 90);
   sh.setColumnWidth(3, 260);

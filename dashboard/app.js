@@ -457,13 +457,38 @@ function readVideoAt() {
   return v || null;
 }
 
+let videoGuard = null;            /* safety timer, see playYouTube */
+
 function endVideo() {
   const wrap = $("videowrap"), v = $("video");
-  wrap.classList.remove("on");
+  wrap.classList.remove("on", "file", "yt");
   v.pause();
   v.removeAttribute("src");
   v.load();                       /* release the decoder on the Pi */
+  $("ytframe").src = "about:blank";   /* stop YouTube playing offscreen */
+  if (videoGuard) { clearTimeout(videoGuard); videoGuard = null; }
   videoPlaying = false;
+}
+
+/* YouTube plays through its official embed rather than being downloaded.
+   The embed gives us no "finished" event without loading YouTube's API,
+   so a guard timer closes the overlay; the board is showing schedules,
+   not running a cinema, and a stuck overlay is the only real risk. */
+function playYouTube(clip) {
+  const wrap = $("videowrap"), f = $("ytframe");
+  const p = new URLSearchParams({
+    autoplay: "1",
+    mute: clip.sound ? "0" : "1",   /* muted autoplay always allowed */
+    controls: "0",
+    rel: "0",
+    modestbranding: "1",
+    playsinline: "1",
+    fs: "0",
+    iv_load_policy: "3"             /* no annotations */
+  });
+  f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(clip.id)}?${p}`;
+  wrap.classList.add("on", "yt");
+  videoGuard = setTimeout(endVideo, CFG.youtubeMaxMinutes * 60000);
 }
 
 function maybePlayVideo() {
@@ -474,15 +499,19 @@ function maybePlayVideo() {
 
   const clip = clips[videoIndex % clips.length];
   videoIndex++;
-  const wrap = $("videowrap"), v = $("video");
-  v.muted = !clip.sound;          /* muted by default; #sound opts in */
-  v.src = clip.url;
   videoPlaying = true;
   localStorage.setItem(VIDEO_AT_KEY, String(Date.now()));
-  wrap.classList.add("on");
+
+  if (clip.kind === "youtube") { playYouTube(clip); return; }
+
+  const wrap = $("videowrap"), v = $("video");
+  v.muted = !clip.sound;          /* muted by default; #sound opts in */
+  v.src = clip.src;
+  wrap.classList.add("on", "file");
   v.onended = endVideo;
   v.onerror = () => {
-    console.error("video failed:", clip.url);
+    console.error("video failed:", clip.src, clip.drive
+      ? "(Drive link — is the file shared with 'anyone with the link'?)" : "");
     /* a broken link must not retry every minute forever: hold off an
        hour by back-dating the timestamp */
     localStorage.setItem(VIDEO_AT_KEY,

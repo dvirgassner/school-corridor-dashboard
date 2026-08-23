@@ -28,11 +28,15 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.145",
+  version: "0.150",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   staleMinutes: 10,          /* stamp turns amber after this long     */
   videoIntervalMinutes: 10,  /* minimum gap between video plays       */
+  /* A YouTube embed gives no "finished" signal without loading YouTube's
+     own API, so this caps how long the overlay can cover the board.
+     Set it a little above your longest clip. */
+  youtubeMaxMinutes: 6,
   schoolName: "תיכון השיטה",
 
   /* Wall-clock timezone for the board. Daylight saving is applied

@@ -110,19 +110,47 @@ the Pi itself.
 board finds its data by **column header name**, so a renamed header
 silently empties a panel with no error anywhere.
 
-- **Header rows in every tab are protected**, as is the setting-name
-  column in `הגדרות`. Only the account that ran the script can edit them.
-  Everything else stays fully editable by whoever the sheet is shared
-  with.
-- **An `onEdit` trigger keeps `כולם` and the individual grade boxes
-  mutually exclusive** in the `אירועים` tab: ticking a grade clears
-  `כולם`, and ticking `כולם` clears every grade. It is a *simple*
-  trigger, so there is nothing to install and it applies to every editor
-  — but it only works while the script file remains in the sheet's Apps
-  Script project. Deleting the project disables it.
+### What survives without the script, and what does not
 
-Note the trigger fires on manual edits only. A paste over several cells
-is left alone, so a bulk import is never silently rewritten.
+This distinction matters, because the script can be deleted by accident.
+
+**Stored in the spreadsheet itself — permanent, script or no script:**
+
+- **Protected ranges.** Header rows in every tab, and the setting-name
+  column in `הגדרות`, are editable only by the account that ran the
+  script. Protection is a native Sheets feature written into the
+  document; deleting the Apps Script project does not weaken it.
+- **Data validation.** Dropdowns, checkboxes, date/time formats and the
+  length limits are all native rules.
+- **Conditional formatting.** A row where `כולם` *and* an individual
+  grade are both ticked turns red, so the contradiction is visible even
+  with no code running anywhere.
+
+**Needs the script present:**
+
+- **Automatic enforcement** of the `כולם` / per-grade exclusivity: tick a
+  grade and `כולם` clears itself. Without the script the red highlight
+  still appears, but nothing corrects it — and the board resolves the
+  ambiguity deterministically anyway (`כולם` wins).
+- **Repair after a paste** (below).
+
+### Pasting
+
+A paste in Google Sheets carries the *source* cell's formatting and
+validation with it, which strips checkboxes and dropdowns from wherever
+it lands. Sheets offers no way to forbid that. So instead of pretending
+prohibition works, the script repairs it: any multi-cell edit in a known
+tab triggers re-application of that tab's rules, and the `כולם`
+exclusivity is re-enforced for the pasted rows.
+
+Two further safeguards: a paste over a **protected** header row is
+refused outright by Sheets, and the sheet gets a **לוח מסדרון** menu with
+**תיקון חוקי הגיליון**, so anyone can restore every dropdown and checkbox
+without waiting for help. Tell the office that menu item exists — it is
+the answer to "the tick boxes disappeared".
+
+For a clean bulk import, **Ctrl+Shift+V** (paste values only) leaves the
+destination's validation intact.
 
 ## 4. Give the principal access
 

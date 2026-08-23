@@ -313,16 +313,76 @@ test("buildMessages: splits by type, honors Active and range", () => {
   assert.deepEqual(m.normal, ["רגילה כאן"]);
   assert.deepEqual(m.urgent, ["דחוף כאן"]);
 });
-test("buildMessages: video rows carry url and sound flag", () => {
+test("buildMessages: video rows carry src and sound flag", () => {
   const rows = [
     { Text: "", Type: "וידאו", VideoURL: "https://x/y.mp4#sound", From: "", Until: "", Active: "כן" },
     { Text: "", Type: "וידאו", VideoURL: "https://x/z.mp4", From: "", Until: "", Active: "כן" },
   ];
   const m = L.buildMessages(rows, TODAY);
   assert.deepEqual(m.videos, [
-    { url: "https://x/y.mp4", sound: true },
-    { url: "https://x/z.mp4", sound: false },
+    { kind: "file", src: "https://x/y.mp4", sound: true },
+    { kind: "file", src: "https://x/z.mp4", sound: false },
   ]);
+});
+
+/* ---------- video link normalisation ---------- */
+test("normalizeVideo: plain mp4 link passes through", () => {
+  assert.deepEqual(L.normalizeVideo("https://x/a.mp4"),
+    { kind: "file", src: "https://x/a.mp4", sound: false });
+});
+test("normalizeVideo: #sound opts into audio and is stripped", () => {
+  const v = L.normalizeVideo("https://x/a.mp4#sound");
+  assert.equal(v.sound, true);
+  assert.equal(v.src, "https://x/a.mp4");
+});
+test("normalizeVideo: YouTube watch link", () => {
+  const v = L.normalizeVideo("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  assert.equal(v.kind, "youtube");
+  assert.equal(v.id, "dQw4w9WgXcQ");
+});
+test("normalizeVideo: YouTube watch link with extra params", () => {
+  const v = L.normalizeVideo("https://www.youtube.com/watch?list=PL123&v=abc123XYZ&t=30s");
+  assert.equal(v.id, "abc123XYZ");
+});
+test("normalizeVideo: youtu.be short link", () => {
+  assert.equal(L.normalizeVideo("https://youtu.be/abc123XYZ?t=5").id, "abc123XYZ");
+});
+test("normalizeVideo: YouTube shorts and embed links", () => {
+  assert.equal(L.normalizeVideo("https://youtube.com/shorts/abc123XYZ").id, "abc123XYZ");
+  assert.equal(L.normalizeVideo("https://www.youtube.com/embed/abc123XYZ").id, "abc123XYZ");
+});
+test("normalizeVideo: YouTube keeps the sound flag", () => {
+  assert.equal(L.normalizeVideo("https://youtu.be/abc123XYZ#sound").sound, true);
+});
+test("normalizeVideo: Drive share link becomes a direct-download link", () => {
+  const v = L.normalizeVideo(
+    "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=sharing");
+  assert.equal(v.kind, "file");
+  assert.equal(v.drive, true);
+  assert.equal(v.src,
+    "https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOp");
+});
+test("normalizeVideo: older Drive open?id= form", () => {
+  const v = L.normalizeVideo("https://drive.google.com/open?id=1AbCdEfGhIjKlMnOp");
+  assert.equal(v.src,
+    "https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOp");
+});
+test("normalizeVideo: an already-direct Drive link is left usable", () => {
+  const v = L.normalizeVideo(
+    "https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOp");
+  assert.equal(v.src,
+    "https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOp");
+});
+test("normalizeVideo: rubbish and non-URLs are rejected", () => {
+  assert.equal(L.normalizeVideo(""), null);
+  assert.equal(L.normalizeVideo("   "), null);
+  assert.equal(L.normalizeVideo("שלום"), null);
+  assert.equal(L.normalizeVideo("drive.google.com/file/d/x"), null); /* no scheme */
+});
+test("normalizeVideo: a Drive viewer page is never handed to <video>", () => {
+  /* the whole point: a share link points at a page, not a media file */
+  const v = L.normalizeVideo("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view");
+  assert.ok(!v.src.includes("/view"));
 });
 test("buildMessages: skips unknown type, empty text, empty video url", () => {
   const rows = [
@@ -371,7 +431,8 @@ test("buildMessages: reads Hebrew headers", () => {
   const m = L.buildMessages(rows, TODAY);
   assert.deepEqual(m.normal, ["שלום"]);
   assert.deepEqual(m.urgent, ["דחוף"]);
-  assert.deepEqual(m.videos, [{ url: "https://x/y.mp4", sound: true }]);
+  assert.deepEqual(m.videos,
+    [{ kind: "file", src: "https://x/y.mp4", sound: true }]);
 });
 
 /* ---------- parseSheetFragment ----------
@@ -606,7 +667,8 @@ test("video URL with query string and #sound is parsed correctly", () => {
     "קישור": "https://x/y.mp4?token=a&b=c#sound",
     "מתאריך": "", "עד תאריך": "", "פעיל": "כן" }];
   const m = L.buildMessages(rows, TODAY);
-  assert.deepEqual(m.videos, [{ url: "https://x/y.mp4?token=a&b=c", sound: true }]);
+  assert.deepEqual(m.videos,
+    [{ kind: "file", src: "https://x/y.mp4?token=a&b=c", sound: true }]);
 });
 
 /* ---------- summary ---------- */

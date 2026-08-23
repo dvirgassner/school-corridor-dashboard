@@ -296,6 +296,44 @@
     return out;
   }
 
+  /* ---------- video links ----------
+     The office will paste whatever link they have, so accept the three
+     shapes that actually turn up and normalise them:
+
+       YouTube  → played through YouTube's official embed. No download,
+                  no yt-dlp: downloading breaks YouTube's terms and would
+                  put a self-updating scraper on a school device, which
+                  is the opposite of this project's maintenance story.
+       Drive    → rewritten to its direct-download form; a normal Drive
+                  share link points at a viewer PAGE, which a <video>
+                  element cannot play.
+       anything → treated as a direct media file URL.
+
+     Returns null for an empty/unusable value. */
+  function normalizeVideo(raw) {
+    var url = clean(raw);
+    if (!url) return null;
+    var sound = /#sound$/i.test(url);
+    url = url.replace(/#sound$/i, "");
+
+    var yt = url.match(
+      /(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+    if (yt) return { kind: "youtube", id: yt[1], sound: sound };
+
+    var dr = url.match(
+      /drive\.google\.com\/(?:file\/d\/([A-Za-z0-9_-]{10,})|open\?id=([A-Za-z0-9_-]{10,})|uc\?(?:[^#]*&)?id=([A-Za-z0-9_-]{10,}))/);
+    if (dr) {
+      var id = dr[1] || dr[2] || dr[3];
+      return {
+        kind: "file", drive: true, sound: sound,
+        src: "https://drive.google.com/uc?export=download&id=" + id
+      };
+    }
+
+    if (!/^https?:\/\//i.test(url)) return null;
+    return { kind: "file", src: url, sound: sound };
+  }
+
   /* Messages: active, in-range rows split into the three channels. */
   function buildMessages(rows, todayKey) {
     var out = { normal: [], urgent: [], videos: [] };
@@ -305,10 +343,8 @@
       var type = normalizeType(pick(r, "type"));
       if (!type) return;
       if (type === "video") {
-        var url = pick(r, "videoUrl");
-        if (!url) return;
-        var sound = /#sound$/i.test(url);
-        out.videos.push({ url: url.replace(/#sound$/i, ""), sound: sound });
+        var clip = normalizeVideo(pick(r, "videoUrl"));
+        if (clip) out.videos.push(clip);
       } else {
         var text = pick(r, "text");
         if (!text) return;
@@ -492,6 +528,7 @@
     buildSettings: buildSettings,
     parseSheetFragment: parseSheetFragment,
     clean: clean,
+    normalizeVideo: normalizeVideo,
     shouldPlayVideo: shouldPlayVideo,
     buildSchedule: buildSchedule,
     buildAgenda: buildAgenda,

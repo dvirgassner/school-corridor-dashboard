@@ -50,8 +50,12 @@
   </div>
 </div>
 
-<!-- full-screen video overlay; hidden unless a clip is playing -->
-<div id="videowrap"><video id="video" playsinline></video></div>
+<!-- full-screen video overlay; hidden unless a clip is playing.
+     Direct/Drive files use <video>; YouTube uses its official embed. -->
+<div id="videowrap">
+  <video id="video" playsinline></video>
+  <iframe id="ytframe" allow="autoplay; encrypted-media" frameborder="0"></iframe>
+</div>
 
 <!-- load order matters: config → sample data → CSV parser → pure
      logic → app. -->

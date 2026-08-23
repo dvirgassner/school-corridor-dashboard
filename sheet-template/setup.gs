@@ -71,8 +71,19 @@ function sheet_(ss, name) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   sh.clear();
+  sh.clearDataValidations();
   sh.clearConditionalFormatRules();
   try { sh.setRightToLeft(true); } catch (e) {}
+  /* A sheet converted from an uploaded CSV arrives sized to its data
+     (sometimes 2x2). Any later setDataValidation() over a taller range
+     would throw "out of bounds" and abort the whole script, so make
+     room up front. */
+  if (sh.getMaxRows() < 100) {
+    sh.insertRowsAfter(sh.getMaxRows(), 100 - sh.getMaxRows());
+  }
+  if (sh.getMaxColumns() < 12) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), 12 - sh.getMaxColumns());
+  }
   return sh;
 }
 
@@ -281,6 +292,13 @@ function buildSettings_(sh) {
     .setHelpText('ערכת נושא: ' + THEMES.join(' / '))
     .build();
   sh.getRange(2, 2, 50).setDataValidation(themeRule);
+
+  /* verify rather than assume: a missing dropdown here is invisible
+     until someone tries to change the theme on a live board */
+  var check = sh.getRange('B2').getDataValidation();
+  if (!check) {
+    throw new Error('התפריט הנפתח של ערכת הנושא לא נוצר — יש להריץ fix-settings.gs');
+  }
 
   sh.setColumnWidth(1, 180);
   sh.setColumnWidth(2, 160);

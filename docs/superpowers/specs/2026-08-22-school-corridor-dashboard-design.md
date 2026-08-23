@@ -147,6 +147,15 @@ the dashboard additionally ellipsizes as a fallback.
 - `מתאריך`/`עד תאריך`: date range shown (inclusive); empty = always.
 - `פעיל`: `כן`/`לא` — lets the principal stage or retire items without
   deleting rows.
+
+### Tab `הגדרות` (Settings)
+
+| הגדרה | ערך |
+|------|-----|
+| ערכת נושא | כהה / בהירה / צבעונית |
+
+A key/value tab so presentation can change without code. Optional: if the
+tab (or its gid) is absent, the board uses the dark theme.
 - Video rule (documented in the admin guide): MP4, H.264, ≤1080p30, ≤50 MB,
   hosted at a direct-download URL (Dropbox "raw" link or similar). Clips
   play once per N minutes (default 10) while active, between which the
@@ -172,17 +181,31 @@ PapaParse for CSV parsing — the only dependency, committed to the repo).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  🕐 clock · Gregorian + Hebrew date       school name: תיכון השיטה│
+│  🕐 clock · dates │ urgent strip (or school name: תיכון השיטה)│
 ├──────────┬──────────┬──────────┬─────────────────────────────┤
-│ כיתה ז׳  │ כיתה ח׳  │ כיתה ט׳  │  אירועים ומבחנים היום       │
-│ periods  │ periods  │ periods  │  (exams + events merged,    │
-├──────────┼──────────┼──────────┤   sorted by start time)     │
-│ כיתה י׳  │ כיתה י"א │ כיתה י"ב │  subject/title · time · room│
-│ periods  │ periods  │ periods  │  grade chips per event      │
+│ כיתה ז׳  │ כיתה ח׳  │ כיתה ט׳  │  🥧 day of the day (if any) │
+│ periods  │ periods  │ periods  ├─────────────────────────────┤
+├──────────┼──────────┼──────────┤  אירועים ומבחנים היום       │
+│ כיתה י׳  │ כיתה י"א │ כיתה י"ב │  chips · name · time · place│
+│ periods  │ periods  │ periods  │  (merged, sorted, scrolls)  │
 ├──────────┴──────────┴──────────┴─────────────────────────────┤
-│  rotating messages strip · "עודכן <date> · <time>" stamp     │
+│  scrolling messages ticker · "עודכן <date> · <time>" stamp   │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+- **Day-of-the-day strip** (top of the left column): today's Israeli
+  official day or Jewish holiday, with an emoji icon; if there is none,
+  an age-appropriate international day; if neither, the strip is hidden
+  and the agenda pane spans the whole column. Israeli entries are keyed
+  by *Hebrew* calendar date so they need no yearly maintenance. The list
+  lives in `dashboard/days.js` (code, not the sheet).
+- **Themes**: `dark` (default), `light`, `colorful`, chosen by the
+  principal in the `הגדרות` tab and applied as `data-theme` on `<html>`.
+  Same structure, sizes and fonts in all three — colors only.
+- **Agenda entries** lead with the grade chip(s), then the name, then
+  time and place — identical for exams and events. When entries overflow
+  the pane, the list scrolls gently to the bottom and back, so nothing
+  is hidden.
 
 - Grade cards in a 2×3 grid (currently ז׳–י"ב); the *current period* row
   is highlighted based on the clock.

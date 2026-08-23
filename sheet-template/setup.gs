@@ -40,6 +40,7 @@ var NO_PII_NOTE =
 var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 var TYPES = ['רגילה', 'דחופה', 'וידאו'];
 var YESNO = ['כן', 'לא'];
+var THEMES = ['כהה', 'בהירה', 'צבעונית'];
 
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -50,15 +51,16 @@ function setup() {
   buildExams_(sheet_(ss, 'מבחנים'));
   buildEvents_(sheet_(ss, 'אירועים'));
   buildMessages_(sheet_(ss, 'הודעות'));
+  buildSettings_(sheet_(ss, 'הגדרות'));
 
   /* drop the default empty sheet if it is still around */
   var extra = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
-  if (extra && ss.getSheets().length > 4) ss.deleteSheet(extra);
+  if (extra && ss.getSheets().length > 5) ss.deleteSheet(extra);
 
   SpreadsheetApp.getUi().alert(
     'הגיליון נבנה בהצלחה.\n\n' +
     'השלב הבא: קובץ → שיתוף → פרסום באינטרנט,\n' +
-    'ולפרסם כל אחד מארבעת הגיליונות בנפרד כ-CSV.\n' +
+    'ולפרסם כל אחד מחמשת הגיליונות בנפרד כ-CSV.\n' +
     'ראו את ההוראות המלאות בקובץ README.\n\n' +
     '─────────────────────────\n' + NO_PII_NOTE);
 }
@@ -232,4 +234,36 @@ function buildMessages_(sh) {
   sh.getRange('D1').setNote('טווח תאריכים להצגה. ריק = תמיד.');
   sh.getRange('F1').setNote('"לא" מסתיר את ההודעה בלי למחוק אותה.');
   sh.getRange('A1').setNote(NO_PII_NOTE);
+}
+
+/* Presentation settings the principal can change without touching code.
+   A plain key/value tab, so more settings can be added later without
+   changing its shape. */
+function buildSettings_(sh) {
+  header_(sh, ['הגדרה', 'ערך']);
+  sh.getRange(2, 1, 1, 2).setValues([['ערכת נושא', 'כהה']]);
+
+  /* the key column is fixed — protect it from typos */
+  var keyRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['ערכת נושא'], true)
+    .setAllowInvalid(false)
+    .setHelpText('שם ההגדרה')
+    .build();
+  sh.getRange(2, 1, 50).setDataValidation(keyRule);
+
+  var themeRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(THEMES, true)
+    .setAllowInvalid(false)
+    .setHelpText('ערכת נושא: ' + THEMES.join(' / '))
+    .build();
+  sh.getRange(2, 2, 50).setDataValidation(themeRule);
+
+  sh.setColumnWidth(1, 180);
+  sh.setColumnWidth(2, 160);
+  sh.getRange('B1').setNote(
+    'ערכת נושא של הלוח — בחירה מהתפריט והלוח מתחלף בתוך דקה:\n' +
+    '  כהה — רקע שחור (ברירת המחדל; הידידותית ביותר למסך OLED)\n' +
+    '  בהירה — רקע לבן, למסדרון מואר\n' +
+    '  צבעונית — רקע כחול-כהה עם צבע לכל שכבה\n\n' +
+    'המבנה, הגדלים והגופנים זהים בכל הערכות — רק הצבעים מתחלפים.');
 }

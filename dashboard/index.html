@@ -25,9 +25,14 @@
 
     <main id="grid">
       <!-- grade cards injected here -->
+      <!-- left column: day-of-the-day strip above the agenda pane -->
+      <section class="card" id="dayofday">
+        <div class="dodicon"></div>
+        <div class="dodtext"></div>
+      </section>
       <section class="card" id="exams">
         <h2>אירועים ומבחנים היום</h2>
-        <div id="examlist"></div>
+        <div id="examlist"><div class="agendawrap"></div></div>
       </section>
     </main>
 
@@ -44,6 +49,7 @@
 <!-- load order matters: config → sample data → CSV parser → pure
      logic → app. -->
 <script src="config.js"></script>
+<script src="days.js"></script>
 <script src="sample-data.js"></script>
 <script src="vendor/papaparse.min.js"></script>
 <script src="logic.js"></script>

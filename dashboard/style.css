@@ -8,7 +8,18 @@
      full left column; 7 grades → 7th card takes the top-left cell
      and the exams panel moves below it.
      ================================================================ */
-  :root {
+  /* ================================================================
+     THEMES — chosen by the principal in the sheet's הגדרות tab, applied
+     as data-theme on <html>. All three share the same structure, sizes
+     and fonts; only colors differ.
+
+     Accent colors come from a validated colorblind-safe categorical
+     palette: the dark column for the dark themes, the light column for
+     the light theme, so contrast holds in each.
+     ================================================================ */
+
+  /* dark (default) — the OLED-friendliest, and the original design */
+  :root, :root[data-theme="dark"] {
     --page:        #0d0d0d;
     --surface:     #1a1a19;
     --ink:         #e8e6df;   /* softened primary — kinder to OLED than #fff */
@@ -17,6 +28,8 @@
     --muted:       #898781;
     --hairline:    #2c2c2a;
     --border:      rgba(255,255,255,0.10);
+    --chipink:     var(--page);
+    --nowmix:      16%;
     /* grade accents = categorical dark slots 1–7, documented order */
     --g1: #3987e5;  /* blue    */
     --g2: #d95926;  /* orange  */
@@ -28,6 +41,66 @@
     --critical: #d03b3b;
     --warning:  #fab219;
   }
+
+  /* light — for a bright corridor. Note: a mostly-white screen is the
+     hardest case for an OLED panel, so prefer dark if the TV runs all
+     day. */
+  :root[data-theme="light"] {
+    --page:        #f2f1ec;
+    --surface:     #fcfcfb;
+    --ink:         #1a1a19;
+    --ink-strong:  #0b0b0b;
+    --ink-2:       #52514e;
+    --muted:       #6e6d68;
+    --hairline:    #e1e0d9;
+    --border:      rgba(11,11,11,0.12);
+    --chipink:     #ffffff;
+    --nowmix:      14%;
+    --g1: #2a78d6;
+    --g2: #c24a19;
+    --g3: #12805a;
+    --g4: #8f6000;
+    --g5: #b8386a;
+    --g6: #006300;
+    --g7: #4a3aa7;
+    --critical: #c0392b;
+    --warning:  #a06800;
+  }
+
+  /* colorful — deep indigo ground with vivid accents. Kept dark on
+     purpose: it preserves both the accent contrast ratios and the
+     panel-protection benefit. */
+  :root[data-theme="colorful"] {
+    --page:        #0f1226;
+    --surface:     #1b1f3a;
+    --ink:         #e9e8f5;
+    --ink-strong:  #ffffff;
+    --ink-2:       #b9b7d8;
+    --muted:       #8a88ad;
+    --hairline:    #2e3358;
+    --border:      rgba(255,255,255,0.14);
+    --chipink:     #0f1226;
+    --nowmix:      24%;
+    --g1: #4d9bff;
+    --g2: #ff7a45;
+    --g3: #1fc48f;
+    --g4: #ffc233;
+    --g5: #ff6fa5;
+    --g6: #45d17a;
+    --g7: #a99bff;
+    --critical: #ff5c5c;
+    --warning:  #ffc233;
+  }
+  /* what makes "colorful" actually colorful: each grade card carries a
+     wash of its own accent, instead of every card being the same grey */
+  :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) {
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) h2 {
+    border-bottom-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; background: var(--page); overflow: hidden; }
   body {
@@ -130,7 +203,7 @@
   .period .subj { color: var(--ink); font-weight: 600;
                   white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
-  .period.now  { background: color-mix(in srgb, var(--accent) 16%, transparent);
+  .period.now  { background: color-mix(in srgb, var(--accent) var(--nowmix), transparent);
                  box-shadow: inset 3px 0 0 var(--accent); }
   .period.now .subj { color: var(--ink-strong); }
   .period.done { display: none; }   /* passed classes free up space */
@@ -146,31 +219,52 @@
   /* the 7th grade card, when present, sits top-left (col 4, row 1) */
   .card.seventh { grid-column: 4; grid-row: 1; }
 
-  /* -- exams panel: full left column, or bottom-left in 7-grade mode */
-  #exams { grid-column: 4; grid-row: 1 / span 2; }
+  /* -- left column: day-of-the-day strip above the agenda pane ------ */
+  #dayofday { grid-column: 4; grid-row: 1; height: 132px; flex: none;
+              flex-direction: row; align-items: center; gap: 16px;
+              padding: 12px 16px; }
+  #dayofday.off { display: none; }
+  .dodicon { font-size: 56px; line-height: 1; flex: none; }
+  .dodtext { font-size: 25px; font-weight: 700; color: var(--ink-strong);
+             line-height: 1.25; unicode-bidi: isolate;
+             display: -webkit-box; -webkit-line-clamp: 3;
+             -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* -- agenda panel: below the day strip, or bottom-left with 7 grades */
+  #exams { grid-column: 4; grid-row: 2; }
+  main.noday #exams { grid-row: 1 / span 2; }   /* no day strip today */
   main.grades7 #exams { grid-row: 2; }
+  main.grades7 #dayofday { display: none; }  /* no room for both */
   #exams h2 { font-size: 28px; }
-  #examlist { flex: 1; display: flex; flex-direction: column; gap: 14px;
-              padding-top: 10px; overflow: hidden; }
+  #examlist { flex: 1; min-height: 0; overflow: hidden; padding-top: 10px; }
+  /* the wrapper scrolls when the entries do not fit (see JS) */
+  .agendawrap { display: flex; flex-direction: column; gap: 14px; }
+  @keyframes agendascroll {
+    0%, 10%   { transform: translateY(0); }
+    45%, 58%  { transform: translateY(var(--shift, 0)); }
+    93%, 100% { transform: translateY(0); }
+  }
+  .agendawrap.scrolling {
+    animation: agendascroll var(--adur, 30s) ease-in-out infinite;
+  }
   .exam { border: 1px solid var(--hairline); border-radius: 10px;
-          padding: 12px 16px; }
-  .exam .row1 { display: flex; align-items: baseline; gap: 10px;
+          padding: 12px 16px; flex: none; }
+  .exam .row1 { display: flex; align-items: baseline; gap: 8px;
                 font-size: 26px; font-weight: 700; color: var(--ink-strong);
                 min-width: 0; }
-  .exam .row1 .ttl { white-space: nowrap; overflow: hidden;
-                     text-overflow: ellipsis; }
-  .exam .grade { font-size: 21px; font-weight: 700; color: var(--page);
-                 background: var(--gcolor); border-radius: 7px;
-                 padding: 1px 10px; white-space: nowrap; flex: none; }
+  /* the leading chips eat width, so let the name wrap to a second line
+     rather than ellipsizing it away */
+  .exam .row1 .ttl { display: -webkit-box; -webkit-line-clamp: 2;
+                     -webkit-box-orient: vertical; overflow: hidden;
+                     line-height: 1.2; }
+  /* grade chip(s) lead the row, for exams and events alike */
+  .exam .gchip { font-size: 20px; font-weight: 700; color: var(--chipink);
+                 background: var(--gcolor); border-radius: 6px;
+                 padding: 1px 9px; white-space: nowrap; flex: none; }
+  .exam .gchip.all { background: var(--muted); }
   .exam .row2 { display: flex; gap: 18px; font-size: 22px;
                 color: var(--ink-2); margin-top: 4px;
                 font-variant-numeric: tabular-nums; white-space: nowrap; }
-  /* events: compact per-grade chips on their own row */
-  .exam .chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: nowrap; }
-  .exam .chips .gchip { font-size: 19px; font-weight: 700; color: var(--page);
-                        background: var(--gcolor); border-radius: 6px;
-                        padding: 1px 9px; }
-  .exam .chips .gchip.all { background: var(--muted); }
   #noexams { color: var(--muted); font-size: 26px; text-align: center;
              margin-top: 40px; }
 
@@ -203,7 +297,7 @@
      so mixed Hebrew/English/digit content can never reorder the UI
      around it (a message ending in an English word or a "12:30" would
      otherwise drag punctuation to the wrong end of the line). */
-  .period .subj, .exam .ttl, .exam .grade, .exam .gchip,
+  .period .subj, .exam .ttl, .exam .gchip,
   .exam .row2 span, #urgenttext, .titem > span:last-child, .card h2 {
     unicode-bidi: isolate;
   }

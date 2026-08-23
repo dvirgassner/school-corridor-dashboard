@@ -14,23 +14,23 @@ the board, and Google handles the accounts.
 5. Google will ask for authorization the first time ("This app isn't
    verified" → Advanced → Go to project). That is expected: the script
    is yours and only touches this one spreadsheet.
-6. When it finishes you get a confirmation dialog and four tabs:
-   `מערכת`, `מבחנים`, `אירועים`, `הודעות` — with headers, sample rows,
-   and validation already in place.
+6. When it finishes you get a confirmation dialog and five tabs:
+   `מערכת`, `מבחנים`, `אירועים`, `הודעות`, `הגדרות` — with headers,
+   sample rows, and validation already in place.
 
 Re-running `setup` rebuilds the tabs from scratch — it **erases
 existing content**, so only run it again on a fresh sheet.
 
-## 2. Publish the four tabs as CSV
+## 2. Publish the five tabs as CSV
 
-The board reads the sheet as four plain CSV feeds.
+The board reads the sheet as five plain CSV feeds.
 
 1. **File → Share → Publish to web**.
 2. In the dialog, choose the **Entire document → no**: pick a single
    tab from the left dropdown, and **Comma-separated values (.csv)**
    from the right one.
 3. Press **Publish** and copy the link.
-4. Repeat for all four tabs. You end up with four URLs that look like
+4. Repeat for all five tabs. You end up with five URLs that look like
    `https://docs.google.com/spreadsheets/d/e/2PACX-…/pub?gid=0&single=true&output=csv`.
 
 ## 3. Point the board at the sheet — without putting the URL in the repo
@@ -49,12 +49,14 @@ anyone read the school's sheet — they are given to the board at runtime
 in the **URL fragment**, which lives only on the Pi:
 
 ```
-https://<you>.github.io/<repo>/dashboard/#t=<TOKEN>&g=<gid-מערכת>,<gid-מבחנים>,<gid-אירועים>,<gid-הודעות>
+https://<you>.github.io/<repo>/dashboard/#t=<TOKEN>&g=<gid-מערכת>,<gid-מבחנים>,<gid-אירועים>,<gid-הודעות>,<gid-הגדרות>
 ```
 
-**The gid order matters:** מערכת, מבחנים, אירועים, הודעות.
+**The gid order matters:** מערכת, מבחנים, אירועים, הודעות, הגדרות.
+The fifth (הגדרות) is optional — leave it out and the board uses the
+default dark theme.
 
-Collect the token and the four gids from the URLs you copied in step 2,
+Collect the token and the gids from the URLs you copied in step 2,
 assemble that one line, and give it to the Pi as `DASH_URL`
 (see [`../pi/README.md`](../pi/README.md)). `pi/setup.sh` stores it in
 `~/.dashboard-env` with `chmod 600`, and nothing else on the Pi or in
@@ -111,6 +113,7 @@ English-headed sheet keeps working.)
 | מבחנים | `תאריך`, `שכבה`, `מקצוע`, `התחלה`, `סיום`, `חדר` | one grade per exam; enter the subject only — the board displays "מבחן ב…" |
 | אירועים | `תאריך`, `שכבות`, `כותרת`, `התחלה`, `סיום`, `מקום` | `שכבות` is comma-separated; 4+ grades display as "כל השכבות" |
 | הודעות | `הודעה`, `סוג`, `קישור`, `מתאריך`, `עד תאריך`, `פעיל` | `סוג`: רגילה / דחופה / וידאו · `פעיל`: כן / לא · empty dates = always |
+| הגדרות | `הגדרה`, `ערך` | presentation settings; currently `ערכת נושא` = כהה / בהירה / צבעונית |
 
 ### Special characters are safe
 

@@ -167,6 +167,8 @@
     title:    ["כותרת", "Title"],
     place:    ["מקום", "חדר", "Location", "Room"],
     text:     ["הודעה", "Text"],
+    setting:  ["הגדרה", "Setting"],
+    value:    ["ערך", "Value"],
     type:     ["סוג", "Type"],
     videoUrl: ["קישור", "VideoURL"],
     from:     ["מתאריך", "From"],
@@ -285,6 +287,74 @@
     return out;
   }
 
+  /* ---------- "day of the day" ----------
+     Israeli days first, international only as a fallback. Israeli
+     entries are keyed by HEBREW month+day so they need no yearly
+     maintenance; we ask Intl for the Hebrew date in English month
+     spellings, which are stable to match on. */
+  function hebrewKey(d) {
+    var parts = new Intl.DateTimeFormat("en-u-ca-hebrew",
+      { day: "numeric", month: "long" }).formatToParts(d);
+    var day = "", month = "";
+    parts.forEach(function (p) {
+      if (p.type === "day") day = p.value;
+      if (p.type === "month") month = p.value;
+    });
+    return month + "-" + parseInt(day, 10);
+  }
+
+  function gregKey(d) {
+    return pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+
+  /* In a Hebrew leap year the plain "Adar" entries belong in Adar II,
+     which is when those observances (Purim, for instance) are kept. */
+  function hebKeyMatches(entryKey, todayKey) {
+    if (entryKey === todayKey) return true;
+    if (todayKey.indexOf("Adar II-") === 0) {
+      return entryKey === todayKey.replace("Adar II-", "Adar-");
+    }
+    return false;
+  }
+
+  function dayOfTheDay(d, days) {
+    if (!days) return null;
+    var hk = hebrewKey(d), gk = gregKey(d), i, e;
+    var israeli = days.israeli || [];
+    for (i = 0; i < israeli.length; i++) {
+      e = israeli[i];
+      if (e.heb && hebKeyMatches(e.heb, hk)) return e;
+      if (e.greg && e.greg === gk) return e;
+    }
+    var intl = days.international || [];
+    for (i = 0; i < intl.length; i++) {
+      if (intl[i].greg === gk) return intl[i];
+    }
+    return null;
+  }
+
+  /* ---------- settings tab ----------
+     A simple two-column key/value tab, so the principal can change
+     presentation (currently the colour theme) without touching code. */
+  var THEMES = {
+    "כהה": "dark", "dark": "dark",
+    "בהירה": "light", "light": "light",
+    "צבעונית": "colorful", "colorful": "colorful"
+  };
+
+  function buildSettings(rows) {
+    var out = { theme: "dark" };
+    (rows || []).forEach(function (r) {
+      var key = pick(r, "setting"), val = pick(r, "value");
+      if (!key || !val) return;
+      if (/ערכת נושא|theme/i.test(key)) {
+        var t = THEMES[val.toLowerCase()] || THEMES[val];
+        if (t) out.theme = t;
+      }
+    });
+    return out;
+  }
+
   /* ---------- sheet location from the URL fragment ----------
      The board is served from a PUBLIC repository, so the sheet's
      publish token must not live in the code. Instead the Pi's kiosk URL
@@ -316,7 +386,9 @@
     /* strict validation: these values are interpolated into a URL we
        then fetch, so anything unexpected is rejected outright */
     if (!/^[A-Za-z0-9_-]+$/.test(token)) return null;
-    if (gids.length !== 4) return null;
+    /* 4 gids = the original four tabs; an optional 5th is the settings
+       tab (theme). Older kiosk URLs with 4 keep working. */
+    if (gids.length !== 4 && gids.length !== 5) return null;
     for (var i = 0; i < gids.length; i++) {
       if (!/^\d+$/.test(gids[i])) return null;
     }
@@ -324,12 +396,14 @@
       return "https://docs.google.com/spreadsheets/d/e/" + token +
              "/pub?gid=" + gid + "&single=true&output=csv";
     }
-    return {
+    var out = {
       schedule: url(gids[0]),
       exams:    url(gids[1]),
       events:   url(gids[2]),
       messages: url(gids[3])
     };
+    if (gids.length === 5) out.settings = url(gids[4]);
+    return out;
   }
 
   /* Video pacing: play at most once per interval. A timestamp in the
@@ -342,6 +416,9 @@
   }
 
   var api = {
+    hebrewKey: hebrewKey,
+    dayOfTheDay: dayOfTheDay,
+    buildSettings: buildSettings,
     parseSheetFragment: parseSheetFragment,
     clean: clean,
     shouldPlayVideo: shouldPlayVideo,

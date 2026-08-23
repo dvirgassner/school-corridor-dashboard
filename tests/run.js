@@ -323,8 +323,9 @@ test("parseSheetFragment: missing token or gids → null", () => {
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}`), null);
 });
 test("parseSheetFragment: wrong number of gids → null", () => {
+  /* 4 tabs, or 5 with the optional settings tab; anything else is a typo */
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2`), null);
-  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`), null);
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4,5`), null);
 });
 test("parseSheetFragment: non-numeric gid → null", () => {
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,abc,3`), null);
@@ -338,6 +339,67 @@ test("parseSheetFragment: rejects tokens with URL metacharacters", () => {
 test("parseSheetFragment: ignores unrelated fragment keys", () => {
   const s = L.parseSheetFragment(`#foo=bar&t=${TOKEN}&g=0,1,2,3&baz=1`);
   assert.ok(s && s.schedule.includes(TOKEN));
+});
+
+/* ---------- day of the day ---------- */
+const DAYS = {
+  israeli: [
+    { heb: "Iyar-5", icon: "🇮🇱", title: "יום העצמאות" },
+    { heb: "Adar-14", icon: "🎭", title: "פורים" },
+    { heb: "Heshvan-12", icon: "🕯️", title: "יום הזיכרון לרצח רבין" }
+  ],
+  international: [
+    { greg: "03-14", icon: "🥧", title: "יום הפאי" },
+    { greg: "04-22", icon: "🌍", title: "יום כדור הארץ" }
+  ]
+};
+
+test("hebrewKey returns Hebrew month-day for a known date", () => {
+  /* 2026-04-22 is 5 Iyar 5786 — Israeli Independence Day */
+  assert.equal(L.hebrewKey(new Date(2026, 3, 22)), "Iyar-5");
+});
+test("dayOfTheDay: Israeli day wins over an international day", () => {
+  /* 22 April is both Earth Day and, in 2026, Independence Day */
+  const d = L.dayOfTheDay(new Date(2026, 3, 22), DAYS);
+  assert.equal(d.title, "יום העצמאות");
+});
+test("dayOfTheDay: international day used when no Israeli day", () => {
+  const d = L.dayOfTheDay(new Date(2026, 2, 14), DAYS);   /* 14 March */
+  assert.equal(d.title, "יום הפאי");
+});
+test("dayOfTheDay: ordinary day returns null", () => {
+  assert.equal(L.dayOfTheDay(new Date(2026, 5, 17), DAYS), null);
+});
+test("dayOfTheDay: no data returns null rather than throwing", () => {
+  assert.equal(L.dayOfTheDay(new Date(2026, 5, 17), null), null);
+});
+test("dayOfTheDay: Adar entries also match Adar II in a leap year", () => {
+  /* 5784 is a Hebrew leap year; Purim 2024 fell on 14 Adar II = 24 Mar */
+  const d = L.dayOfTheDay(new Date(2024, 2, 24), DAYS);
+  assert.ok(d && d.title === "פורים");
+});
+
+/* ---------- settings tab ---------- */
+test("buildSettings: defaults to the dark theme", () => {
+  assert.equal(L.buildSettings([]).theme, "dark");
+  assert.equal(L.buildSettings(null).theme, "dark");
+});
+test("buildSettings: reads the Hebrew theme names", () => {
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "בהירה" }]).theme, "light");
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "צבעונית" }]).theme, "colorful");
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "כהה" }]).theme, "dark");
+});
+test("buildSettings: accepts English names and ignores junk", () => {
+  assert.equal(L.buildSettings([{ Setting: "theme", Value: "light" }]).theme, "light");
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "סגול?" }]).theme, "dark");
+  assert.equal(L.buildSettings([{ "הגדרה": "משהו אחר", "ערך": "בהירה" }]).theme, "dark");
+});
+
+test("parseSheetFragment: accepts an optional 5th gid for settings", () => {
+  const four = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3`);
+  assert.equal(four.settings, undefined);
+  const five = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,44`);
+  assert.ok(five.settings.includes("gid=44&"));
 });
 
 /* ---------- shouldPlayVideo ---------- */

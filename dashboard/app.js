@@ -40,8 +40,15 @@ const $ = (id) => document.getElementById(id);
    demo mode it defaults to 08:10 so a visitor sees a full school day. */
 const TIME_OVERRIDE = new URLSearchParams(location.search).get("time") ||
                       (DEMO ? "08:10" : null);
+/* ?date=YYYY-MM-DD previews another calendar day (day-of-the-day strip,
+   which weekday's timetable shows). Preview only. */
+const DATE_OVERRIDE = new URLSearchParams(location.search).get("date");
 function NOW() {
   const d = zonedNow(CFG.timeZone);
+  if (DATE_OVERRIDE) {
+    const [y, mo, da] = DATE_OVERRIDE.split("-").map(Number);
+    d.setFullYear(y, mo - 1, da);
+  }
   if (TIME_OVERRIDE) {
     const [h, m] = TIME_OVERRIDE.split(":").map(Number);
     d.setHours(h, m, 0, 0);
@@ -70,7 +77,9 @@ function buildModel(csv, today) {
     byDay: schedule.byDay,
     agenda: buildAgenda(parseCsv(csv.exams).rows,
                         parseCsv(csv.events).rows, today),
-    messages: buildMessages(parseCsv(csv.messages).rows, today)
+    messages: buildMessages(parseCsv(csv.messages).rows, today),
+    /* settings tab is optional — absent means defaults */
+    settings: buildSettings(csv.settings ? parseCsv(csv.settings).rows : [])
   };
 }
 
@@ -88,12 +97,16 @@ function addSeventhGrade(csv) {
 
 function sampleCsv(today) {
   const sub = (s) => s.split("{{TODAY}}").join(today);
-  const seven = new URLSearchParams(location.search).has("demo7");
+  const q = new URLSearchParams(location.search);
+  const seven = q.has("demo7");
+  /* ?theme=light|colorful previews a theme without a sheet */
+  const theme = q.get("theme");
   return {
     schedule: seven ? addSeventhGrade(SAMPLE.scheduleCsv) : SAMPLE.scheduleCsv,
     exams: sub(SAMPLE.examsCsv),
     events: sub(SAMPLE.eventsCsv),
-    messages: sub(SAMPLE.messagesCsv)
+    messages: sub(SAMPLE.messagesCsv),
+    settings: theme ? "הגדרה,ערך\nערכת נושא," + theme : SAMPLE.settingsCsv
   };
 }
 
@@ -118,7 +131,14 @@ async function loadData() {
       fetchCsv(SHEETS.schedule), fetchCsv(SHEETS.exams),
       fetchCsv(SHEETS.events),   fetchCsv(SHEETS.messages)
     ]);
-    MODEL = buildModel({ schedule, exams, events, messages }, today);
+    /* the settings tab is optional and must never break the board:
+       if it is missing or unreachable, defaults apply */
+    let settings = "";
+    if (SHEETS.settings) {
+      try { settings = await fetchCsv(SHEETS.settings); }
+      catch (e) { console.error("settings tab unreadable, using defaults:", e); }
+    }
+    MODEL = buildModel({ schedule, exams, events, messages, settings }, today);
     FETCHED_AT = Date.now();
     try {
       localStorage.setItem(CACHE_KEY,
@@ -144,7 +164,10 @@ function gradeColor(name) {
 
 function renderGrades() {
   const grid = $("grid");
-  grid.querySelectorAll(".card:not(#exams)").forEach((c) => c.remove());
+  /* clear only the generated grade cards — #exams and #dayofday are
+     part of the page and must survive a re-render */
+  grid.querySelectorAll(".card:not(#exams):not(#dayofday)")
+      .forEach((c) => c.remove());
   const grades = MODEL.grades;
   const periods = MODEL.byDay[dayLetter(NOW())] || [];
   grid.classList.toggle("grades7", grades.length >= 7);
@@ -165,6 +188,14 @@ function renderGrades() {
     const card = document.createElement("section");
     card.className = "card" + (gi === 6 ? " seventh" : "");
     card.style.setProperty("--accent", `var(${ACCENTS[gi] || "--muted"})`);
+    /* Place every card explicitly. Without this, auto-placement spills a
+       grade card into the left column whenever the day-of-the-day pane
+       is hidden (i.e. on any ordinary day). Columns 1–3 are the grade
+       columns; column 4 is the left-hand column. */
+    if (gi < 6) {
+      card.style.gridColumn = (gi % 3) + 1;
+      card.style.gridRow = Math.floor(gi / 3) + 1;
+    }
     const rows = periods
       .filter((p) => p.subjects[name])
       .map((p) => `
@@ -179,6 +210,27 @@ function renderGrades() {
   });
 }
 
+/* theme chosen by the principal in the sheet's settings tab */
+function applyTheme() {
+  const theme = (MODEL.settings && MODEL.settings.theme) || "dark";
+  document.documentElement.setAttribute("data-theme", theme);
+}
+
+/* "day of the day": today's Israeli day, or an international one if
+   there is no Israeli day. Hidden entirely on ordinary days so the
+   agenda pane gets the whole column. */
+function renderDayOfDay() {
+  const pane = $("dayofday");
+  const day = dayOfTheDay(NOW(), window.DAYS);
+  /* on an ordinary day the strip disappears and the agenda pane takes
+     the whole left column, rather than leaving a hole in the grid */
+  $("grid").classList.toggle("noday", !day);
+  if (!day) { pane.classList.add("off"); return; }
+  pane.classList.remove("off");
+  pane.querySelector(".dodicon").textContent = day.icon;
+  pane.querySelector(".dodtext").textContent = day.title;
+}
+
 function renderAgenda() {
   const list = $("examlist");
   const agenda = MODEL.agenda;
@@ -186,27 +238,44 @@ function renderAgenda() {
     list.innerHTML = `<div id="noexams">אין אירועים ומבחנים היום 🎉</div>`;
     return;
   }
-  list.innerHTML = agenda.map((e) => {
-    const row2 = `<div class="row2"><span>🕐 ${esc(e.start)}–${esc(e.end)}</span><span>📍 ${esc(e.room)}</span></div>`;
-    if (e.kind === "exam") {
-      /* the sheet holds the bare subject; the board adds the prefix */
-      return `
-        <div class="exam" style="--gcolor:${gradeColor(e.grade)}">
-          <div class="row1"><span class="grade">${esc(e.grade)}</span><span class="ttl">מבחן ב${esc(e.subject)}</span></div>
-          ${row2}
-        </div>`;
-    }
-    const chips = e.grades.length >= 4
+  list.innerHTML = `<div class="agendawrap"></div>`;
+  /* Exams and events share one layout: the grade chip(s) lead, then the
+     name, then the details. Identical placement for both kinds is what
+     makes the merged pane scannable. */
+  const chipFor = (g) =>
+    `<span class="gchip" style="--gcolor:${gradeColor(g)}">${esc(g)}</span>`;
+
+  list.querySelector(".agendawrap").innerHTML = agenda.map((e) => {
+    const title = e.kind === "exam"
+      ? `מבחן ב${esc(e.subject)}`      /* sheet holds the bare subject */
+      : esc(e.title);
+    const grades = e.kind === "exam" ? [e.grade] : e.grades;
+    const chips = grades.length >= 4
       ? `<span class="gchip all">כל השכבות</span>`
-      : e.grades.map((g) =>
-          `<span class="gchip" style="--gcolor:${gradeColor(g)}">${esc(g)}</span>`).join("");
+      : grades.map(chipFor).join("");
     return `
       <div class="exam">
-        <div class="row1"><span class="ttl">${esc(e.title)}</span></div>
-        ${row2}
-        <div class="chips">${chips}</div>
+        <div class="row1">${chips}<span class="ttl">${title}</span></div>
+        <div class="row2"><span>🕐 ${esc(e.start)}–${esc(e.end)}</span><span>📍 ${esc(e.room)}</span></div>
       </div>`;
   }).join("");
+  layoutAgendaScroll();
+}
+
+/* The day-of-the-day strip eats into the agenda pane, and some days
+   simply have more entries than fit. When they overflow, the list
+   scrolls gently to the bottom and back rather than hiding anything. */
+function layoutAgendaScroll() {
+  const box = $("examlist");
+  const wrap = box.querySelector(".agendawrap");
+  if (!wrap) return;
+  wrap.classList.remove("scrolling");
+  const overflow = wrap.scrollHeight - box.clientHeight;
+  if (overflow <= 4) return;                  /* fits — stay still */
+  wrap.style.setProperty("--shift", `-${overflow}px`);
+  /* pace by distance so a long list is not faster than a short one */
+  wrap.style.setProperty("--adur", `${Math.round(overflow / 18 + 16)}s`);
+  wrap.classList.add("scrolling");
 }
 
 /* urgent messages rotate in place with a fade; each shows (n/total) */
@@ -250,6 +319,8 @@ function render() {
   const key = JSON.stringify(MODEL);
   if (key === RENDERED_KEY) return;
   RENDERED_KEY = key;
+  applyTheme();
+  renderDayOfDay();
   renderGrades();
   renderAgenda();
   renderMessages();

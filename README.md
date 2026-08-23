@@ -50,6 +50,8 @@ Useful URL parameters:
 | Parameter | What it does |
 |---|---|
 | `?time=13:00` | pretend it is a different time of day |
+| `?date=2027-03-14` | pretend it is another date (day-of-the-day strip, weekday) |
+| `?theme=light` | preview a theme (`dark`, `light`, `colorful`) |
 | `?demo7` | preview the layout with a 7th grade added |
 
 ## Repository layout
@@ -59,6 +61,7 @@ Useful URL parameters:
 | [`dashboard/`](dashboard/) | the board itself — this is what the TV shows |
 | `dashboard/config.js` | display settings; contains **no** sheet URLs by design |
 | `dashboard/logic.js` | pure functions (dates, gematria, parsing) — unit-tested |
+| `dashboard/days.js` | the "day of the day" calendar (Israeli + international) |
 | `dashboard/app.js` | everything touching the DOM, network, and clock |
 | [`sheet-template/`](sheet-template/) | Apps Script that builds the Google Sheet, plus setup steps |
 | [`pi/`](pi/) | Raspberry Pi provisioning scripts and walk-through |

@@ -26,6 +26,17 @@ var LIMITS = {
   messageUrgent: 75
 };
 
+/* The four tabs are published as public CSV feeds so the board can read
+   them without logging in — which means anyone holding a feed URL can
+   read their contents. This warning is attached to the sheet itself,
+   where whoever is typing will actually see it. */
+var NO_PII_NOTE =
+  '⚠️ אין להזין בגיליון זה פרטים אישיים!\n\n' +
+  'הגיליון מפורסם כדי שהמסך יוכל לקרוא אותו, ולכן תוכנו קריא לכל מי\n' +
+  'שיש לו את הקישור — גם מחוץ לבית הספר.\n\n' +
+  'אסור להזין: שמות תלמידים, מספרי זהות, ציונים, טלפונים או כל מידע\n' +
+  'אישי אחר. מותר: מערכת שעות, מבחנים, אירועים והודעות כלליות.';
+
 var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 var TYPES = ['רגילה', 'דחופה', 'וידאו'];
 var YESNO = ['כן', 'לא'];
@@ -48,7 +59,8 @@ function setup() {
     'הגיליון נבנה בהצלחה.\n\n' +
     'השלב הבא: קובץ → שיתוף → פרסום באינטרנט,\n' +
     'ולפרסם כל אחד מארבעת הגיליונות בנפרד כ-CSV.\n' +
-    'ראו את ההוראות המלאות בקובץ README.');
+    'ראו את ההוראות המלאות בקובץ README.\n\n' +
+    '─────────────────────────\n' + NO_PII_NOTE);
 }
 
 /* ---------- helpers ---------- */
@@ -164,6 +176,7 @@ function buildExams_(sh) {
   sh.setColumnWidths(1, headers.length, 110);
   sh.getRange('C1').setNote(
     'להזין את שם המקצוע בלבד — הלוח מוסיף מעצמו "מבחן ב".');
+  sh.getRange('B1').setNote(NO_PII_NOTE);
 }
 
 function buildEvents_(sh) {
@@ -218,4 +231,5 @@ function buildMessages_(sh) {
     'הסרטון מושתק כברירת מחדל; להוספת סאונד יש לסיים את הקישור ב-#sound');
   sh.getRange('D1').setNote('טווח תאריכים להצגה. ריק = תמיד.');
   sh.getRange('F1').setNote('"לא" מסתיר את ההודעה בלי למחוק אותה.');
+  sh.getRange('A1').setNote(NO_PII_NOTE);
 }

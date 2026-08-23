@@ -67,38 +67,42 @@
     --warning:  #a06800;
   }
 
-  /* colorful — deep indigo ground with vivid accents. Kept dark on
-     purpose: it preserves both the accent contrast ratios and the
-     panel-protection benefit. */
+  /* colorful — bright and lively: a soft tinted ground, white cards
+     each washed in its own grade colour, vivid saturated accents.
+     Note this is the hardest theme on an OLED panel (lots of bright
+     pixels); dark remains the better choice for all-day use.
+     Accents are deep enough to carry white chip text while still
+     reading as vivid — verified with the palette validator. */
   :root[data-theme="colorful"] {
-    --page:        #0f1226;
-    --surface:     #1b1f3a;
-    --ink:         #e9e8f5;
-    --ink-strong:  #ffffff;
-    --ink-2:       #b9b7d8;
-    --muted:       #8a88ad;
-    --hairline:    #2e3358;
-    --border:      rgba(255,255,255,0.14);
-    --chipink:     #0f1226;
-    --nowmix:      24%;
-    --g1: #4d9bff;
-    --g2: #ff7a45;
-    --g3: #1fc48f;
-    --g4: #ffc233;
-    --g5: #ff6fa5;
-    --g6: #45d17a;
-    --g7: #a99bff;
-    --critical: #ff5c5c;
-    --warning:  #ffc233;
+    --page:        #e8ecfa;
+    --surface:     #ffffff;
+    --ink:         #17173a;
+    --ink-strong:  #08081c;
+    --ink-2:       #43436b;
+    --muted:       #6c6c93;
+    --hairline:    #dfe3f5;
+    --border:      rgba(23,23,58,0.14);
+    --chipink:     #ffffff;
+    --nowmix:      26%;
+    --g1: #1f6feb;  /* blue    */
+    --g2: #e2560f;  /* orange  */
+    --g3: #0f9488;  /* teal    */
+    --g4: #a86a00;  /* amber   */
+    --g5: #d6337f;  /* magenta */
+    --g6: #2f9e00;  /* green   */
+    --g7: #6d4aff;  /* violet  */
+    --critical: #d92d20;
+    --warning:  #a35a00;
   }
   /* what makes "colorful" actually colorful: each grade card carries a
      wash of its own accent, instead of every card being the same grey */
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) {
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   }
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) h2 {
-    border-bottom-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    color: color-mix(in srgb, var(--accent) 70%, var(--ink-strong));
+    border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }

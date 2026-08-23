@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.157';
+var SCRIPT_VERSION = '0.158';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -80,6 +80,11 @@ var THEMES = ['כהה', 'בהירה', 'צבעונית'];
 
 /* the אירועים tab's fixed columns, before the per-grade checkboxes */
 var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
+
+/* How many event rows to prepare. The list is meant to hold only what is
+   still live, so five is plenty — and onEdit extends the checkboxes
+   automatically the moment a sixth event is typed in. */
+var EVENT_MIN_ROWS = 5;
 
 /* tabs whose validation onEdit knows how to restore after a paste */
 var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות', 'הגדרות'];
@@ -168,7 +173,10 @@ function onEdit(e) {
        will paste no matter what the documentation says. */
     if (pasted) applyRules_(sh, name);
 
-    if (name === 'אירועים') enforceExclusive_(sh, e.range);
+    if (name === 'אירועים') {
+      ensureEventBoxes_(sh);        /* a new row gets its tick boxes */
+      enforceExclusive_(sh, e.range);
+    }
   } catch (err) {
     /* a trigger must never leave the sheet unusable — log and move on */
     console.error('onEdit: ' + err.message);
@@ -455,12 +463,9 @@ function rulesEvents_(sh) {
   timeRule_(sh, 4);
   lenRule_(sh, 5, LIMITS.eventLocation, 'מקום');
 
-  /* checkboxes down each grade column and under כולם */
   var tickCount = GRADES.length + 1;
   var firstGradeCol = EVENT_FIXED.length + 1;
-  var boxes = sh.getRange(2, firstGradeCol, 200, tickCount);
-  boxes.insertCheckboxes();
-  boxes.setHorizontalAlignment('center');
+  ensureEventBoxes_(sh);
 
   /* Conditional formatting is evaluated by the browser, so it reacts the
      INSTANT a box is ticked — unlike onEdit, which is a server-side
@@ -489,6 +494,34 @@ function rulesEvents_(sh) {
   if (!sh.getRange(2, firstGradeCol).getDataValidation()) {
     throw new Error('לא נוצרו תיבות סימון בגיליון "אירועים".');
   }
+}
+
+/**
+ * Give every event row its grade checkboxes, growing the range as rows
+ * are added — five to start with, and always one spare below whatever
+ * has been typed, so there is a ready row for the next event.
+ *
+ * Uses checkbox DATA VALIDATION rather than Range.insertCheckboxes().
+ * That distinction matters: insertCheckboxes() sets every cell in the
+ * range to false, so calling it from the paste-repair path would have
+ * silently cleared the grade ticks on every existing event. Validation
+ * alone gives the same tick boxes and never touches a value.
+ *
+ * A further benefit: cells left untouched stay genuinely EMPTY instead
+ * of holding FALSE, so the published CSV the board fetches every minute
+ * carries no filler rows.
+ */
+function ensureEventBoxes_(sh) {
+  var cols = eventColumns_(sh);
+  if (!cols) return;
+  var want = Math.max(1 + EVENT_MIN_ROWS, sh.getLastRow() + 1);
+  if (want > sh.getMaxRows()) {
+    sh.insertRowsAfter(sh.getMaxRows(), want - sh.getMaxRows());
+  }
+  var rng = sh.getRange(2, cols.firstGrade, want - 1, cols.gradeCount + 1);
+  rng.setDataValidation(
+    SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  rng.setHorizontalAlignment('center');
 }
 
 /** 1 -> A, 27 -> AA */
@@ -595,14 +628,16 @@ function buildEvents_(sh) {
   var first = [today, 'חזרה כללית לטקס', '10:40', '11:25', 'אולם ספורט'];
   var second = [today, 'הרצאה: בטיחות ברשת', '12:35', '13:20', 'אודיטוריום'];
   var third = [today, 'עצרת פתיחת שנה', '08:00', '08:45', 'רחבת בית הספר'];
+  /* '' rather than false for an unticked box: the cell still shows an
+     empty checkbox, but stays out of the published CSV entirely */
   GRADES.forEach(function (g, gi) {
-    first.push(gi < 2);              /* ז׳, ח׳            */
-    second.push(gi >= 3);            /* י׳ ומעלה          */
-    third.push(false);               /* כולם instead      */
+    first.push(gi < 2 ? true : '');     /* ז׳, ח׳    */
+    second.push(gi >= 3 ? true : '');   /* י׳ ומעלה  */
+    third.push('');                     /* כולם instead */
   });
-  first.push(false);
-  second.push(false);
-  third.push(true);                  /* the כולם box      */
+  first.push('');
+  second.push('');
+  third.push(true);                     /* the כולם box */
   sh.getRange(2, 1, 3, headers.length).setValues([first, second, third]);
 
   rulesEvents_(sh);

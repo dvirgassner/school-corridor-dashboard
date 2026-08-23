@@ -1,0 +1,13 @@
+# clasp's project link — contains the Apps Script project id for the
+# school's sheet. The repository is public; there is no reason to
+# publish it. Each machine runs `clasp clone` once to recreate it.
+.clasp.json
+sheet-template/.clasp.json
+
+# clasp credentials, if they are ever created inside the repo rather
+# than in the home directory. Treat as a password.
+.clasprc.json
+
+# editor / OS noise
+.DS_Store
+Thumbs.db

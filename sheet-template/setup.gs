@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.155';
+var SCRIPT_VERSION = '0.156';
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
@@ -162,6 +162,46 @@ function onOpen() {
       .addItem('גרסת הסקריפט', 'checkVersion')
       .addToUi();
   } catch (e) {}
+  autoApply_();
+}
+
+/**
+ * Apply rule changes by itself, so a new version of this script does not
+ * need anyone to remember to press Run.
+ *
+ * Runs at most once per version: the version that was last applied is
+ * remembered in the document's own properties. It only ever re-applies
+ * validation — dropdowns, checkboxes, limits, conditional formatting —
+ * which is non-destructive. It deliberately does NOT call setup(),
+ * because setup() rebuilds tabs from scratch and would erase the
+ * school's timetable. Structural changes stay a deliberate manual act.
+ */
+function autoApply_() {
+  try {
+    var props = PropertiesService.getDocumentProperties();
+    if (props.getProperty('rulesVersion') === SCRIPT_VERSION) return;
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var done = [];
+    TAB_RULES.forEach(function (name) {
+      var sh = ss.getSheetByName(name);
+      if (!sh) return;
+      applyRules_(sh, name);
+      done.push(name);
+    });
+    var ev = ss.getSheetByName('אירועים');
+    if (ev) enforceExclusive_(ev, null);
+
+    props.setProperty('rulesVersion', SCRIPT_VERSION);
+    if (done.length) {
+      ss.toast('חוקי הגיליון עודכנו לגרסה ' + SCRIPT_VERSION,
+               'לוח מסדרון', 5);
+    }
+  } catch (err) {
+    /* A simple trigger runs without the user authorising anything, so
+       some services can be unavailable. Never block opening the sheet. */
+    console.error('autoApply_: ' + err.message);
+  }
 }
 
 /** Re-apply every tab's validation. Safe to run at any time. */

@@ -64,10 +64,14 @@ window.DAYS = {
     { heb: "Nisan-15",   icon: "🍷", title: "פסח", off: true },
     { heb: "Nisan-27",   icon: "🕯️", title: "יום הזיכרון לשואה ולגבורה" },
     { heb: "Iyar-4",     icon: "🕯️", title: "יום הזיכרון לחללי מערכות ישראל" },
-    { heb: "Iyar-5",     svg: FLAG_IL, title: "יום העצמאות", off: true },
+    /* school is closed on Independence Day, so this entry never reaches
+       the screen — it stays in the list so that an international day
+       falling on the same date is suppressed too (Earth Day can) */
+    { heb: "Iyar-5",     icon: "🎉", title: "יום העצמאות", off: true },
     { heb: "Iyar-10",    icon: "🎩", title: "יום הרצל" },
     { heb: "Iyar-18",    icon: "🔥", title: "ל״ג בעומר" },
-    { heb: "Iyar-28",    icon: "🏛️", title: "יום ירושלים" },
+    /* the flag lives here: Jerusalem Day IS a school day, so it shows */
+    { heb: "Iyar-28",    svg: FLAG_IL, title: "יום ירושלים" },
     { heb: "Sivan-6",    icon: "🌾", title: "שבועות", off: true },
     /* both fall inside the summer vacation */
     { heb: "Tamuz-29",   icon: "📕", title: "יום הזיכרון לזאב ז׳בוטינסקי", off: true },

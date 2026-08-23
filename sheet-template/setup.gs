@@ -287,10 +287,10 @@ function buildEvents_(sh) {
   sh.setColumnWidths(firstGradeCol, TICKS.length, 60);
   sh.getRange(1, firstGradeCol, 1, GRADES.length).setNote(
     'לסמן ✓ בכל שכבה שהאירוע מיועד לה.\n' +
-    'מארבע שכבות ומעלה הלוח מציג "כל השכבות".');
+    'מארבע שכבות ומעלה הלוח מציג "כולם".');
   sh.getRange(1, firstGradeCol + GRADES.length).setNote(
     'אירוע לכל בית הספר — לסמן ✓ כאן במקום לסמן כל שכבה בנפרד.\n' +
-    'הלוח יציג "כל השכבות".');
+    'הלוח יציג "כולם".');
 
   /* verify rather than assume — a missing checkbox column is the kind of
      failure nobody notices until an event shows no grades at all */

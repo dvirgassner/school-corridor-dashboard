@@ -257,7 +257,7 @@ function renderAgenda() {
     /* one neutral chip when it applies to everyone — either the כולם box
        is ticked, or so many grades are ticked that listing them is noise */
     const chips = (e.all || grades.length >= 4)
-      ? `<span class="gchip all">כל השכבות</span>`
+      ? `<span class="gchip all">כולם</span>`
       : grades.map(chipFor).join("");
     return `
       <div class="exam">

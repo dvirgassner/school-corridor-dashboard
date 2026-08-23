@@ -133,7 +133,7 @@ English-headed sheet keeps working.)
 | | `שיעור`, `התחלה`, `סיום` | period number and `HH:MM` times |
 | | one column per grade | the subject; empty = no class |
 | מבחנים | `תאריך`, `שכבה`, `מקצוע`, `התחלה`, `סיום`, `חדר` | one grade per exam; enter the subject only — the board displays "מבחן ב…" |
-| אירועים | `תאריך`, `כותרת`, `התחלה`, `סיום`, `מקום`, then one **checkbox column per grade**, plus `כולם` | tick every grade the event applies to, or tick `כולם` for a whole-school activity; `כולם` or 4+ grades display as "כל השכבות" |
+| אירועים | `תאריך`, `כותרת`, `התחלה`, `סיום`, `מקום`, then one **checkbox column per grade**, plus `כולם` | tick every grade the event applies to, or tick `כולם` for a whole-school activity; `כולם` or 4+ grades display as "כולם" |
 | הודעות | `הודעה`, `סוג`, `קישור`, `מתאריך`, `עד תאריך`, `פעיל` | `סוג`: רגילה / דחופה / וידאו · `פעיל`: כן / לא · empty dates = always |
 | הגדרות | `הגדרה`, `ערך` | presentation settings; currently `ערכת נושא` = כהה / בהירה / צבעונית |
 

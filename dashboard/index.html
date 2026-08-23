@@ -38,12 +38,13 @@
 
     <footer>
       <div id="msg"></div>
-      <!-- bottom-left: fault indicator (hidden unless something is
-           wrong), freshness stamp, version -->
+      <!-- bottom-left corner: freshness stamp, version, then the fault
+           indicator LAST — in RTL the last child sits leftmost, which
+           is where the indicator belongs -->
       <div class="statusbox">
-        <span id="errind"></span>
         <span id="stamp"></span>
         <span id="version"></span>
+        <span id="errind"></span>
       </div>
     </footer>
   </div>

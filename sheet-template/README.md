@@ -104,6 +104,26 @@ the cross-origin read the board needs. Pick whichever you find easier;
 Only do this if the repository is private or the files are served from
 the Pi itself.
 
+## What the script locks, and what it automates
+
+`setup()` leaves two safeguards behind, both aimed at the same risk: the
+board finds its data by **column header name**, so a renamed header
+silently empties a panel with no error anywhere.
+
+- **Header rows in every tab are protected**, as is the setting-name
+  column in `הגדרות`. Only the account that ran the script can edit them.
+  Everything else stays fully editable by whoever the sheet is shared
+  with.
+- **An `onEdit` trigger keeps `כולם` and the individual grade boxes
+  mutually exclusive** in the `אירועים` tab: ticking a grade clears
+  `כולם`, and ticking `כולם` clears every grade. It is a *simple*
+  trigger, so there is nothing to install and it applies to every editor
+  — but it only works while the script file remains in the sheet's Apps
+  Script project. Deleting the project disables it.
+
+Note the trigger fires on manual edits only. A paste over several cells
+is left alone, so a bulk import is never silently rewritten.
+
 ## 4. Give the principal access
 
 **Share** the spreadsheet with the principal's Google account as

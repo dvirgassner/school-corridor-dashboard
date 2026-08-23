@@ -14,13 +14,13 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.144';
+var SCRIPT_VERSION = '0.146';
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
   SpreadsheetApp.getUi().alert(
     'גרסת הסקריפט: ' + SCRIPT_VERSION + '\n\n' +
-    'אם המספר אינו 0.144, קיים בפרויקט קובץ נוסף עם גרסה ישנה —\n' +
+    'אם המספר אינו ' + SCRIPT_VERSION + ', קיים בפרויקט קובץ נוסף עם גרסה ישנה —\n' +
     'יש למחוק אותו ולהשאיר קובץ אחד בלבד.');
 }
 
@@ -55,6 +55,9 @@ var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 var TYPES = ['רגילה', 'דחופה', 'וידאו'];
 var YESNO = ['כן', 'לא'];
 var THEMES = ['כהה', 'בהירה', 'צבעונית'];
+
+/* the אירועים tab's fixed columns, before the per-grade checkboxes */
+var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
 
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -97,6 +100,64 @@ function setup() {
     '─────────────────────────\n' + NO_PII_NOTE);
 }
 
+/**
+ * onEdit — runs automatically on every manual edit (a "simple trigger":
+ * nothing to install, and it works for every editor of the sheet, not
+ * just the owner).
+ *
+ * Its only job: keep כולם and the individual grade boxes mutually
+ * exclusive in the אירועים tab. Tick a grade and כולם clears; tick כולם
+ * and every grade clears. Without this an event could claim to be both
+ * "all grades" and "just י׳", and the board would have to guess.
+ */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    if (sh.getName() !== 'אירועים') return;
+    /* ignore header edits and multi-cell pastes */
+    if (e.range.getRow() < 2 || e.range.getNumRows() !== 1 ||
+        e.range.getNumColumns() !== 1) return;
+    if (e.range.getValue() !== true) return;   /* only a tick matters */
+
+    var cols = eventColumns_(sh);
+    if (!cols) return;
+    var col = e.range.getColumn(), row = e.range.getRow();
+
+    if (col === cols.allCol) {
+      /* כולם was ticked → clear the individual grades */
+      sh.getRange(row, cols.firstGrade, 1, cols.gradeCount)
+        .setValue(false);
+    } else if (col >= cols.firstGrade &&
+               col < cols.firstGrade + cols.gradeCount) {
+      /* a grade was ticked → clear כולם */
+      sh.getRange(row, cols.allCol).setValue(false);
+    }
+  } catch (err) {
+    /* a trigger must never leave the sheet unusable — log and move on */
+    console.error('onEdit: ' + err.message);
+  }
+}
+
+/** Locate the grade columns and the כולם column from the header row. */
+function eventColumns_(sh) {
+  var last = sh.getLastColumn();
+  if (last < 2) return null;
+  var headers = sh.getRange(1, 1, 1, last).getValues()[0];
+  var allCol = 0;
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i]).trim() === 'כולם') { allCol = i + 1; break; }
+  }
+  if (!allCol) return null;
+  var firstGrade = EVENT_FIXED.length + 1;
+  if (allCol <= firstGrade) return null;
+  return {
+    allCol: allCol,
+    firstGrade: firstGrade,
+    gradeCount: allCol - firstGrade
+  };
+}
+
 /* ---------- helpers ---------- */
 
 function sheet_(ss, name) {
@@ -127,9 +188,40 @@ function header_(sh, headers) {
     .setFontWeight('bold')
     .setBackground('#efefef');
   sh.setFrozenRows(1);
-  sh.getRange(1, 1, 1, headers.length).protect()
-    .setDescription('כותרות — נא לא לשנות')
-    .setWarningOnly(true);
+  /* Headers are structural: the board finds its columns by these names,
+     so a well-meaning rename silently empties a panel. Genuinely locked,
+     not merely warned about. */
+  lock_(sh.getRange(1, 1, 1, sh.getMaxColumns()), 'כותרות — לא לשינוי');
+}
+
+/**
+ * Lock a range so only the script's owner can edit it. Everyone else the
+ * sheet is shared with (the principal, the office) keeps full access to
+ * everything NOT locked.
+ *
+ * Re-running setup() would otherwise stack duplicate protections, so any
+ * existing protection with the same description is removed first.
+ */
+function lock_(range, description) {
+  var sh = range.getSheet();
+  var existing = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  existing.forEach(function (p) {
+    if (p.getDescription() === description) p.remove();
+  });
+
+  var p = range.protect().setDescription(description);
+  var me = Session.getEffectiveUser();
+  p.addEditor(me);
+  /* strip everyone else; ignore failures on domain-managed sheets */
+  try {
+    var others = p.getEditors().filter(function (u) {
+      return u.getEmail() && u.getEmail() !== me.getEmail();
+    });
+    if (others.length) p.removeEditors(others);
+  } catch (e) {}
+  try {
+    if (p.canDomainEdit()) p.setDomainEdit(false);
+  } catch (e) {}
 }
 
 /** Text-length rule with a Hebrew rejection message. */
@@ -250,9 +342,10 @@ function buildExams_(sh) {
    inside one cell, so each grade gets its own checkbox column — tick as
    many as apply, and the board shows whichever are ticked. */
 function buildEvents_(sh) {
-  var FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
+  var FIXED = EVENT_FIXED;
   /* ...GRADES, then a כולם box for a whole-school activity, so nobody has
-     to tick every grade one at a time */
+     to tick every grade one at a time. onEdit() keeps כולם and the
+     individual grades mutually exclusive. */
   var TICKS = GRADES.concat(['כולם']);
   var headers = FIXED.concat(TICKS);
   header_(sh, headers);
@@ -345,13 +438,9 @@ function buildSettings_(sh) {
   header_(sh, ['הגדרה', 'ערך']);
   sh.getRange(2, 1, 1, 2).setValues([['ערכת נושא', 'כהה']]);
 
-  /* the key column is fixed — protect it from typos */
-  var keyRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['ערכת נושא'], true)
-    .setAllowInvalid(false)
-    .setHelpText('שם ההגדרה')
-    .build();
-  sh.getRange(2, 1, 50).setDataValidation(keyRule);
+  /* The setting NAMES are structural — the board matches on them. Lock
+     the whole column so only the value column is editable. */
+  lock_(sh.getRange(2, 1, sh.getMaxRows() - 1), 'שמות הגדרות — לא לשינוי');
 
   var themeRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(THEMES, true)

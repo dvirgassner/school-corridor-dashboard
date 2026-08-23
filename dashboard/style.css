@@ -212,6 +212,14 @@
   .period.now .subj { color: var(--ink-strong); }
   .period.done { display: none; }   /* passed classes free up space */
 
+  /* "עודכן" — a class whose subject changed since the board first loaded
+     it today, so students can see at a glance that something moved */
+  .upd { font-size: 18px; font-weight: 600; color: var(--warning);
+         flex: none; white-space: nowrap; margin-inline-start: 8px;
+         unicode-bidi: isolate; display: inline-flex; align-items: center;
+         gap: 5px; }
+  .upd svg { width: 17px; height: 17px; flex: none; }
+
   /* shown instead of the grade cards when the sheet yields no grades */
   .card.nodata { grid-column: 1 / 4; grid-row: 1 / span 2;
                  align-items: center; justify-content: center; }
@@ -233,7 +241,7 @@
   .dodicon { font-size: 56px; line-height: 1; flex: none;
              display: flex; align-items: center; }
   .dodicon svg { width: 62px; height: auto; display: block; }
-  .dodtext { font-size: 25px; font-weight: 700; color: var(--ink-strong);
+  .dodtext { font-size: 31px; font-weight: 700; color: var(--ink-strong);
              line-height: 1.25; unicode-bidi: isolate;
              display: -webkit-box; -webkit-line-clamp: 3;
              -webkit-box-orient: vertical; overflow: hidden; }

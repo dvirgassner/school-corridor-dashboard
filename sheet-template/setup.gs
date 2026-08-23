@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.153';
+var SCRIPT_VERSION = '0.155';
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
@@ -338,7 +338,9 @@ function dateRule_(sh, col) {
    the automatic re-application after a paste needs the script. */
 
 function rulesSchedule_(sh) {
-  listRule_(sh, 1, DAYS, 'יום');
+  /* No dropdown on the day column: every row is pre-filled with its day
+     and period, so there is nothing to choose. The column is locked
+     instead (see buildSchedule_). */
   timeRule_(sh, 3);
   timeRule_(sh, 4);
   var last = Math.max(5, sh.getLastColumn());
@@ -444,32 +446,44 @@ function buildSchedule_(sh) {
   var headers = ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
   header_(sh, headers);
 
-  /* Seed a full plausible week, so the board looks like a real board
-     the moment the sheet is published — easier to sanity-check on the
-     TV than three lonely rows. Replace with the real timetable. */
+  /* Ten period rows for every day, always. The principal fills in the
+     subjects and leaves the rest empty — an empty cell simply means no
+     class, so the day ends after the last subject entered. Nothing to
+     add or delete, and no day to pick from a dropdown. */
   var PERIODS = [
     [1, '08:00', '08:45'], [2, '08:50', '09:35'], [3, '09:50', '10:35'],
     [4, '10:40', '11:25'], [5, '11:45', '12:30'], [6, '12:35', '13:20'],
-    [7, '13:30', '14:15'], [8, '14:20', '15:05']
+    [7, '13:30', '14:15'], [8, '14:20', '15:05'], [9, '15:15', '16:00'],
+    [10, '16:05', '16:50']
   ];
   var SUBJECTS = ['מתמטיקה', 'אנגלית', 'לשון', 'היסטוריה', 'ביולוגיה',
                   'פיזיקה', 'כימיה', 'ספרות', 'תנ"ך', 'אזרחות',
                   'חינוך גופני', 'מחשבים'];
   var rows = [];
   DAYS.forEach(function (day, di) {
-    /* Friday is a short day; other days run 6-8 periods */
-    var count = day === 'ו' ? 4 : (di % 2 === 0 ? 8 : 6);
-    for (var p = 0; p < count; p++) {
+    /* every day gets all ten rows; only some are filled with a subject */
+    var filled = day === 'ו' ? 4 : (di % 2 === 0 ? 8 : 6);
+    for (var p = 0; p < PERIODS.length; p++) {
       var row = [day].concat(PERIODS[p]);
       GRADES.forEach(function (g, gi) {
-        /* upper grades keep going in the last periods; lower ones stop */
-        var late = p >= 6 && gi < 2;
-        row.push(late ? '' : SUBJECTS[(di * 5 + p * 3 + gi * 7) % SUBJECTS.length]);
+        /* upper grades keep going later than the lower ones */
+        var has = p < filled && !(p >= 6 && gi < 2);
+        row.push(has ? SUBJECTS[(di * 5 + p * 3 + gi * 7) % SUBJECTS.length] : '');
       });
       rows.push(row);
     }
   });
   sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
+
+  /* Day and period are structural: the board groups rows by them, and a
+     stray edit here silently moves classes to another day. Times stay
+     editable — bell schedules genuinely differ between schools. */
+  lock_(sh.getRange(2, 1, rows.length, 2), 'יום ומספר שיעור — לא לשינוי');
+  sh.getRange(2, 1, rows.length, 2).setHorizontalAlignment('center');
+  /* a faint band per day, so 60 rows stay readable */
+  sh.getRange(2, 1, rows.length, headers.length).setBorder(
+    null, null, null, null, null, true, '#d9d9d9',
+    SpreadsheetApp.BorderStyle.SOLID);
 
   rulesSchedule_(sh);
   sh.setColumnWidth(1, 60);
@@ -477,7 +491,11 @@ function buildSchedule_(sh) {
   sh.setColumnWidths(3, 2, 80);
   sh.setColumnWidths(5, GRADES.length, 130);
   sh.getRange('A1').setNote(
-    'שורה לכל (יום, שיעור). תא ריק = אין שיעור.\n' +
+    'עשר שורות לכל יום, מוכנות מראש.\n\n' +
+    'ממלאים רק את שמות המקצועות בעמודות השכבות.\n' +
+    'תא ריק = אין שיעור. יום הלימודים מסתיים אחרי המקצוע האחרון\n' +
+    'שהוזן, וכל מה שאחריו לא יוצג על הלוח.\n\n' +
+    'עמודות "יום" ו"שיעור" נעולות — אין צורך לשנות אותן.\n' +
     'כל עמודה אחרי "סיום" היא שכבה — הלוח מתאים את עצמו אוטומטית.');
 }
 

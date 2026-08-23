@@ -28,7 +28,7 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.154",
+  version: "0.155",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   staleMinutes: 10,          /* stamp turns amber after this long     */

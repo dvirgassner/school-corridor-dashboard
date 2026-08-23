@@ -125,6 +125,7 @@ async function loadData() {
   const today = dateKey(NOW());
   if (DEMO) {
     MODEL = buildModel(sampleCsv(today), today);
+    markUpdates(MODEL, today);
     FETCHED_AT = Date.now();
     return;
   }
@@ -141,6 +142,7 @@ async function loadData() {
       catch (e) { console.error("settings tab unreadable, using defaults:", e); }
     }
     MODEL = buildModel({ schedule, exams, events, messages, settings }, today);
+    markUpdates(MODEL, today);
     FETCHED_AT = Date.now();
     SHEETS_OK = true;
     try {
@@ -157,6 +159,57 @@ async function loadData() {
     } catch (e) { /* corrupt cache → stay empty, render() handles null */ }
   }
 }
+
+/* ================================================================
+   "עודכן" — spotting a mid-day timetable change
+   The principal edits a subject while school is running; students who
+   already read the board in the morning have no way to know. So the
+   board remembers what it showed earlier today and flags what moved.
+   The snapshot lives in localStorage keyed by date, so a browser restart
+   mid-morning does not lose the marks, and a new day starts clean.
+   ================================================================ */
+const SNAP_KEY = "dash-schedule-snap";
+let UPDATED = {};                  /* "<grade>|<start>" -> true */
+
+function markUpdates(model, todayKey) {
+  const periods = model.byDay[dayLetter(NOW())] || [];
+  const snap = {};
+  periods.forEach((p) => model.grades.forEach((g) => {
+    snap[g + "|" + p.start] = p.subjects[g] || "";
+  }));
+
+  let prev = null;
+  try { prev = JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch (e) {}
+  if (prev && prev.date === todayKey) {
+    UPDATED = prev.updated || {};
+    Object.keys(snap).forEach((k) => {
+      /* only a real substitution counts: a cell going from empty to a
+         subject is the timetable being filled in, not a change */
+      if (k in prev.snap && prev.snap[k] && snap[k] && prev.snap[k] !== snap[k]) {
+        UPDATED[k] = true;
+      }
+    });
+  } else {
+    UPDATED = {};                  /* new day, clean slate */
+  }
+  try {
+    localStorage.setItem(SNAP_KEY,
+      JSON.stringify({ date: todayKey, snap: snap, updated: UPDATED }));
+  } catch (e) { /* private mode — marks are a bonus, not a need */ }
+}
+
+/* ?upd previews the badge without waiting for a real edit */
+const UPD_PREVIEW = new URLSearchParams(location.search).has("upd");
+
+/* Drawn, not an emoji: 🔄 is missing from the default Windows font stack
+   and renders as an empty box — the same trap the flag emoji fell into.
+   currentColor makes it follow the badge's colour in every theme. */
+const UPD_BADGE =
+  `<span class="upd"><svg viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
+     stroke-linejoin="round" aria-hidden="true">
+     <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/>
+   </svg>עודכן</span>`;
 
 /* ================================================================
    RENDERING
@@ -202,11 +255,15 @@ function renderGrades() {
     }
     const rows = periods
       .filter((p) => p.subjects[name])
-      .map((p) => `
+      .map((p, i) => {
+        const changed = UPDATED[name + "|" + p.start] || (UPD_PREVIEW && i === 1);
+        return `
         <div class="period" data-start="${esc(p.start)}" data-end="${esc(p.end)}">
           <span class="time">${esc(p.start)}–${esc(p.end)}</span>
           <span class="subj">${esc(p.subjects[name])}</span>
-        </div>`).join("");
+          ${changed ? UPD_BADGE : ""}
+        </div>`;
+      }).join("");
     card.innerHTML = `
       <h2><span class="chip"></span>כיתה ${esc(name)}</h2>
       <div class="periods"><div class="pwrap">${rows}</div></div>`;

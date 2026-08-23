@@ -38,7 +38,13 @@
 
     <footer>
       <div id="msg"></div>
-      <div id="stamp"></div>
+      <!-- bottom-left: fault indicator (hidden unless something is
+           wrong), freshness stamp, version -->
+      <div class="statusbox">
+        <span id="errind"></span>
+        <span id="stamp"></span>
+        <span id="version"></span>
+      </div>
     </footer>
   </div>
 </div>

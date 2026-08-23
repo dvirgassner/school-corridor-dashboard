@@ -333,6 +333,24 @@
     return null;
   }
 
+  /* ---------- status / error indicator ----------
+     The board is unattended, so a fault has to be visible on the screen
+     itself: the principal reads this line and reports it. Only one
+     message shows at a time, most fundamental cause first — "no
+     internet" explains both other failures, so it wins.
+
+     `pageHost` is whether the machine can still reach the site the board
+     was served from (GitHub Pages); `sheets` is whether the last data
+     fetch succeeded. Either can fail alone. */
+  function statusMessage(s) {
+    s = s || {};
+    if (s.online === false) return "אין אינטרנט";
+    if (s.pageHost === false && s.sheets === false) return "אין אינטרנט";
+    if (s.sheets === false) return "מנותק מגוגל שיטס";
+    if (s.pageHost === false) return "מנותק מגיטהאב";
+    return null;
+  }
+
   /* ---------- settings tab ----------
      A simple two-column key/value tab, so the principal can change
      presentation (currently the colour theme) without touching code. */
@@ -379,13 +397,31 @@
     var p;
     try { p = new URLSearchParams(String(hash).replace(/^#/, "")); }
     catch (e) { return null; }
+    /* Two ways to name the sheet, both verified to allow cross-origin
+       reads (many other Google CSV endpoints do NOT — /gviz/tq sends no
+       CORS header at all, so it works in curl and fails in a browser):
+
+         #t=<publishToken>  the "Publish to web" token; each tab has to
+                            be published separately
+         #d=<documentId>    the plain document id; needs only ONE setting
+                            ("anyone with the link can view"), which is
+                            considerably less clicking
+
+       Both are public-by-URL, so the no-personal-data rule applies
+       either way. */
     var token = (p.get("t") || "").trim();
+    var docId = (p.get("d") || "").trim();
     var gids = (p.get("g") || "").split(",").map(function (s) {
       return s.trim();
     }).filter(Boolean);
     /* strict validation: these values are interpolated into a URL we
        then fetch, so anything unexpected is rejected outright */
-    if (!/^[A-Za-z0-9_-]+$/.test(token)) return null;
+    var useDoc = !token && !!docId;
+    if (useDoc) {
+      if (!/^[A-Za-z0-9_-]+$/.test(docId)) return null;
+    } else {
+      if (!/^[A-Za-z0-9_-]+$/.test(token)) return null;
+    }
     /* 4 gids = the original four tabs; an optional 5th is the settings
        tab (theme). Older kiosk URLs with 4 keep working. */
     if (gids.length !== 4 && gids.length !== 5) return null;
@@ -393,8 +429,11 @@
       if (!/^\d+$/.test(gids[i])) return null;
     }
     function url(gid) {
-      return "https://docs.google.com/spreadsheets/d/e/" + token +
-             "/pub?gid=" + gid + "&single=true&output=csv";
+      return useDoc
+        ? "https://docs.google.com/spreadsheets/d/" + docId +
+          "/export?format=csv&gid=" + gid
+        : "https://docs.google.com/spreadsheets/d/e/" + token +
+          "/pub?gid=" + gid + "&single=true&output=csv";
     }
     var out = {
       schedule: url(gids[0]),
@@ -416,6 +455,7 @@
   }
 
   var api = {
+    statusMessage: statusMessage,
     hebrewKey: hebrewKey,
     dayOfTheDay: dayOfTheDay,
     buildSettings: buildSettings,

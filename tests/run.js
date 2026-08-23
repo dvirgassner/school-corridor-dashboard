@@ -402,6 +402,47 @@ test("parseSheetFragment: accepts an optional 5th gid for settings", () => {
   assert.ok(five.settings.includes("gid=44&"));
 });
 
+/* ---------- status / error indicator ---------- */
+test("statusMessage: everything healthy → no message", () => {
+  assert.equal(L.statusMessage({ online: true, sheets: true, pageHost: true }), null);
+});
+test("statusMessage: unknown state (nothing checked yet) → no message", () => {
+  assert.equal(L.statusMessage({}), null);
+  assert.equal(L.statusMessage(null), null);
+});
+test("statusMessage: sheets unreachable", () => {
+  assert.equal(L.statusMessage({ online: true, sheets: false, pageHost: true }),
+    "מנותק מגוגל שיטס");
+});
+test("statusMessage: page host unreachable", () => {
+  assert.equal(L.statusMessage({ online: true, sheets: true, pageHost: false }),
+    "מנותק מגיטהאב");
+});
+test("statusMessage: browser reports offline wins over everything", () => {
+  assert.equal(L.statusMessage({ online: false, sheets: false, pageHost: false }),
+    "אין אינטרנט");
+});
+test("statusMessage: both hosts unreachable reads as no internet", () => {
+  /* more useful than blaming one of them when neither answers */
+  assert.equal(L.statusMessage({ online: true, sheets: false, pageHost: false }),
+    "אין אינטרנט");
+});
+
+/* ---------- document-id (link-shared) sheet URLs ---------- */
+test("parseSheetFragment: #d= builds export URLs for a link-shared sheet", () => {
+  const s = L.parseSheetFragment("#d=1AbC_dEf-123&g=0,11,22,33,44");
+  assert.ok(s.schedule.includes("/spreadsheets/d/1AbC_dEf-123/export?format=csv&gid=0"));
+  assert.ok(s.settings.includes("gid=44"));
+  assert.ok(!s.schedule.includes("/d/e/"));      /* not the publish form */
+});
+test("parseSheetFragment: publish token wins if both are given", () => {
+  const s = L.parseSheetFragment(`#t=${TOKEN}&d=1AbC&g=0,1,2,3`);
+  assert.ok(s.schedule.includes("/d/e/" + TOKEN + "/pub"));
+});
+test("parseSheetFragment: rejects a document id with metacharacters", () => {
+  assert.equal(L.parseSheetFragment("#d=abc/../evil&g=0,1,2,3"), null);
+});
+
 /* ---------- shouldPlayVideo ---------- */
 test("shouldPlayVideo: never played → play now", () => {
   assert.ok(L.shouldPlayVideo(null, 1000000, 10));

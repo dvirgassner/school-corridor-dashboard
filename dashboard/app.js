@@ -60,6 +60,8 @@ function NOW() {
 let MODEL = null;        /* { grades, byDay, agenda, messages }      */
 let FETCHED_AT = null;   /* ms timestamp of last successful read     */
 let RENDERED_KEY = "";   /* model fingerprint, to avoid re-rendering */
+let SHEETS_OK = null;    /* last data fetch succeeded?               */
+let PAGEHOST_OK = null;  /* can we still reach where we were served? */
 
 /* ================================================================
    DATA
@@ -140,12 +142,14 @@ async function loadData() {
     }
     MODEL = buildModel({ schedule, exams, events, messages, settings }, today);
     FETCHED_AT = Date.now();
+    SHEETS_OK = true;
     try {
       localStorage.setItem(CACHE_KEY,
         JSON.stringify({ model: MODEL, fetchedAt: FETCHED_AT }));
     } catch (e) { /* private mode / quota — cache is a bonus, not a need */ }
   } catch (err) {
     console.error("fetch failed, falling back to cache:", err);
+    SHEETS_OK = false;
     if (MODEL) return;                     /* keep what we already show */
     try {
       const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
@@ -330,8 +334,47 @@ function render() {
 /* ================================================================
    CLOCK TICK, PAGING, STAMP
    ================================================================ */
+/* Can we still reach the host that served this page? Answering it needs
+   a real request: the page itself has been in memory for hours, so its
+   presence proves nothing about the network now. */
+async function checkPageHost() {
+  try {
+    const r = await fetch("config.js?_=" + Date.now(), { cache: "no-store" });
+    PAGEHOST_OK = r.ok;
+  } catch (e) {
+    PAGEHOST_OK = false;
+  }
+}
+
+/* ?err=offline|sheets|github forces the indicator, for previews */
+const ERR_PREVIEW = new URLSearchParams(location.search).get("err");
+
+function renderStatus() {
+  const el = $("errind");
+  let msg;
+  if (ERR_PREVIEW) {
+    msg = statusMessage({
+      online: ERR_PREVIEW !== "offline",
+      sheets: ERR_PREVIEW !== "sheets",
+      pageHost: ERR_PREVIEW !== "github"
+    });
+  } else if (DEMO) {
+    msg = null;                       /* demo mode has nothing to fetch */
+  } else {
+    msg = statusMessage({
+      online: navigator.onLine !== false,
+      sheets: SHEETS_OK,
+      pageHost: PAGEHOST_OK
+    });
+  }
+  el.classList.toggle("on", !!msg);
+  el.textContent = msg ? "⚠ " + msg : "";
+}
+
 function stamp() {
   const el = $("stamp");
+  $("version").textContent = "v" + CFG.version;
+  renderStatus();
   if (!FETCHED_AT) { el.textContent = "אין נתונים"; el.classList.add("stale"); return; }
   const at = zonedNow(CFG.timeZone, new Date(FETCHED_AT));
   const d = at.toLocaleDateString("he-IL",
@@ -459,7 +502,7 @@ function fit() {
    ================================================================ */
 async function refresh() {
   const before = dateKey(NOW());
-  await loadData();
+  await Promise.all([loadData(), DEMO ? null : checkPageHost()]);
   /* crossing midnight changes which day's schedule applies */
   if (MODEL && before !== dateKey(NOW())) RENDERED_KEY = "";
   render();

@@ -289,9 +289,23 @@
   .titem .bullet { color: var(--g1); }
   .count { direction: ltr; unicode-bidi: isolate; color: var(--muted);
            font-weight: 600; margin-inline-end: 14px; }
+  .statusbox { display: flex; align-items: center; gap: 14px; flex: none; }
   #stamp { font-size: 20px; color: var(--muted); flex: none;
            font-variant-numeric: tabular-nums; }
   #stamp.stale { color: var(--warning); }
+  #version { font-size: 18px; color: var(--muted); opacity: 0.75;
+             flex: none; font-variant-numeric: tabular-nums;
+             direction: ltr; unicode-bidi: isolate; }
+
+  /* fault indicator: hidden entirely unless something is wrong, so a
+     healthy board shows no clutter. Carries an icon AND text, never
+     colour alone. */
+  #errind { display: none; align-items: center; gap: 8px; flex: none;
+            font-size: 19px; font-weight: 700; color: var(--critical);
+            border: 1.5px solid var(--critical); border-radius: 8px;
+            padding: 2px 10px; white-space: nowrap;
+            background: color-mix(in srgb, var(--critical) 14%, transparent); }
+  #errind.on { display: flex; }
 
   /* Every element whose text comes from the Google Sheet is isolated,
      so mixed Hebrew/English/digit content can never reorder the UI

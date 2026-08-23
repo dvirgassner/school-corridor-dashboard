@@ -214,6 +214,9 @@
   /* how many leading columns are fixed before the grade columns start */
   var SCHEDULE_FIXED_COLS = 4;
 
+  /* the events tab's "applies to every grade" column */
+  var ALL_LABELS = ["כולם", "כל השכבות", "all"];
+
   /* Schedule: columns are Day, Period, Start, End, then one column per
      grade — so the grade list is whatever the school put in the header. */
   function buildSchedule(rows, fields) {
@@ -271,9 +274,18 @@
       if (!pick(r, "title")) return;
       var ticked = grades.filter(function (g) { return isChecked(r[g]); });
       var listed = pick(r, "grades").split(",").map(clean).filter(Boolean);
+      /* a dedicated "כולם" checkbox beats ticking every grade one by one,
+         and reads as one chip on the board */
+      var all = ALL_LABELS.some(function (k) { return isChecked(r[k]); }) ||
+                listed.some(function (v) {
+                  return ALL_LABELS.indexOf(v) >= 0;
+                });
       out.push({
         kind: "event",
-        grades: ticked.length ? ticked : listed,
+        all: all,
+        grades: ticked.length ? ticked : listed.filter(function (v) {
+          return ALL_LABELS.indexOf(v) < 0;
+        }),
         title: pick(r, "title"),
         start: start,
         end: end,

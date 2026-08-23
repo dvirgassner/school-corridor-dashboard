@@ -106,11 +106,13 @@ One row per (day, period). Columns:
 |------|-------|-------|-----|------|----|----|----|---|
 | 2026-09-01 | חזרה כללית לטקס | 10:40 | 11:25 | אולם ספורט | ✓ | ✓ | | |
 
-- **One checkbox column per grade.** Google Sheets cannot multi-select
-  inside a single cell, so ticking a box per grade is the native way to
-  attach an event to several grades at once. The column headers must
-  match the Schedule tab's grade names; the board reads whichever are
-  ticked, in schedule order.
+- **One checkbox column per grade, plus `כולם`.** Google Sheets cannot
+  multi-select inside a single cell, so ticking a box per grade is the
+  native way to attach an event to several grades at once. Grade column
+  headers must match the Schedule tab's grade names; the board reads
+  whichever are ticked, in schedule order. Ticking `כולם` marks a
+  whole-school activity and renders as one neutral "כל השכבות" chip —
+  as does ticking four or more grades.
 - Legacy: a single comma-separated `שכבות` column is still honoured, so
   an older sheet keeps working. Checkboxes win if both are present.
 - Grade names, when listed the legacy way: comma-separated, each matching a

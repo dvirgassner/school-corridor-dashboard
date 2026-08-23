@@ -216,17 +216,25 @@ function buildExams_(sh) {
    many as apply, and the board shows whichever are ticked. */
 function buildEvents_(sh) {
   var FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
-  var headers = FIXED.concat(GRADES);
+  /* ...GRADES, then a כולם box for a whole-school activity, so nobody has
+     to tick every grade one at a time */
+  var TICKS = GRADES.concat(['כולם']);
+  var headers = FIXED.concat(TICKS);
   header_(sh, headers);
 
   var today = new Date();
   var first = [today, 'חזרה כללית לטקס', '10:40', '11:25', 'אולם ספורט'];
   var second = [today, 'הרצאה: בטיחות ברשת', '12:35', '13:20', 'אודיטוריום'];
+  var third = [today, 'עצרת פתיחת שנה', '08:00', '08:45', 'רחבת בית הספר'];
   GRADES.forEach(function (g, gi) {
     first.push(gi < 2);              /* ז׳, ח׳            */
     second.push(gi >= 3);            /* י׳ ומעלה          */
+    third.push(false);               /* כולם instead      */
   });
-  sh.getRange(2, 1, 2, headers.length).setValues([first, second]);
+  first.push(false);
+  second.push(false);
+  third.push(true);                  /* the כולם box      */
+  sh.getRange(2, 1, 3, headers.length).setValues([first, second, third]);
 
   dateRule_(sh, 1);
   lenRule_(sh, 2, LIMITS.eventTitle, 'כותרת');
@@ -234,17 +242,20 @@ function buildEvents_(sh) {
   timeRule_(sh, 4);
   lenRule_(sh, 5, LIMITS.eventLocation, 'מקום');
 
-  /* real checkboxes down each grade column */
+  /* real checkboxes down each grade column, and under כולם */
   var firstGradeCol = FIXED.length + 1;
-  var boxes = sh.getRange(2, firstGradeCol, 200, GRADES.length);
+  var boxes = sh.getRange(2, firstGradeCol, 200, TICKS.length);
   boxes.insertCheckboxes();
   boxes.setHorizontalAlignment('center');
 
   sh.setColumnWidths(1, FIXED.length, 130);
-  sh.setColumnWidths(firstGradeCol, GRADES.length, 55);
+  sh.setColumnWidths(firstGradeCol, TICKS.length, 60);
   sh.getRange(1, firstGradeCol, 1, GRADES.length).setNote(
     'לסמן ✓ בכל שכבה שהאירוע מיועד לה.\n' +
     'מארבע שכבות ומעלה הלוח מציג "כל השכבות".');
+  sh.getRange(1, firstGradeCol + GRADES.length).setNote(
+    'אירוע לכל בית הספר — לסמן ✓ כאן במקום לסמן כל שכבה בנפרד.\n' +
+    'הלוח יציג "כל השכבות".');
 
   /* verify rather than assume — a missing checkbox column is the kind of
      failure nobody notices until an event shows no grades at all */

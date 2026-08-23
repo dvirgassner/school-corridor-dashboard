@@ -257,6 +257,33 @@ test("buildAgenda: no boxes ticked leaves an event with no grades", () => {
   assert.equal(a.length, 1);            /* still shown — it is an event */
   assert.deepEqual(a[0].grades, []);
 });
+test("buildAgenda: the כולם checkbox marks an event for the whole school", () => {
+  const events = [{
+    "תאריך": TODAY, "כותרת": "עצרת", "התחלה": "08:00", "סיום": "08:45",
+    "ז׳": "FALSE", "כולם": "TRUE"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.equal(a[0].all, true);
+  assert.deepEqual(a[0].grades, []);
+});
+test("buildAgenda: כולם unticked leaves all=false", () => {
+  const events = [{
+    "תאריך": TODAY, "כותרת": "טקס", "התחלה": "09:00", "סיום": "10:00",
+    "ז׳": "TRUE", "כולם": "FALSE"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.equal(a[0].all, false);
+  assert.deepEqual(a[0].grades, ["ז׳"]);
+});
+test("buildAgenda: כולם typed into the legacy שכבות cell also counts", () => {
+  const events = [{
+    "תאריך": TODAY, "שכבות": "כולם", "כותרת": "עצרת",
+    "התחלה": "08:00", "סיום": "08:45"
+  }];
+  const a = L.buildAgenda([], events, TODAY, EGRADES);
+  assert.equal(a[0].all, true);
+  assert.deepEqual(a[0].grades, []);   /* not treated as a grade name */
+});
 test("buildAgenda: old comma-separated שכבות column still works", () => {
   const events = [{
     "תאריך": TODAY, "שכבות": "ז׳, ט׳", "כותרת": "טקס",

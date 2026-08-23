@@ -254,7 +254,9 @@ function renderAgenda() {
       ? `מבחן ב${esc(e.subject)}`      /* sheet holds the bare subject */
       : esc(e.title);
     const grades = e.kind === "exam" ? [e.grade] : e.grades;
-    const chips = grades.length >= 4
+    /* one neutral chip when it applies to everyone — either the כולם box
+       is ticked, or so many grades are ticked that listing them is noise */
+    const chips = (e.all || grades.length >= 4)
       ? `<span class="gchip all">כל השכבות</span>`
       : grades.map(chipFor).join("");
     return `

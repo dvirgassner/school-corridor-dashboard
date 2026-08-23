@@ -76,6 +76,28 @@ A pleasant side effect: anyone opening the public GitHub Pages URL
 without a fragment sees the **demo board with sample data**, never the
 school's real content.
 
+### Simpler alternative: link sharing instead of publishing
+
+Publishing five tabs one by one is tedious. There is a second form the
+board accepts, which needs **one** setting instead of five publishes:
+
+1. In the sheet: **Share → General access → Anyone with the link →
+   Viewer**. (Editing still requires the accounts you invited.)
+2. Take the document id out of the sheet's normal address bar URL:
+   `https://docs.google.com/spreadsheets/d/`**`<DOCUMENT-ID>`**`/edit`
+3. Use `#d=` instead of `#t=`:
+
+```
+https://<you>.github.io/<repo>/dashboard/#d=<DOCUMENT-ID>&g=<gid>,<gid>,<gid>,<gid>,<gid>
+```
+
+The gids are the same numbers, visible in the address bar as `#gid=…`
+when you click each tab.
+
+Both forms are equally public-by-URL, and both were verified to allow
+the cross-origin read the board needs. Pick whichever you find easier;
+`#d=` is usually the answer.
+
 ### If you would rather keep the URLs in code
 
 `config.js` still accepts a `sheets` object with the four full URLs.

@@ -33,23 +33,52 @@ The board reads the sheet as four plain CSV feeds.
 4. Repeat for all four tabs. You end up with four URLs that look like
    `https://docs.google.com/spreadsheets/d/e/2PACX-…/pub?gid=0&single=true&output=csv`.
 
-## 3. Point the board at the sheet
+## 3. Point the board at the sheet — without putting the URL in the repo
 
-Edit [`../dashboard/config.js`](../dashboard/config.js) and replace
-`sheets: null` with the four URLs:
+The four published URLs all look like this:
 
-```js
-sheets: {
-  schedule: "…gid=0…output=csv",   /* מערכת   */
-  exams:    "…gid=1…output=csv",   /* מבחנים  */
-  events:   "…gid=2…output=csv",   /* אירועים */
-  messages: "…gid=3…output=csv"    /* הודעות  */
-},
+```
+https://docs.google.com/spreadsheets/d/e/<TOKEN>/pub?gid=<GID>&single=true&output=csv
+                                          ^^^^^^^          ^^^^^
+                                     same for all four   one per tab
 ```
 
-Commit and push; the board picks up the change on its next reload.
-While `sheets` stays `null` the board runs in **demo mode** with the
-bundled sample data, which is how you can develop with no sheet at all.
+So the sheet is identified by **one token plus four gids**. Rather than
+committing those to this repository — which is public, and would let
+anyone read the school's sheet — they are given to the board at runtime
+in the **URL fragment**, which lives only on the Pi:
+
+```
+https://<you>.github.io/<repo>/dashboard/#t=<TOKEN>&g=<gid-מערכת>,<gid-מבחנים>,<gid-אירועים>,<gid-הודעות>
+```
+
+**The gid order matters:** מערכת, מבחנים, אירועים, הודעות.
+
+Collect the token and the four gids from the URLs you copied in step 2,
+assemble that one line, and give it to the Pi as `DASH_URL`
+(see [`../pi/README.md`](../pi/README.md)). `pi/setup.sh` stores it in
+`~/.dashboard-env` with `chmod 600`, and nothing else on the Pi or in
+this repo holds it.
+
+### Why the fragment specifically
+
+A URL fragment is **never transmitted to the web server**. The browser
+strips it before making the request, so GitHub never receives — and
+cannot log — the sheet token, even though GitHub is serving the page.
+This was verified against a real server, not assumed: the page host's
+request log shows only `/index.html`, `/app.js`, `/style.css` and
+friends, with no token anywhere. A query string (`?t=…`) would **not**
+be safe, because query strings are sent to the server.
+
+A pleasant side effect: anyone opening the public GitHub Pages URL
+without a fragment sees the **demo board with sample data**, never the
+school's real content.
+
+### If you would rather keep the URLs in code
+
+`config.js` still accepts a `sheets` object with the four full URLs.
+Only do this if the repository is private or the files are served from
+the Pi itself.
 
 ## 4. Give the principal access
 

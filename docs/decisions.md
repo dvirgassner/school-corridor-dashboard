@@ -66,6 +66,45 @@ the link. Hence the hard rule, stated in the admin guide and in the
 sheet's own notes: **no student names, marks, or personal data, ever.**
 Corridor content is public by definition.
 
+## Why the sheet's address lives only on the Pi
+
+The repository is public (free GitHub Pages requires it), so committing
+the published-CSV URLs would hand the school's sheet to anyone who found
+the repo. Instead the Pi's kiosk URL carries the sheet token in the
+**fragment** (`#t=…&g=…`), and `~/.dashboard-env` on the Pi is the only
+place it exists.
+
+This works because browsers never transmit the fragment to the server:
+the page can read it, but GitHub cannot see or log it. That claim was
+tested rather than assumed — a local server logging every request
+received only `/index.html`, `/app.js`, `/style.css` and friends, with no
+token in any of them. A query string would have been sent to the server,
+so `?t=…` would not do.
+
+Consequences worth knowing:
+
+- Code updates still flow by `git push`. Only a change of token needs
+  SSH to the Pi, which is rare.
+- Visiting the public URL shows the **demo** board, not school data.
+- It is obscurity, not authentication: whoever holds the token can read
+  the sheet, and revoking means re-publishing (which changes the token).
+  So the no-personal-data rule stays in force regardless.
+
+## Why cross-origin fetching dictated the endpoint
+
+Google serves published sheets from several URL shapes, and they do not
+behave alike. Measured against a live sheet:
+
+| Endpoint | CORS header | Usable from a browser |
+|---|---|---|
+| `/d/e/<token>/pub?output=csv` | yes | **yes — what we use** |
+| `/export?format=csv` | yes | yes |
+| `/gviz/tq?tqx=out:csv` | **no** | no |
+
+The `gviz/tq` form is widely recommended online and returns 200 to
+`curl`, so it looks fine in a terminal and then fails silently in the
+browser. If someone "simplifies" the fetch later, this is the trap.
+
 ## Why GitHub Pages?
 
 Free, effectively never down, versioned, and it makes the repository the

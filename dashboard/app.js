@@ -149,6 +149,18 @@ function renderGrades() {
   const periods = MODEL.byDay[dayLetter(NOW())] || [];
   grid.classList.toggle("grades7", grades.length >= 7);
 
+  /* No grade columns at all means the schedule tab is empty or the board
+     is pointed at the wrong sheet/gid. Say so plainly — a blank screen
+     in a corridor gives whoever is setting it up nothing to work with. */
+  if (!grades.length) {
+    const box = document.createElement("section");
+    box.className = "card nodata";
+    box.innerHTML = `<div class="nodatamsg">אין נתוני מערכת שעות
+      <span>בדקו את גיליון "מערכת" או את כתובת הלוח</span></div>`;
+    grid.insertBefore(box, $("exams"));
+    return;
+  }
+
   grades.forEach((name, gi) => {
     const card = document.createElement("section");
     card.className = "card" + (gi === 6 ? " seventh" : "");

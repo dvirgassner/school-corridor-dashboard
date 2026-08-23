@@ -25,6 +25,11 @@ whole design idea:
 - **The dashboard is one static web page.** It reads the sheet as four
   CSV feeds every 60 seconds and redraws itself. GitHub Pages hosts it
   for free and never goes down.
+- **The sheet's address is not in this repository.** The Pi passes it in
+  the URL fragment, which browsers never send to the server — so this
+  repo stays public while the school's data stays unlisted. Opening the
+  public URL shows demo data. See
+  [`sheet-template/README.md`](sheet-template/README.md).
 - **The Raspberry Pi is a browser on a stick.** It boots, logs in, opens
   the page full-screen, and relaunches the browser if it ever dies.
 - **The TV is just a monitor.** The Pi turns it on and off over the HDMI
@@ -52,7 +57,7 @@ Useful URL parameters:
 | Path | What is in it |
 |---|---|
 | [`dashboard/`](dashboard/) | the board itself — this is what the TV shows |
-| `dashboard/config.js` | **the only file you edit** to connect a sheet |
+| `dashboard/config.js` | display settings; contains **no** sheet URLs by design |
 | `dashboard/logic.js` | pure functions (dates, gematria, parsing) — unit-tested |
 | `dashboard/app.js` | everything touching the DOM, network, and clock |
 | [`sheet-template/`](sheet-template/) | Apps Script that builds the Google Sheet, plus setup steps |
@@ -74,13 +79,15 @@ rules for which rows to show.
 ## Deploying it
 
 1. **The sheet**: follow [`sheet-template/README.md`](sheet-template/README.md).
+   You end with one token and four gids — do **not** commit them.
 2. **The page**: push this repo to GitHub, then **Settings → Pages →
    Deploy from a branch → `main` / root**. Your board lives at
    `https://<your-user>.github.io/<your-repo>/dashboard/`.
-3. **The Pi**: follow [`pi/README.md`](pi/README.md).
+3. **The Pi**: follow [`pi/README.md`](pi/README.md), giving it
+   `DASH_URL` = the Pages URL **plus** the `#t=…&g=…` fragment.
 4. **The TV**: follow [`docs/tv-setup.md`](docs/tv-setup.md).
 
-Do them in that order — each step wants the URL from the one before it.
+Do them in that order — each step wants the output of the one before it.
 
 ## Learning your way in
 

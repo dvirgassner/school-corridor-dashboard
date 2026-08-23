@@ -54,14 +54,26 @@ adjust twice a year.)
 sudo apt install -y git
 git clone https://github.com/<your-user>/<your-repo>.git
 cd <your-repo>
-DASH_URL="https://<your-user>.github.io/<your-repo>/dashboard/" bash pi/setup.sh
+DASH_URL="https://<your-user>.github.io/<your-repo>/dashboard/#t=<TOKEN>&g=<gid>,<gid>,<gid>,<gid>" \
+  bash pi/setup.sh
 ```
+
+**The `#t=…&g=…` part is what points the board at the school's Google
+Sheet, and this Pi is the only place it exists.** It is deliberately not
+in the repository, so the repository can be public without exposing the
+sheet. Get the token and the four gids (מערכת, מבחנים, אירועים, הודעות —
+in that order) from
+[`../sheet-template/README.md`](../sheet-template/README.md).
+
+Without the fragment the board still runs, but shows **demo data** — a
+useful way to test the Pi before the sheet exists.
 
 If you set up a free <https://healthchecks.io> check (recommended — it
 emails you if the Pi goes silent), add its ping URL:
 
 ```bash
-DASH_URL="https://…/dashboard/" HEALTHCHECK_URL="https://hc-ping.com/xxxx" bash pi/setup.sh
+DASH_URL="https://…/dashboard/#t=…&g=…" HEALTHCHECK_URL="https://hc-ping.com/xxxx" \
+  bash pi/setup.sh
 ```
 
 The script installs Chromium and `cec-utils`, writes `~/kiosk.sh` and
@@ -108,7 +120,7 @@ Then check, in this order:
 |---|---|
 | See the board's log | `journalctl --user -f` or run `~/kiosk.sh` in a terminal |
 | Restart just the browser | `pkill chromium` (the loop relaunches it) |
-| Change the board URL | edit `~/.dashboard-env`, then `sudo reboot` |
+| Change the board URL or sheet token | edit `~/.dashboard-env`, then `sudo reboot` |
 | Update the dashboard code | `cd <repo> && git pull` (only if you self-host; with GitHub Pages the Pi just reloads the page) |
 | Force the TV on/off now | `echo "on 0" \| cec-client -s -d 1` / `echo "standby 0" \| cec-client -s -d 1` |
 

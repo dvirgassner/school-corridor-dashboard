@@ -135,6 +135,14 @@
   .period.now .subj { color: var(--ink-strong); }
   .period.done { display: none; }   /* passed classes free up space */
 
+  /* shown instead of the grade cards when the sheet yields no grades */
+  .card.nodata { grid-column: 1 / 4; grid-row: 1 / span 2;
+                 align-items: center; justify-content: center; }
+  .nodatamsg { text-align: center; font-size: 40px; font-weight: 700;
+               color: var(--ink-2); line-height: 1.5; }
+  .nodatamsg span { display: block; font-size: 26px; font-weight: 400;
+                    color: var(--muted); margin-top: 10px; }
+
   /* the 7th grade card, when present, sits top-left (col 4, row 1) */
   .card.seventh { grid-column: 4; grid-row: 1; }
 

@@ -14,8 +14,13 @@ fi
 
 # School Wi-Fi and DNS are often not ready when the desktop session
 # starts. Wait for the real page rather than guessing with a sleep.
-until curl -sfI --max-time 10 "$DASH_URL" >/dev/null 2>&1; do
-  echo "waiting for $DASH_URL ..."
+#
+# Strip the fragment first: it holds the sheet token, it is meaningless
+# to a server, and this keeps it out of curl's arguments and any logs.
+# Also keeps the token out of `ps` output for the check itself.
+REACH_URL="${DASH_URL%%#*}"
+until curl -sfI --max-time 10 "$REACH_URL" >/dev/null 2>&1; do
+  echo "waiting for $REACH_URL ..."
   sleep 3
 done
 

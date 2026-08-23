@@ -296,6 +296,50 @@ test("buildMessages: reads Hebrew headers", () => {
   assert.deepEqual(m.videos, [{ url: "https://x/y.mp4", sound: true }]);
 });
 
+/* ---------- parseSheetFragment ----------
+   The sheet token lives only on the Pi, passed in the URL fragment, so
+   it never appears in the public repository. */
+const TOKEN = "2PACX-1vTb27gT7Isq5AIGSthUQ_abc-XYZ";
+
+test("parseSheetFragment: builds four CSV URLs in tab order", () => {
+  const s = L.parseSheetFragment(`#t=${TOKEN}&g=0,111,222,333`);
+  assert.ok(s);
+  assert.ok(s.schedule.includes(`/d/e/${TOKEN}/pub?gid=0&`));
+  assert.ok(s.exams.includes("gid=111&"));
+  assert.ok(s.events.includes("gid=222&"));
+  assert.ok(s.messages.includes("gid=333&"));
+  assert.ok(s.schedule.endsWith("single=true&output=csv"));
+});
+test("parseSheetFragment: works without the leading #", () => {
+  assert.ok(L.parseSheetFragment(`t=${TOKEN}&g=0,1,2,3`));
+});
+test("parseSheetFragment: no fragment → null (falls back to demo)", () => {
+  assert.equal(L.parseSheetFragment(""), null);
+  assert.equal(L.parseSheetFragment("#"), null);
+  assert.equal(L.parseSheetFragment(null), null);
+});
+test("parseSheetFragment: missing token or gids → null", () => {
+  assert.equal(L.parseSheetFragment("#g=0,1,2,3"), null);
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}`), null);
+});
+test("parseSheetFragment: wrong number of gids → null", () => {
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2`), null);
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`), null);
+});
+test("parseSheetFragment: non-numeric gid → null", () => {
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,abc,3`), null);
+});
+test("parseSheetFragment: rejects tokens with URL metacharacters", () => {
+  /* these values are interpolated into a URL we then fetch */
+  assert.equal(L.parseSheetFragment("#t=abc/../evil&g=0,1,2,3"), null);
+  assert.equal(L.parseSheetFragment("#t=abc?x=1&g=0,1,2,3"), null);
+  assert.equal(L.parseSheetFragment("#t=abc%20def&g=0,1,2,3"), null);
+});
+test("parseSheetFragment: ignores unrelated fragment keys", () => {
+  const s = L.parseSheetFragment(`#foo=bar&t=${TOKEN}&g=0,1,2,3&baz=1`);
+  assert.ok(s && s.schedule.includes(TOKEN));
+});
+
 /* ---------- shouldPlayVideo ---------- */
 test("shouldPlayVideo: never played → play now", () => {
   assert.ok(L.shouldPlayVideo(null, 1000000, 10));

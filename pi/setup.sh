@@ -13,10 +13,29 @@ set -euo pipefail
 DASH_URL="${DASH_URL:-}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 if [ -z "$DASH_URL" ]; then
-  echo "Set DASH_URL first, e.g.:" >&2
-  echo '  DASH_URL="https://you.github.io/repo/dashboard/" bash pi/setup.sh' >&2
+  cat >&2 <<'USAGE'
+Set DASH_URL first. It must include the sheet fragment, which is what
+points the board at the school's Google Sheet:
+
+  DASH_URL="https://you.github.io/repo/dashboard/#t=<token>&g=<gid>,<gid>,<gid>,<gid>" \
+    bash pi/setup.sh
+
+The four gids are the schedule, exams, events and messages tabs, in that
+order. See sheet-template/README.md for how to collect them.
+
+The token is stored only here on the Pi (~/.dashboard-env) and is never
+committed to the repository. Without the fragment the board runs in demo
+mode with sample data.
+USAGE
   exit 1
 fi
+
+# Warn rather than fail: a fragment-less URL is valid (demo mode), but
+# on a school wall it is almost certainly a mistake.
+case "$DASH_URL" in
+  *"#t="*) : ;;
+  *) echo "NOTE: DASH_URL has no #t=... fragment — the board will show DEMO data." >&2 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "==> Installing packages"
@@ -40,9 +59,16 @@ timedatectl status | sed -n '1,6p' || true
 echo "==> Writing ~/.dashboard-env"
 cat > "$HOME/.dashboard-env" <<EOF
 # Written by pi/setup.sh — edit and reboot to change the board URL.
+#
+# DASH_URL's #t=...&g=... fragment holds the Google Sheet publish token.
+# THIS FILE IS THE ONLY PLACE IT LIVES. It is deliberately not in the
+# repository, so the repository can be public without exposing the
+# sheet. If the sheet is ever re-published (which changes the token),
+# edit the URL here and reboot.
 export DASH_URL="$DASH_URL"
 export HEALTHCHECK_URL="$HEALTHCHECK_URL"
 EOF
+chmod 600 "$HOME/.dashboard-env"    # token — keep it to this user
 
 echo "==> Installing ~/kiosk.sh"
 install -m 755 "$SCRIPT_DIR/kiosk.sh" "$HOME/kiosk.sh"

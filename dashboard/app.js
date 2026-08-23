@@ -9,7 +9,23 @@
    rather than an error page.
    ================================================================== */
 const CFG = window.DASH_CONFIG;
-const DEMO = !CFG.sheets;                 /* no sheet URLs → demo mode */
+
+/* Where the data comes from, in priority order:
+     1. the URL fragment (#t=…&g=…) — how the Pi points at the real
+        sheet without the token ever being committed to this public
+        repository, or sent to the web server hosting this page
+     2. config.js `sheets`, for a private deployment that does not mind
+        holding the URLs in code
+     3. neither → demo mode with the bundled sample data
+   So opening the public GitHub Pages URL shows the demo board, while
+   the Pi's kiosk URL shows the school's real data. */
+const FRAGMENT_SHEETS = parseSheetFragment(location.hash);
+if (location.hash.length > 1 && !FRAGMENT_SHEETS) {
+  console.error("unusable sheet fragment; falling back to config/demo:",
+                location.hash);
+}
+const SHEETS = FRAGMENT_SHEETS || CFG.sheets;
+const DEMO = !SHEETS;
 const CACHE_KEY = "dash-cache";
 const ACCENTS = ["--g1", "--g2", "--g3", "--g4", "--g5", "--g6", "--g7"];
 
@@ -99,8 +115,8 @@ async function loadData() {
   }
   try {
     const [schedule, exams, events, messages] = await Promise.all([
-      fetchCsv(CFG.sheets.schedule), fetchCsv(CFG.sheets.exams),
-      fetchCsv(CFG.sheets.events),   fetchCsv(CFG.sheets.messages)
+      fetchCsv(SHEETS.schedule), fetchCsv(SHEETS.exams),
+      fetchCsv(SHEETS.events),   fetchCsv(SHEETS.messages)
     ]);
     MODEL = buildModel({ schedule, exams, events, messages }, today);
     FETCHED_AT = Date.now();

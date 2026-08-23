@@ -1,0 +1,14 @@
+# Line endings are load-bearing here.
+#
+# The repo is authored on Windows but the shell scripts run on Raspberry
+# Pi OS. A CRLF line ending makes bash fail with errors like
+#   syntax error near unexpected token `$'in\r''
+# so every text file is stored AND checked out with LF, on every
+# platform. Without this, a Windows clone produces scripts that cannot
+# run on the Pi.
+* text=auto eol=lf
+
+# Binary: never touch these
+*.png binary
+*.jpg binary
+*.mp4 binary

@@ -285,6 +285,53 @@
     return out;
   }
 
+  /* ---------- sheet location from the URL fragment ----------
+     The board is served from a PUBLIC repository, so the sheet's
+     publish token must not live in the code. Instead the Pi's kiosk URL
+     carries it in the fragment:
+
+       https://user.github.io/repo/dashboard/#t=<token>&g=<gid>,<gid>,<gid>,<gid>
+                                              (schedule,exams,events,messages)
+
+     A fragment is never transmitted to the web server — verified against
+     a real server, not assumed — so the token stays between the Pi and
+     Google. Anyone opening the public URL without a fragment gets demo
+     data instead of the school's sheet.
+
+     This is obscurity, not authentication: whoever holds the token can
+     read the sheet. The no-personal-data rule still applies.
+
+     Returns the four CSV URLs, or null if there is no usable fragment
+     (bad input falls back to config.js / demo mode rather than fetching
+     a malformed URL). */
+  function parseSheetFragment(hash) {
+    if (!hash) return null;
+    var p;
+    try { p = new URLSearchParams(String(hash).replace(/^#/, "")); }
+    catch (e) { return null; }
+    var token = (p.get("t") || "").trim();
+    var gids = (p.get("g") || "").split(",").map(function (s) {
+      return s.trim();
+    }).filter(Boolean);
+    /* strict validation: these values are interpolated into a URL we
+       then fetch, so anything unexpected is rejected outright */
+    if (!/^[A-Za-z0-9_-]+$/.test(token)) return null;
+    if (gids.length !== 4) return null;
+    for (var i = 0; i < gids.length; i++) {
+      if (!/^\d+$/.test(gids[i])) return null;
+    }
+    function url(gid) {
+      return "https://docs.google.com/spreadsheets/d/e/" + token +
+             "/pub?gid=" + gid + "&single=true&output=csv";
+    }
+    return {
+      schedule: url(gids[0]),
+      exams:    url(gids[1]),
+      events:   url(gids[2]),
+      messages: url(gids[3])
+    };
+  }
+
   /* Video pacing: play at most once per interval. A timestamp in the
      future (clock corrected backwards, e.g. after NTP sync on a Pi
      with no RTC) must not lock playback out for hours. */
@@ -295,6 +342,7 @@
   }
 
   var api = {
+    parseSheetFragment: parseSheetFragment,
     clean: clean,
     shouldPlayVideo: shouldPlayVideo,
     buildSchedule: buildSchedule,

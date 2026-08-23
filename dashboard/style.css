@@ -224,21 +224,28 @@
   .card.seventh { grid-column: 4; grid-row: 1; }
 
   /* -- left column: day-of-the-day strip above the agenda pane ------ */
-  #dayofday { grid-column: 4; grid-row: 1; height: 132px; flex: none;
+  #leftcol { grid-column: 4; grid-row: 1 / span 2; min-height: 0;
+             display: flex; flex-direction: column; gap: 18px; }
+  #dayofday { height: 132px; flex: none;
               flex-direction: row; align-items: center; gap: 16px;
               padding: 12px 16px; }
   #dayofday.off { display: none; }
-  .dodicon { font-size: 56px; line-height: 1; flex: none; }
+  .dodicon { font-size: 56px; line-height: 1; flex: none;
+             display: flex; align-items: center; }
+  .dodicon svg { width: 62px; height: auto; display: block; }
   .dodtext { font-size: 25px; font-weight: 700; color: var(--ink-strong);
              line-height: 1.25; unicode-bidi: isolate;
              display: -webkit-box; -webkit-line-clamp: 3;
              -webkit-box-orient: vertical; overflow: hidden; }
 
   /* -- agenda panel: below the day strip, or bottom-left with 7 grades */
-  #exams { grid-column: 4; grid-row: 2; }
-  main.noday #exams { grid-row: 1 / span 2; }   /* no day strip today */
-  main.grades7 #exams { grid-row: 2; }
-  main.grades7 #dayofday { display: none; }  /* no room for both */
+  #exams { flex: 1; min-height: 0; }
+  /* With a 7th grade there is no room for the strip: the wrapper steps
+     out of the way (display:contents) so the 7th card can take the
+     top-left grid cell and the agenda pane the one below it. */
+  main.grades7 #leftcol { display: contents; }
+  main.grades7 #exams { grid-column: 4; grid-row: 2; }
+  main.grades7 #dayofday { display: none; }
   #exams h2 { font-size: 28px; }
   #examlist { flex: 1; min-height: 0; overflow: hidden; padding-top: 10px; }
   /* the wrapper scrolls when the entries do not fit (see JS) */

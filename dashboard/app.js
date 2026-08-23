@@ -170,7 +170,7 @@ function renderGrades() {
   const grid = $("grid");
   /* clear only the generated grade cards — #exams and #dayofday are
      part of the page and must survive a re-render */
-  grid.querySelectorAll(".card:not(#exams):not(#dayofday)")
+  grid.querySelectorAll(":scope > .card:not(#exams):not(#dayofday)")
       .forEach((c) => c.remove());
   const grades = MODEL.grades;
   const periods = MODEL.byDay[dayLetter(NOW())] || [];
@@ -184,7 +184,7 @@ function renderGrades() {
     box.className = "card nodata";
     box.innerHTML = `<div class="nodatamsg">אין נתוני מערכת שעות
       <span>בדקו את גיליון "מערכת" או את כתובת הלוח</span></div>`;
-    grid.insertBefore(box, $("exams"));
+    grid.insertBefore(box, $("leftcol"));
     return;
   }
 
@@ -210,7 +210,7 @@ function renderGrades() {
     card.innerHTML = `
       <h2><span class="chip"></span>כיתה ${esc(name)}</h2>
       <div class="periods"><div class="pwrap">${rows}</div></div>`;
-    grid.insertBefore(card, $("exams"));
+    grid.insertBefore(card, $("leftcol"));
   });
 }
 
@@ -231,7 +231,11 @@ function renderDayOfDay() {
   $("grid").classList.toggle("noday", !day);
   if (!day) { pane.classList.add("off"); return; }
   pane.classList.remove("off");
-  pane.querySelector(".dodicon").textContent = day.icon;
+  const icon = pane.querySelector(".dodicon");
+  /* svg comes from days.js (our own code, not the sheet), so inserting it
+     as markup is safe; emoji go in as text */
+  if (day.svg) icon.innerHTML = day.svg;
+  else { icon.innerHTML = ""; icon.textContent = day.icon; }
   pane.querySelector(".dodtext").textContent = day.title;
 }
 

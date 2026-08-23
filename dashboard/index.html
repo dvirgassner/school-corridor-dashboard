@@ -25,15 +25,20 @@
 
     <main id="grid">
       <!-- grade cards injected here -->
-      <!-- left column: day-of-the-day strip above the agenda pane -->
-      <section class="card" id="dayofday">
-        <div class="dodicon"></div>
-        <div class="dodtext"></div>
-      </section>
-      <section class="card" id="exams">
-        <h2>אירועים ומבחנים היום</h2>
-        <div id="examlist"><div class="agendawrap"></div></div>
-      </section>
+      <!-- left column: day-of-the-day strip, then the agenda pane
+           directly beneath it (a flex column, so the agenda takes
+           whatever height the strip leaves rather than snapping to the
+           grid's bottom row) -->
+      <div id="leftcol">
+        <section class="card" id="dayofday">
+          <div class="dodicon"></div>
+          <div class="dodtext"></div>
+        </section>
+        <section class="card" id="exams">
+          <h2>אירועים ומבחנים היום</h2>
+          <div id="examlist"><div class="agendawrap"></div></div>
+        </section>
+      </div>
     </main>
 
     <footer>

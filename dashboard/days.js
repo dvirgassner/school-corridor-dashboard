@@ -26,34 +26,52 @@
    In a leap year, Adar-dated entries also match Adar II, which is
    where those observances actually fall.
    ================================================================== */
+/* Inline SVG of the Israeli flag. An emoji flag (🇮🇱) is NOT usable here:
+   Windows and several Linux font stacks render country-flag sequences as
+   the two letters "IL" instead of a flag, so the board would show text
+   where a flag belongs. Drawing it is the only portable answer. */
+var FLAG_IL =
+  '<svg viewBox="0 0 66 48" role="img" aria-label="דגל ישראל">' +
+  '<rect width="66" height="48" rx="3" fill="#fff"/>' +
+  '<rect y="6" width="66" height="6" fill="#0038b8"/>' +
+  '<rect y="36" width="66" height="6" fill="#0038b8"/>' +
+  '<path d="M33 16 L40.5 29 L25.5 29 Z M33 32 L25.5 19 L40.5 19 Z" ' +
+  'fill="none" stroke="#0038b8" stroke-width="2.4"/>' +
+  '</svg>';
+
 window.DAYS = {
 
-  /* ---------- Israeli / Jewish (top priority) ---------- */
+  /* ---------- Israeli / Jewish (top priority) ----------
+     `off: true` marks a day when school is closed (Ministry of Education
+     vacation calendar). The board skips those: with nobody in the
+     building there is nothing to announce, and the pane would only be
+     shown to an empty corridor. Because these are Hebrew-calendar dates,
+     the flag needs no yearly maintenance. */
   israeli: [
-    /* Hebrew-calendar dated */
-    { heb: "Tishri-1",   icon: "🍎", title: "ראש השנה" },
-    { heb: "Tishri-10",  icon: "🕍", title: "יום הכיפורים" },
-    { heb: "Tishri-15",  icon: "🌿", title: "סוכות" },
-    { heb: "Tishri-22",  icon: "📖", title: "שמחת תורה" },
+    { heb: "Tishri-1",   icon: "🍎", title: "ראש השנה", off: true },
+    { heb: "Tishri-10",  icon: "🕍", title: "יום הכיפורים", off: true },
+    { heb: "Tishri-15",  icon: "🌿", title: "סוכות", off: true },
+    { heb: "Tishri-22",  icon: "📖", title: "שמחת תורה", off: true },
     { heb: "Heshvan-7",  icon: "✈️", title: "יום העלייה" },
     { heb: "Heshvan-12", icon: "🕯️", title: "יום הזיכרון לרצח יצחק רבין" },
     { heb: "Heshvan-29", icon: "🌍", title: "חג הסיגד" },
-    { heb: "Kislev-25",  icon: "🕎", title: "חנוכה" },
+    { heb: "Kislev-25",  icon: "🕎", title: "חנוכה", off: true },
     { heb: "Tevet-21",   icon: "🔤", title: "יום הלשון העברית" },
     { heb: "Shevat-15",  icon: "🌳", title: "ט״ו בשבט" },
     { heb: "Shevat-30",  icon: "👨‍👩‍👧", title: "יום המשפחה" },
-    { heb: "Adar-14",    icon: "🎭", title: "פורים" },
-    { heb: "Adar-7",     icon: "📜", title: "יום הזיכרון לחללי מערכות ישראל שמקום קבורתם לא נודע" },
-    { heb: "Nisan-15",   icon: "🍷", title: "פסח" },
+    { heb: "Adar-7",     icon: "📜", title: "יום הזיכרון לחללים שמקום קבורתם לא נודע" },
+    { heb: "Adar-14",    icon: "🎭", title: "פורים", off: true },
+    { heb: "Nisan-15",   icon: "🍷", title: "פסח", off: true },
     { heb: "Nisan-27",   icon: "🕯️", title: "יום הזיכרון לשואה ולגבורה" },
     { heb: "Iyar-4",     icon: "🕯️", title: "יום הזיכרון לחללי מערכות ישראל" },
-    { heb: "Iyar-5",     icon: "🇮🇱", title: "יום העצמאות" },
+    { heb: "Iyar-5",     svg: FLAG_IL, title: "יום העצמאות", off: true },
     { heb: "Iyar-10",    icon: "🎩", title: "יום הרצל" },
     { heb: "Iyar-18",    icon: "🔥", title: "ל״ג בעומר" },
-    { heb: "Iyar-28",    icon: "🕌", title: "יום ירושלים" },
-    { heb: "Sivan-6",    icon: "🌾", title: "שבועות" },
-    { heb: "Tamuz-29",   icon: "📕", title: "יום הזיכרון לזאב ז׳בוטינסקי" },
-    { heb: "Av-9",       icon: "🕯️", title: "תשעה באב" }
+    { heb: "Iyar-28",    icon: "🏛️", title: "יום ירושלים" },
+    { heb: "Sivan-6",    icon: "🌾", title: "שבועות", off: true },
+    /* both fall inside the summer vacation */
+    { heb: "Tamuz-29",   icon: "📕", title: "יום הזיכרון לזאב ז׳בוטינסקי", off: true },
+    { heb: "Av-9",       icon: "🕯️", title: "תשעה באב", off: true }
   ],
 
   /* ---------- International (used only if no Israeli day) ---------- */

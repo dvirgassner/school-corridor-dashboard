@@ -411,18 +411,23 @@
     return false;
   }
 
+  /* Entries flagged `off` are school vacations. There is nobody in the
+     corridor to read the board, so they are skipped rather than shown —
+     and skipping means an international day on the same date does not
+     get shown either: the school is shut, not observing something else. */
   function dayOfTheDay(d, days) {
     if (!days) return null;
     var hk = hebrewKey(d), gk = gregKey(d), i, e;
     var israeli = days.israeli || [];
     for (i = 0; i < israeli.length; i++) {
       e = israeli[i];
-      if (e.heb && hebKeyMatches(e.heb, hk)) return e;
-      if (e.greg && e.greg === gk) return e;
+      if ((e.heb && hebKeyMatches(e.heb, hk)) || (e.greg && e.greg === gk)) {
+        return e.off ? null : e;
+      }
     }
     var intl = days.international || [];
     for (i = 0; i < intl.length; i++) {
-      if (intl[i].greg === gk) return intl[i];
+      if (intl[i].greg === gk) return intl[i].off ? null : intl[i];
     }
     return null;
   }

@@ -518,6 +518,22 @@ test("dayOfTheDay: international day used when no Israeli day", () => {
   const d = L.dayOfTheDay(new Date(2026, 2, 14), DAYS);   /* 14 March */
   assert.equal(d.title, "יום הפאי");
 });
+test("dayOfTheDay: a school-vacation day shows nothing", () => {
+  /* nobody is in the corridor to read it */
+  const days = {
+    israeli: [{ heb: "Iyar-5", title: "יום העצמאות", off: true }],
+    international: []
+  };
+  assert.equal(L.dayOfTheDay(new Date(2026, 3, 22), days), null);
+});
+test("dayOfTheDay: a vacation day hides an international day too", () => {
+  const days = {
+    israeli: [{ heb: "Iyar-5", title: "יום העצמאות", off: true }],
+    international: [{ greg: "04-22", title: "יום כדור הארץ" }]
+  };
+  /* 22 Apr 2026 is both; the school is shut, so neither is shown */
+  assert.equal(L.dayOfTheDay(new Date(2026, 3, 22), days), null);
+});
 test("dayOfTheDay: ordinary day returns null", () => {
   assert.equal(L.dayOfTheDay(new Date(2026, 5, 17), DAYS), null);
 });

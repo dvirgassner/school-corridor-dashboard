@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.151';
+var SCRIPT_VERSION = '0.153';
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
@@ -398,25 +398,26 @@ function rulesEvents_(sh) {
   boxes.insertCheckboxes();
   boxes.setHorizontalAlignment('center');
 
-  /* Native conditional formatting flags the contradictory state in red.
-     This is the part that keeps working with no script at all: if the
-     Apps Script project is ever deleted, a conflicting row still shows
-     as obviously wrong instead of quietly misleading anyone. */
+  /* Conditional formatting is evaluated by the browser, so it reacts the
+     INSTANT a box is ticked — unlike onEdit, which is a server-side
+     trigger and lands a moment later. Painting exactly the redundant
+     grade boxes red gives immediate feedback about what is about to be
+     cleared, and it keeps working even with no script in the project. */
   var lastCol = firstGradeCol + tickCount - 1;
   var a1All = colLetter_(lastCol);
-  var a1From = colLetter_(firstGradeCol);
-  var a1To = colLetter_(lastCol - 1);
-  var target = sh.getRange(2, 1, 200, lastCol);
+  var a1First = colLetter_(firstGradeCol);
+  var gradeCells = sh.getRange(2, firstGradeCol, 200, tickCount - 1);
+  var marker = '$' + a1All + '2=TRUE';
   var rule = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=AND($' + a1All + '2=TRUE, COUNTIF($' + a1From +
-                          '2:$' + a1To + '2, TRUE)>0)')
+    .whenFormulaSatisfied('=AND(' + marker + ', ' + a1First + '2=TRUE)')
     .setBackground('#f4c7c3')
-    .setRanges([target])
+    .setStrikethrough(true)
+    .setRanges([gradeCells])
     .build();
   var rules = sh.getConditionalFormatRules().filter(function (r) {
     /* drop our previous copy so re-running does not stack rules */
-    return String(r.getBooleanCondition() &&
-      r.getBooleanCondition().getCriteriaValues()).indexOf('COUNTIF($' + a1From) < 0;
+    var c = r.getBooleanCondition();
+    return !c || String(c.getCriteriaValues()).indexOf(marker) < 0;
   });
   rules.push(rule);
   sh.setConditionalFormatRules(rules);

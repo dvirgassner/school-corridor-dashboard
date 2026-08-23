@@ -47,20 +47,38 @@ function setup() {
   ss.setSpreadsheetLocale('he_IL');
   ss.setSpreadsheetTimeZone('Asia/Jerusalem');
 
-  buildSchedule_(sheet_(ss, 'מערכת'));
-  buildExams_(sheet_(ss, 'מבחנים'));
-  buildEvents_(sheet_(ss, 'אירועים'));
-  buildMessages_(sheet_(ss, 'הודעות'));
-  buildSettings_(sheet_(ss, 'הגדרות'));
+  /* Build each tab under its own guard. Without this, one bad call aborts
+     the run with a stack trace and leaves the tab it was working on
+     already cleared — which reads as "the script wiped my data". */
+  var built = [], failed = [];
+  [['מערכת', buildSchedule_], ['מבחנים', buildExams_],
+   ['אירועים', buildEvents_], ['הודעות', buildMessages_],
+   ['הגדרות', buildSettings_]].forEach(function (pair) {
+    try {
+      pair[1](sheet_(ss, pair[0]));
+      built.push(pair[0]);
+    } catch (err) {
+      failed.push(pair[0] + ': ' + err.message);
+    }
+  });
 
   /* drop the default empty sheet if it is still around */
   var extra = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
   if (extra && ss.getSheets().length > 5) ss.deleteSheet(extra);
 
+  if (failed.length) {
+    SpreadsheetApp.getUi().alert(
+      'הבנייה הושלמה חלקית.\n\n' +
+      'נבנו: ' + built.join(', ') + '\n\n' +
+      'נכשלו:\n' + failed.join('\n') + '\n\n' +
+      'יש להריץ שוב לאחר תיקון, או לפנות לאחראי הטכני עם הטקסט הזה.');
+    return;
+  }
+
   SpreadsheetApp.getUi().alert(
     'הגיליון נבנה בהצלחה.\n\n' +
-    'השלב הבא: קובץ → שיתוף → פרסום באינטרנט,\n' +
-    'ולפרסם כל אחד מחמשת הגיליונות בנפרד כ-CSV.\n' +
+    'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
+    'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
     'ראו את ההוראות המלאות בקובץ README.\n\n' +
     '─────────────────────────\n' + NO_PII_NOTE);
 }
@@ -71,8 +89,11 @@ function sheet_(ss, name) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   sh.clear();
-  sh.clearDataValidations();
   sh.clearConditionalFormatRules();
+  /* clearDataValidations() lives on Range, not on Sheet — clearing them
+     matters because sh.clear() leaves old dropdowns and checkboxes behind,
+     which would then conflict with the rules set below. */
+  sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations();
   try { sh.setRightToLeft(true); } catch (e) {}
   /* A sheet converted from an uploaded CSV arrives sized to its data
      (sometimes 2x2). Any later setDataValidation() over a taller range

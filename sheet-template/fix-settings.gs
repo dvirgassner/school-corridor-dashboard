@@ -73,5 +73,6 @@ function fixSettings() {
     '  בהירה — רקע לבן, למסדרון מואר\n' +
     '  צבעונית — רקע כחול-כהה עם צבע לכל שכבה');
 
-  SpreadsheetApp.getUi().alert('הגדרות\n\n' + log.join('\n'));
+  /* notify_() lives in setup.gs and never throws, unlike getUi() */
+  notify_('הגדרות\n\n' + log.join('\n'));
 }

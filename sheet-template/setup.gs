@@ -14,11 +14,33 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.156';
+var SCRIPT_VERSION = '0.157';
+
+/**
+ * Report to whoever is watching, without ever throwing.
+ *
+ * SpreadsheetApp.getUi() is only available when a person is looking at
+ * the spreadsheet. Called from a trigger, or from the Apps Script API
+ * (clasp run), it throws "Cannot call SpreadsheetApp.getUi() from this
+ * context" — which previously killed setup() on its very last line,
+ * AFTER all the work had succeeded. A report is never worth failing for.
+ */
+function notify_(message) {
+  try {
+    SpreadsheetApp.getUi().alert(message);
+    return;
+  } catch (e) {}
+  try {
+    SpreadsheetApp.getActiveSpreadsheet()
+      .toast(String(message).slice(0, 180), 'לוח מסדרון', 10);
+    return;
+  } catch (e) {}
+  Logger.log(message);          /* last resort: the execution log */
+}
 
 /** Run this to confirm which version of the script is loaded. */
 function checkVersion() {
-  SpreadsheetApp.getUi().alert(
+  notify_(
     'גרסת הסקריפט: ' + SCRIPT_VERSION + '\n\n' +
     'אם המספר אינו ' + SCRIPT_VERSION + ', קיים בפרויקט קובץ נוסף עם גרסה ישנה —\n' +
     'יש למחוק אותו ולהשאיר קובץ אחד בלבד.');
@@ -103,7 +125,7 @@ function setup() {
   if (extra && ss.getSheets().length > 5) ss.deleteSheet(extra);
 
   if (failed.length) {
-    SpreadsheetApp.getUi().alert(
+    notify_(
       'הבנייה הושלמה חלקית.\n\n' +
       'נבנו: ' + built.join(', ') + '\n\n' +
       'נכשלו:\n' + failed.join('\n') + '\n\n' +
@@ -111,7 +133,7 @@ function setup() {
     return;
   }
 
-  SpreadsheetApp.getUi().alert(
+  notify_(
     'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
     'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
     'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
@@ -215,7 +237,7 @@ function repairRules() {
     if (name === 'אירועים') enforceExclusive_(sh, null);
     done.push(name);
   });
-  SpreadsheetApp.getUi().alert('החוקים הוחזרו בגיליונות: ' + done.join(', '));
+  notify_('החוקים הוחזרו בגיליונות: ' + done.join(', '));
 }
 
 /**

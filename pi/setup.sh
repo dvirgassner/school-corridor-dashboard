@@ -32,9 +32,12 @@ fi
 
 # Warn rather than fail: a fragment-less URL is valid (demo mode), but
 # on a school wall it is almost certainly a mistake.
+#
+# Both fragment forms count: #d=<documentId> for a link-shared sheet, and
+# #t=<token> for a published one.
 case "$DASH_URL" in
-  *"#t="*) : ;;
-  *) echo "NOTE: DASH_URL has no #t=... fragment — the board will show DEMO data." >&2 ;;
+  *"#d="*|*"#t="*) : ;;
+  *) echo "NOTE: DASH_URL has no #d=/#t= fragment — the board will show DEMO data." >&2 ;;
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

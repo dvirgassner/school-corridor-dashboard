@@ -118,11 +118,32 @@ Then check, in this order:
 
 | Task | Command |
 |---|---|
+| **See what the TV is showing** | from your PC: `ssh kit '~/screenshot.sh' > board.png` |
 | See the board's log | `journalctl --user -f` or run `~/kiosk.sh` in a terminal |
 | Restart just the browser | `pkill chromium` (the loop relaunches it) |
 | Change the board URL or sheet token | edit `~/.dashboard-env`, then `sudo reboot` |
 | Update the dashboard code | `cd <repo> && git pull` (only if you self-host; with GitHub Pages the Pi just reloads the page) |
 | Force the TV on/off now | `echo "on 0" \| cec-client -s -d 1` / `echo "standby 0" \| cec-client -s -d 1` |
+
+## Checking the screen from home
+
+`~/screenshot.sh` captures the live display and writes a PNG to standard
+output, so one command from your own machine both takes and fetches it:
+
+```bash
+ssh kit '~/screenshot.sh' > board.png
+```
+
+Nothing is written to the Pi's SD card — that card is the part most
+likely to wear out, so keeping routine checks off it matters.
+
+It detects the session type rather than assuming: `grim` on Wayland
+(Raspberry Pi OS Bookworm and later) or `scrot` on X11. Run it as the
+**same user** the kiosk runs as; another user cannot reach that display.
+
+This proves what the panel is actually being sent, which is strictly more
+than the heartbeat ping tells you — a Pi with a dead HDMI cable pings
+perfectly happily.
 
 ## If something breaks
 

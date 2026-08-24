@@ -48,6 +48,11 @@ sudo apt-get install -y --no-install-recommends \
   2>/dev/null || sudo apt-get install -y --no-install-recommends \
   chromium cec-utils curl unclutter
 
+# Screenshot tools, so the board can be checked remotely without going to
+# the school. grim for Wayland (Bookworm), scrot for X11 — installing both
+# costs a few hundred KB and removes a guess about which session runs.
+sudo apt-get install -y --no-install-recommends grim scrot 2>/dev/null || true
+
 echo "==> Setting the clock (timezone + NTP)"
 # The board's "today" and its current-class highlight follow this clock,
 # so it has to be both correct and self-correcting. Daylight saving is
@@ -75,6 +80,7 @@ chmod 600 "$HOME/.dashboard-env"    # token — keep it to this user
 
 echo "==> Installing ~/kiosk.sh"
 install -m 755 "$SCRIPT_DIR/kiosk.sh" "$HOME/kiosk.sh"
+install -m 755 "$SCRIPT_DIR/screenshot.sh" "$HOME/screenshot.sh"
 
 # The launcher sources the env file, then execs the kiosk loop.
 cat > "$HOME/start-board.sh" <<'EOF'

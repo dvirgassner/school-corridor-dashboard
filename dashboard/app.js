@@ -605,6 +605,30 @@ function maybePlayVideo() {
   if (p && p.catch) p.catch(v.onerror);
 }
 
+/* ================================================================
+   SELF-UPDATE
+   The board re-reads the sheet every minute, but the page's own code is
+   whatever Chromium loaded at boot — so a fix could sit unseen on a wall
+   for a day, until the nightly reboot. This polls config.js for a
+   changed version string and reloads when one appears.
+
+   Comparing versions rather than reloading on a timer means the page
+   reloads only when there is genuinely something new, which keeps the
+   screen still the rest of the time.
+   ================================================================ */
+async function checkForNewVersion() {
+  if (videoPlaying) return;             /* never interrupt a clip */
+  try {
+    const r = await fetch("config.js?_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    const m = (await r.text()).match(/version:\s*"([^"]+)"/);
+    if (m && m[1] !== CFG.version) {
+      console.log(`new version ${m[1]} (running ${CFG.version}) — reloading`);
+      location.reload();                /* keeps the #d=… fragment */
+    }
+  } catch (e) { /* offline: try again next time */ }
+}
+
 /* scale the fixed 1920×1080 stage to fit any window */
 function fit() {
   const s = Math.min(innerWidth / 1920, innerHeight / 1080);
@@ -629,3 +653,4 @@ setInterval(refresh, CFG.refreshSeconds * 1000);
 setInterval(tick, 5000);
 setInterval(advancePages, 8000);
 setInterval(maybePlayVideo, 60000);
+setInterval(checkForNewVersion, CFG.updateCheckMinutes * 60000);

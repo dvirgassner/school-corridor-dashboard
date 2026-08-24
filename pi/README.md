@@ -172,3 +172,22 @@ The Pi holds no irreplaceable state. Keep a **second SD card flashed
 and configured** in a drawer at the school: if the card dies (the most
 likely hardware failure), someone swaps it and the board is back in two
 minutes without you.
+
+## How code updates reach the board
+
+The board re-reads the **sheet** every minute, but its own HTML, CSS and
+JavaScript are whatever Chromium loaded when it started. So a pushed fix
+used to sit unseen until the 03:00 reboot — which is why a screen could
+show an old version number for a day.
+
+Since v0.164 the page checks `config.js` every 15 minutes and reloads
+itself when the `version` string changes. Nothing to do: publish, and the
+screens pick it up within a quarter of an hour.
+
+To force it immediately:
+
+```bash
+ssh kit 'pkill chromium'
+```
+
+The watchdog relaunches it within five seconds with the current build.

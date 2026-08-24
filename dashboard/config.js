@@ -28,9 +28,14 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.163",
+  version: "0.164",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
+  /* How often to check whether a new build has been published. On a
+     change of `version` above, the board reloads itself — otherwise a fix
+     waits for the nightly reboot. GitHub caches assets for 10 minutes,
+     so checking much more often than that buys nothing. */
+  updateCheckMinutes: 15,
   staleMinutes: 10,          /* stamp turns amber after this long     */
   videoIntervalMinutes: 10,  /* minimum gap between video plays       */
   /* A YouTube embed gives no "finished" signal without loading YouTube's

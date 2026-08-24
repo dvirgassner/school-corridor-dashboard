@@ -119,6 +119,18 @@ install -m 755 "$SCRIPT_DIR/screenshot.sh" "$HOME/screenshot.sh"
 # The launcher sources the env file, then execs the kiosk loop.
 cat > "$HOME/start-board.sh" <<'EOF'
 #!/usr/bin/env bash
+# Only ever one board. Two Chromium instances on one profile corrupt each
+# other's state ("database is locked") and each crash makes the watchdog
+# relaunch, which on screen looks like the page reloading every few
+# seconds. The lock survives the exec below, so it is held for the life of
+# the kiosk loop.
+exec 9>"$HOME/.board.lock"
+if ! flock -n 9; then
+  echo "$(date '+%F %T') another board instance is already running — exiting" \
+    >>"$HOME/kiosk.log"
+  exit 0
+fi
+
 set -a; . "$HOME/.dashboard-env"; set +a
 # never blank or dim the screen (X11 only; harmless elsewhere)
 xset s off -dpms 2>/dev/null || true
@@ -142,36 +154,52 @@ show_mounts=0
 EOF
 gsettings set org.gnome.desktop.background primary-color '#000000' 2>/dev/null || true
 
-echo "==> Registering autostart for whichever compositor this Pi uses"
+echo "==> Registering autostart (exactly one entry)"
 # Raspberry Pi OS Bookworm: Wayfire (default) or labwc; older: X11/LXDE.
+#
+# EXACTLY ONE of these may be registered. Writing the XDG .desktop entry
+# on top of a compositor entry launched the board twice, and two Chromium
+# instances sharing one profile fight over its database:
+#   "Failed to open UKM database: database is locked"
+# One of them dies, the watchdog relaunches it, and the whole thing looks
+# like a screen that reloads every few seconds.
+REGISTERED=""
+
 if [ -f "$HOME/.config/wayfire.ini" ]; then
   if ! grep -q "start-board" "$HOME/.config/wayfire.ini"; then
     printf '\n[autostart]\nboard = %s/start-board.sh\nscreensaver = false\ndpms = false\n' \
       "$HOME" >> "$HOME/.config/wayfire.ini"
   fi
-  echo "    wayfire.ini updated"
-fi
-if [ -d "$HOME/.config/labwc" ] || [ -f "$HOME/.config/labwc/autostart" ]; then
-  mkdir -p "$HOME/.config/labwc"
+  REGISTERED="wayfire.ini"
+elif [ -d "$HOME/.config/labwc" ]; then
   grep -q "start-board" "$HOME/.config/labwc/autostart" 2>/dev/null || \
     echo "$HOME/start-board.sh &" >> "$HOME/.config/labwc/autostart"
   chmod +x "$HOME/.config/labwc/autostart" 2>/dev/null || true
-  echo "    labwc autostart updated"
-fi
-if [ -d "$HOME/.config/lxsession/LXDE-pi" ]; then
+  REGISTERED="labwc/autostart"
+elif [ -d "$HOME/.config/lxsession/LXDE-pi" ]; then
   AF="$HOME/.config/lxsession/LXDE-pi/autostart"
   grep -q "start-board" "$AF" 2>/dev/null || echo "@$HOME/start-board.sh" >> "$AF"
-  echo "    LXDE autostart updated"
-fi
-# Fallback for a Pi with no desktop session file yet.
-mkdir -p "$HOME/.config/autostart"
-cat > "$HOME/.config/autostart/corridor-board.desktop" <<EOF
+  REGISTERED="lxsession autostart"
+else
+  # No desktop session file to hook into — fall back to XDG autostart.
+  mkdir -p "$HOME/.config/autostart"
+  cat > "$HOME/.config/autostart/corridor-board.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Corridor Board
 Exec=$HOME/start-board.sh
 X-GNOME-Autostart-enabled=true
 EOF
+  REGISTERED="XDG autostart (.desktop)"
+fi
+echo "    registered via: $REGISTERED"
+
+# Clear a stale .desktop left by an earlier run that registered both.
+if [ "$REGISTERED" != "XDG autostart (.desktop)" ] && \
+   [ -f "$HOME/.config/autostart/corridor-board.desktop" ]; then
+  rm -f "$HOME/.config/autostart/corridor-board.desktop"
+  echo "    removed duplicate XDG autostart entry"
+fi
 
 echo "==> Installing cron jobs (screen schedule, heartbeat, nightly reboot)"
 CRON_TMP="$(mktemp)"

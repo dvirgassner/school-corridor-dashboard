@@ -101,6 +101,21 @@ exec "$HOME/kiosk.sh"
 EOF
 chmod 755 "$HOME/start-board.sh"
 
+# A black desktop, so the seconds before Chromium appears look deliberate
+# rather than like a Pi that failed to boot into anything.
+echo "==> Setting a black desktop background"
+mkdir -p "$HOME/.config/pcmanfm/LXDE-pi"
+cat > "$HOME/.config/pcmanfm/LXDE-pi/desktop-items-0.conf" <<'EOF'
+[*]
+wallpaper_mode=color
+desktop_bg=#000000
+desktop_fg=#000000
+show_documents=0
+show_trash=0
+show_mounts=0
+EOF
+gsettings set org.gnome.desktop.background primary-color '#000000' 2>/dev/null || true
+
 echo "==> Registering autostart for whichever compositor this Pi uses"
 # Raspberry Pi OS Bookworm: Wayfire (default) or labwc; older: X11/LXDE.
 if [ -f "$HOME/.config/wayfire.ini" ]; then

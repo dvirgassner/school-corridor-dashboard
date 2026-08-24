@@ -19,10 +19,27 @@ fi
 # to a server, and this keeps it out of curl's arguments and any logs.
 # Also keeps the token out of `ps` output for the check itself.
 REACH_URL="${DASH_URL%%#*}"
+WAITED=0
 until curl -sfI --max-time 10 "$REACH_URL" >/dev/null 2>&1; do
-  echo "waiting for $REACH_URL ..."
+  echo "$(date '+%F %T') waiting for network (${WAITED}s) ..." >>"$HOME/kiosk.log"
   sleep 3
+  WAITED=$((WAITED + 3))
+  # Give up waiting after two minutes and start anyway: Chromium showing
+  # its own error page is better than the desktop showing through, and the
+  # page reloads itself once the network appears.
+  [ "$WAITED" -ge 120 ] && GAVE_UP=1 && break
 done
+
+# If we started before the network was ready, Chromium will be sitting on
+# its own error page. Watch for the network in the background and kill the
+# browser once it appears; the loop below then reloads the real board.
+if [ "${GAVE_UP:-0}" = "1" ]; then
+  (
+    until curl -sfI --max-time 10 "$REACH_URL" >/dev/null 2>&1; do sleep 5; done
+    echo "$(date '+%F %T') network arrived — reloading the board" >>"$HOME/kiosk.log"
+    pkill -f "$REACH_URL" 2>/dev/null || pkill chromium 2>/dev/null
+  ) &
+fi
 
 # Chromium's own crash/restore bubbles would sit on top of the board
 # forever, so clear the exit state before every launch.
@@ -33,8 +50,16 @@ fi
 
 # Pick whichever binary this Raspberry Pi OS release ships.
 BROWSER="$(command -v chromium-browser || command -v chromium)"
+LOG="$HOME/kiosk.log"
+
+# Restart backoff. A browser that dies immediately, over and over, used to
+# look like "the board reloads every few seconds" — the loop was doing
+# exactly what it was told, five seconds apart. Backing off makes the
+# failure visible instead of disguising it as a flicker.
+FAIL=0
 
 while true; do
+  STARTED=$(date +%s)
   "$BROWSER" \
     --kiosk \
     --noerrdialogs \
@@ -46,7 +71,22 @@ while true; do
     --autoplay-policy=no-user-gesture-required \
     --disable-pinch \
     --overscroll-history-navigation=0 \
-    "$DASH_URL"
-  echo "chromium exited ($?) — restarting in 5s"
-  sleep 5
+    --password-store=basic \
+    --use-mock-keychain \
+    "$DASH_URL" >>"$LOG" 2>&1
+  CODE=$?
+  RAN=$(( $(date +%s) - STARTED ))
+
+  if [ "$RAN" -lt 20 ]; then
+    FAIL=$((FAIL + 1))
+  else
+    FAIL=0
+  fi
+
+  WAIT=5
+  [ "$FAIL" -ge 3 ] && WAIT=30
+  [ "$FAIL" -ge 6 ] && WAIT=120
+  echo "$(date '+%F %T') chromium exited code=$CODE after ${RAN}s" \
+       "(consecutive fast exits: $FAIL) — restarting in ${WAIT}s" >>"$LOG"
+  sleep "$WAIT"
 done

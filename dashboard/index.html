@@ -15,14 +15,12 @@
         <div id="date"></div>
         <div id="hebdate"></div>
       </div>
+      <!-- No hazard symbol here on purpose: this strip carries ordinary
+           school notices, and a warning triangle reads as an emergency to
+           a child walking past. The red frame and the tag are signal
+           enough. The fault indicator in the footer keeps its triangle —
+           that one really does mean something is broken. -->
       <div id="urgent">
-        <!-- drawn rather than the ⚠️ emoji: see the icon note in app.js -->
-        <span class="icon"><svg viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2.1" stroke-linecap="round"
-          stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 3.6 22.2 20.4H1.8z"/><path d="M12 9.4v4.8"/>
-          <circle cx="12" cy="17.6" r="0.9" fill="currentColor" stroke="none"/>
-        </svg></span>
         <span class="tag">הודעות דחופות</span>
         <span id="urgenttext"></span>
       </div>

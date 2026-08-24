@@ -201,9 +201,31 @@ function markUpdates(model, todayKey) {
 /* ?upd previews the badge without waiting for a real edit */
 const UPD_PREVIEW = new URLSearchParams(location.search).has("upd");
 
-/* Drawn, not an emoji: 🔄 is missing from the default Windows font stack
-   and renders as an empty box — the same trap the flag emoji fell into.
-   currentColor makes it follow the badge's colour in every theme. */
+/* ---- icons -------------------------------------------------------
+   Every icon in the board's own chrome is drawn, never an emoji.
+   Emoji depend on a colour-emoji font being installed AND covering that
+   codepoint; three have already failed us in practice — 🇮🇱 renders as
+   the letters "IL" on Windows, 🔄 as an empty box, and 📍 as an empty box
+   on Raspberry Pi OS. A missing glyph on a corridor screen is not a
+   cosmetic problem: it reads as a broken display.
+
+   These use currentColor, so they follow the text colour in every theme. */
+const SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">';
+
+const ICON_CLOCK = SVG_OPEN +
+  '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+
+const ICON_PIN = SVG_OPEN +
+  '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/>' +
+  '<circle cx="12" cy="10" r="2.4"/></svg>';
+
+const ICON_WARN = SVG_OPEN +
+  '<path d="M12 3.6 22.2 20.4H1.8z"/><path d="M12 9.4v4.8"/>' +
+  '<circle cx="12" cy="17.6" r="0.9" fill="currentColor" stroke="none"/></svg>';
+
+/* currentColor makes it follow the badge's colour in every theme. */
 const UPD_BADGE =
   `<span class="upd"><svg viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
@@ -323,7 +345,7 @@ function renderAgenda() {
     return `
       <div class="exam">
         <div class="row1">${chips}<span class="ttl">${title}</span></div>
-        <div class="row2"><span>🕐 ${esc(e.start)}–${esc(e.end)}</span><span>📍 ${esc(e.room)}</span></div>
+        <div class="row2"><span>${ICON_CLOCK}${esc(e.start)}–${esc(e.end)}</span><span>${ICON_PIN}${esc(e.room)}</span></div>
       </div>`;
   }).join("");
   layoutAgendaScroll();
@@ -431,7 +453,7 @@ function renderStatus() {
     });
   }
   el.classList.toggle("on", !!msg);
-  el.textContent = msg ? "⚠ " + msg : "";
+  el.innerHTML = msg ? ICON_WARN + esc(msg) : "";
 }
 
 function stamp() {

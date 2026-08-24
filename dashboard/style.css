@@ -154,7 +154,8 @@
   }
   #urgent.on { display: flex; }
   #urgent.on ~ #school { display: none; }
-  #urgent .icon { font-size: 26px; line-height: 1; }
+  #urgent .icon { display: flex; align-items: center; color: var(--critical); }
+  #urgent .icon svg { width: 28px; height: 28px; }
   #urgent .tag  { color: var(--critical); font-size: 20px; font-weight: 700;
                   border: 1.5px solid var(--critical); border-radius: 8px;
                   padding: 1px 10px; white-space: nowrap; }
@@ -284,6 +285,10 @@
   .exam .row2 { display: flex; gap: 18px; font-size: 22px;
                 color: var(--ink-2); margin-top: 4px;
                 font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .exam .row2 span { display: inline-flex; align-items: center; gap: 6px;
+                     min-width: 0; }
+  .exam .row2 svg { width: 19px; height: 19px; flex: none;
+                    opacity: 0.85; }
   #noexams { color: var(--muted); font-size: 26px; text-align: center;
              margin-top: 40px; }
 
@@ -325,6 +330,7 @@
             padding: 2px 10px; white-space: nowrap;
             background: color-mix(in srgb, var(--critical) 14%, transparent); }
   #errind.on { display: flex; }
+  #errind svg { width: 18px; height: 18px; flex: none; }
 
   /* Every element whose text comes from the Google Sheet is isolated,
      so mixed Hebrew/English/digit content can never reorder the UI

@@ -53,6 +53,14 @@ sudo apt-get install -y --no-install-recommends \
 # costs a few hundred KB and removes a guess about which session runs.
 sudo apt-get install -y --no-install-recommends grim scrot 2>/dev/null || true
 
+# Fonts. Raspberry Pi OS ships no colour-emoji font, so every emoji on the
+# board renders as an empty box. The board's own icons are drawn as SVG for
+# exactly that reason, but the special-day calendar still uses emoji, and a
+# Hebrew font with good coverage keeps the timetable legible.
+sudo apt-get install -y --no-install-recommends \
+  fonts-noto-color-emoji fonts-noto-hebrew 2>/dev/null || true
+fc-cache -f >/dev/null 2>&1 || true
+
 echo "==> Setting the clock (timezone + NTP)"
 # The board's "today" and its current-class highlight follow this clock,
 # so it has to be both correct and self-correcting. Daylight saving is

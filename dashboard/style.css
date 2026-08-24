@@ -74,7 +74,10 @@
      Accents are deep enough to carry white chip text while still
      reading as vivid — verified with the palette validator. */
   :root[data-theme="colorful"] {
-    --page:        #dbe3fb;
+    /* A deep ground, not a pale one. Bright cards on a light page always
+       read as pastel — the eye judges saturation by contrast with what
+       surrounds it, so the same colours look far stronger against dark. */
+    --page:        #0b1030;
     --surface:     #ffffff;
     --ink:         #14143a;
     --ink-strong:  #08081c;
@@ -97,9 +100,25 @@
   /* what makes "colorful" actually colorful: each grade card carries a
      wash of its own accent, instead of every card being the same grey */
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) {
-    background: color-mix(in srgb, var(--accent) 20%, var(--surface));
-    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+    background: color-mix(in srgb, var(--accent) 34%, var(--surface));
+    border: 2px solid var(--accent);
   }
+  /* the class rows carry colour too, not just the header */
+  :root[data-theme="colorful"] .period .time {
+    color: color-mix(in srgb, var(--accent) 65%, #101033);
+  }
+  :root[data-theme="colorful"] .period.now {
+    background: var(--accent);
+    box-shadow: none;
+  }
+  :root[data-theme="colorful"] .period.now .subj,
+  :root[data-theme="colorful"] .period.now .time { color: #fff; }
+
+  /* the header sits directly on the page, so it needs light ink here */
+  :root[data-theme="colorful"] #clock { color: #ffffff; }
+  :root[data-theme="colorful"] #date { color: #c8d4ff; }
+  :root[data-theme="colorful"] #hebdate,
+  :root[data-theme="colorful"] #school { color: #98a6e4; }
   /* A solid accent band across the top of each card. This is what makes
      the theme read as colourful from down a corridor: a pale wash alone
      looks washed out at distance, however saturated the hue is up close.

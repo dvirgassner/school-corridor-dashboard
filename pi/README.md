@@ -119,6 +119,8 @@ Then check, in this order:
 | Task | Command |
 |---|---|
 | **See what the TV is showing** | from your PC: `ssh kit '~/screenshot.sh' > board.png` |
+| Check exactly one board is running | `pgrep -c -f kiosk.sh` — must be **1** |
+| Read the kiosk log | `tail -30 ~/kiosk.log` |
 | See the board's log | `journalctl --user -f` or run `~/kiosk.sh` in a terminal |
 | Restart just the browser | `pkill chromium` (the loop relaunches it) |
 | Change the board URL or sheet token | edit `~/.dashboard-env`, then `sudo reboot` |
@@ -144,6 +146,25 @@ It detects the session type rather than assuming: `grim` on Wayland
 This proves what the panel is actually being sent, which is strictly more
 than the heartbeat ping tells you — a Pi with a dead HDMI cable pings
 perfectly happily.
+
+## If the board seems to reload every few seconds
+
+That is almost never the page reloading. It is Chromium exiting and the
+watchdog restarting it, and the usual cause is **two instances running at
+once** — two autostart entries, or a manual launch alongside the
+autostarted one. Two Chromium instances sharing one profile corrupt each
+other's state, and the log fills with:
+
+```
+Failed to open UKM database: database is locked
+```
+
+Check with `pgrep -c -f kiosk.sh` (must be 1). Note that
+`pgrep -f start-board.sh` always returns 0 — that script `exec`s the
+kiosk loop, replacing itself, so it never appears in the process list.
+
+Re-running `pi/setup.sh` registers exactly one autostart entry and deletes
+any duplicate it finds.
 
 ## If something breaks
 

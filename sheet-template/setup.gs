@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.160';
+var SCRIPT_VERSION = '0.161';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -151,11 +151,10 @@ function setup() {
  * nothing to install, and it works for every editor of the sheet, not
  * just the owner).
  *
- * Keeps כולם mutually exclusive with the grade boxes, and repairs
- * validation after a paste.
- * exclusive in the אירועים tab. Tick a grade and כולם clears; tick כולם
- * and every grade clears. Without this an event could claim to be both
- * "all grades" and "just י׳", and the board would have to guess.
+ * Two jobs in the אירועים tab: keep כולם mutually exclusive with the
+ * grade boxes (the tick just made wins), and put validation back after a
+ * paste. Without the first, an event could claim to be both "every
+ * grade" and "just י׳", leaving the board to guess.
  */
 function onEdit(e) {
   try {
@@ -552,7 +551,7 @@ function rulesEvents_(sh) {
 function ensureEventBoxes_(sh) {
   var cols = eventColumns_(sh);
   if (!cols) return;
-  var want = Math.max(1 + EVENT_MIN_ROWS, sh.getLastRow() + 1);
+  var want = Math.max(1 + EVENT_MIN_ROWS, lastEventRow_(sh) + 1);
   if (want > sh.getMaxRows()) {
     sh.insertRowsAfter(sh.getMaxRows(), want - sh.getMaxRows());
   }
@@ -560,6 +559,36 @@ function ensureEventBoxes_(sh) {
   rng.setDataValidation(
     SpreadsheetApp.newDataValidation().requireCheckbox().build());
   rng.setHorizontalAlignment('center');
+
+  /* Take the boxes off any row below that. Without this the tab only ever
+     grows, and every stale row still exports as FALSE into the CSV the
+     board fetches every minute. */
+  var below = sh.getMaxRows() - want;
+  if (below > 0) {
+    sh.getRange(want + 1, cols.firstGrade, below, cols.gradeCount + 1)
+      .clearDataValidations();
+  }
+}
+
+/**
+ * The last row holding an actual event, judged by its date or title —
+ * never by its checkboxes.
+ *
+ * This distinction is the whole fix for a nasty little bug: ticking a box
+ * gives that row content, so a rule based on getLastRow() treated the
+ * spare row as used and added another spare beneath it. Every tick grew
+ * the sheet by a row, each one exporting as FALSE into the board's feed.
+ */
+function lastEventRow_(sh) {
+  var last = sh.getLastRow();
+  if (last < 2) return 1;
+  var vals = sh.getRange(2, 1, last - 1, 2).getValues();   /* date, title */
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0]).trim() !== '' || String(vals[i][1]).trim() !== '') {
+      return i + 2;
+    }
+  }
+  return 1;
 }
 
 /** 1 -> A, 27 -> AA */

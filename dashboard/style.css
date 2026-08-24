@@ -74,16 +74,16 @@
      Accents are deep enough to carry white chip text while still
      reading as vivid — verified with the palette validator. */
   :root[data-theme="colorful"] {
-    --page:        #e8ecfa;
+    --page:        #dbe3fb;
     --surface:     #ffffff;
-    --ink:         #17173a;
+    --ink:         #14143a;
     --ink-strong:  #08081c;
-    --ink-2:       #43436b;
-    --muted:       #6c6c93;
+    --ink-2:       #3b3b66;
+    --muted:       #63638e;
     --hairline:    #dfe3f5;
-    --border:      rgba(23,23,58,0.14);
+    --border:      rgba(23,23,58,0.16);
     --chipink:     #ffffff;
-    --nowmix:      26%;
+    --nowmix:      36%;
     --g1: #1f6feb;  /* blue    */
     --g2: #e2560f;  /* orange  */
     --g3: #0f9488;  /* teal    */
@@ -97,12 +97,24 @@
   /* what makes "colorful" actually colorful: each grade card carries a
      wash of its own accent, instead of every card being the same grey */
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) {
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 70%, transparent);
   }
+  /* A solid accent band across the top of each card. This is what makes
+     the theme read as colourful from down a corridor: a pale wash alone
+     looks washed out at distance, however saturated the hue is up close.
+     The negative margins bleed it to the card's edges. */
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) h2 {
-    color: color-mix(in srgb, var(--accent) 70%, var(--ink-strong));
-    border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: var(--accent);
+    color: #fff;
+    margin: -14px -18px 10px;
+    padding: 11px 18px;
+    border-radius: 13px 13px 0 0;
+    border-bottom: none;
+  }
+  /* the colour chip is redundant once the whole header carries the colour */
+  :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) h2 .chip {
+    display: none;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }

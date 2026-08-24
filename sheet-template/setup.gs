@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.159';
+var SCRIPT_VERSION = '0.160';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -151,7 +151,8 @@ function setup() {
  * nothing to install, and it works for every editor of the sheet, not
  * just the owner).
  *
- * Its only job: keep כולם and the individual grade boxes mutually
+ * Keeps כולם mutually exclusive with the grade boxes, and repairs
+ * validation after a paste.
  * exclusive in the אירועים tab. Tick a grade and כולם clears; tick כולם
  * and every grade clears. Without this an event could claim to be both
  * "all grades" and "just י׳", and the board would have to guess.
@@ -175,7 +176,13 @@ function onEdit(e) {
 
     if (name === 'אירועים') {
       ensureEventBoxes_(sh);        /* a new row gets its tick boxes */
-      enforceExclusive_(sh, e.range);
+      if (pasted) {
+        /* a bulk edit has no single click to honour, so fall back to a
+           fixed rule: כולם wins and the grade ticks clear */
+        enforceExclusive_(sh, e.range);
+      } else {
+        resolveEventTick_(sh, e.range);
+      }
     }
   } catch (err) {
     /* a trigger must never leave the sheet unusable — log and move on */
@@ -249,9 +256,29 @@ function repairRules() {
 }
 
 /**
- * כולם and the individual grades are mutually exclusive. If both are set
- * in a row — by a tick or by a paste — כולם wins and the grades clear.
- * Pass a range to check only the rows it touches, or null for every row.
+ * The tick just made wins. Tick a grade while כולם is on and כולם
+ * clears; tick כולם and the grades clear. Anything else would fight the
+ * person doing the clicking: they said what they wanted last.
+ */
+function resolveEventTick_(sh, range) {
+  if (range.getValue() !== true) return;      /* only a tick matters */
+  var cols = eventColumns_(sh);
+  if (!cols) return;
+  var row = range.getRow(), col = range.getColumn();
+
+  if (col === cols.allCol) {
+    sh.getRange(row, cols.firstGrade, 1, cols.gradeCount).clearContent();
+  } else if (col >= cols.firstGrade &&
+             col < cols.firstGrade + cols.gradeCount) {
+    sh.getRange(row, cols.allCol).clearContent();
+  }
+}
+
+/**
+ * כולם and the individual grades are mutually exclusive. Used for bulk
+ * edits, where there is no single click to honour: כולם wins and the
+ * grades clear. Pass a range to check only the rows it touches, or null
+ * for every row.
  */
 function enforceExclusive_(sh, range) {
   var cols = eventColumns_(sh);
@@ -475,20 +502,31 @@ function rulesEvents_(sh) {
   var lastCol = firstGradeCol + tickCount - 1;
   var a1All = colLetter_(lastCol);
   var a1First = colLetter_(firstGradeCol);
-  var gradeCells = sh.getRange(2, firstGradeCol, 200, tickCount - 1);
+  var a1LastGrade = colLetter_(lastCol - 1);
   var marker = '$' + a1All + '2=TRUE';
-  var rule = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=AND(' + marker + ', ' + a1First + '2=TRUE)')
+  var conflict = 'AND(' + marker + ', COUNTIF($' + a1First + '2:$' +
+                 a1LastGrade + '2, TRUE)>0)';
+
+  /* Two rules, so whichever box is about to be cleared is the one that
+     turns red: tick a grade and כולם goes red (it is what clears); tick
+     כולם and the grade boxes go red. */
+  var onAll = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=' + conflict)
     .setBackground('#f4c7c3')
-    .setStrikethrough(true)
-    .setRanges([gradeCells])
+    .setRanges([sh.getRange(2, lastCol, 200)])
     .build();
+  var onGrades = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND(' + conflict + ', ' + a1First + '2=TRUE)')
+    .setBackground('#f4c7c3')
+    .setRanges([sh.getRange(2, firstGradeCol, 200, tickCount - 1)])
+    .build();
+
   var rules = sh.getConditionalFormatRules().filter(function (r) {
-    /* drop our previous copy so re-running does not stack rules */
+    /* drop our previous copies so re-running does not stack rules */
     var c = r.getBooleanCondition();
     return !c || String(c.getCriteriaValues()).indexOf(marker) < 0;
   });
-  rules.push(rule);
+  rules.push(onAll, onGrades);
   sh.setConditionalFormatRules(rules);
 
   if (!sh.getRange(2, firstGradeCol).getDataValidation()) {

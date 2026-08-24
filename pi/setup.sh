@@ -43,22 +43,48 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "==> Installing packages"
 sudo apt-get update -qq
-sudo apt-get install -y --no-install-recommends \
-  chromium-browser cec-utils curl unclutter x11-xserver-utils \
-  2>/dev/null || sudo apt-get install -y --no-install-recommends \
-  chromium cec-utils curl unclutter
+
+# One package per apt call, on purpose.
+#
+# apt aborts the WHOLE transaction on a single unknown package name, so a
+# typo in one name silently takes its neighbours down with it — and a
+# trailing "|| true" then hides the failure completely. That is exactly
+# how a font never got installed while provisioning still reported
+# success. Installing individually costs a few seconds and makes each
+# outcome visible.
+apt_try() {
+  for pkg in "$@"; do
+    if sudo apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1; then
+      echo "    installed: $pkg"
+    else
+      echo "    NOT AVAILABLE (skipped): $pkg" >&2
+    fi
+  done
+}
+
+# The browser is not optional — without it there is no board at all, so
+# fail loudly here rather than at the first reboot.
+if sudo apt-get install -y --no-install-recommends chromium-browser >/dev/null 2>&1; then
+  echo "    installed: chromium-browser"
+elif sudo apt-get install -y --no-install-recommends chromium >/dev/null 2>&1; then
+  echo "    installed: chromium"
+else
+  echo "ERROR: no Chromium package available (tried chromium-browser, chromium)." >&2
+  exit 1
+fi
+
+apt_try cec-utils curl unclutter x11-xserver-utils
 
 # Screenshot tools, so the board can be checked remotely without going to
-# the school. grim for Wayland (Bookworm), scrot for X11 — installing both
-# costs a few hundred KB and removes a guess about which session runs.
-sudo apt-get install -y --no-install-recommends grim scrot 2>/dev/null || true
+# the school: grim for Wayland (Bookworm), scrot for X11. Both are tiny,
+# and installing both removes a guess about which session is running.
+apt_try grim scrot
 
-# Fonts. Raspberry Pi OS ships no colour-emoji font, so every emoji on the
-# board renders as an empty box. The board's own icons are drawn as SVG for
-# exactly that reason, but the special-day calendar still uses emoji, and a
-# Hebrew font with good coverage keeps the timetable legible.
-sudo apt-get install -y --no-install-recommends \
-  fonts-noto-color-emoji fonts-noto-hebrew 2>/dev/null || true
+# Raspberry Pi OS ships no colour-emoji font, so every emoji renders as an
+# empty box. The board's own icons are drawn as SVG precisely so they do
+# not depend on this, but the special-day calendar still uses emoji.
+# Hebrew itself needs nothing extra — the stock fonts render it correctly.
+apt_try fonts-noto-color-emoji
 fc-cache -f >/dev/null 2>&1 || true
 
 echo "==> Setting the clock (timezone + NTP)"

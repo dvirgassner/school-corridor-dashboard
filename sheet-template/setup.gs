@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.170';
+var SCRIPT_VERSION = '0.180';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -93,8 +93,16 @@ var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות',
    invites any URL. The board matches this column by its leading word,
    so the parenthetical can be reworded freely. */
 var MESSAGE_HEADERS = ['הודעה', 'סוג',
-                       'קישור לוידאו (Google Drive או YouTube)', 'סאונד',
-                       'מתאריך', 'עד תאריך', 'פעיל'];
+                       'קישור לוידאו (Google Drive או YouTube)', 'סאונד'];
+
+/* Pale tints of the board's grade colours, so the timetable's columns
+   read as the same six groups on screen and in the sheet. Backgrounds
+   only — the sheet stays black text on light, which is what makes 60
+   rows of it readable. */
+var GRADE_TINTS  = ['#d9ead3', '#cfe2f3', '#fce5cd',
+                    '#ead1dc', '#d9d2e9', '#d0e0e3', '#f4cccc'];
+var GRADE_HEADER_TINTS = ['#b6d7a8', '#9fc5e8', '#f9cb9c',
+                          '#d5a6bd', '#b4a7d6', '#a2c4c9', '#ea9999'];
 
 /** Re-apply one tab's dropdowns, checkboxes and limits. */
 function applyRules_(sh, name) {
@@ -195,6 +203,7 @@ function onOpen() {
     SpreadsheetApp.getUi()
       .createMenu('לוח מסדרון')
       .addItem('תיקון חוקי הגיליון (תפריטים ותיבות סימון)', 'repairRules')
+      .addItem('בדיקת תאים מוגנים', 'checkProtections')
       .addItem('גרסת הסקריפט', 'checkVersion')
       .addToUi();
   } catch (e) {}
@@ -238,6 +247,35 @@ function autoApply_() {
        some services can be unavailable. Never block opening the sheet. */
     console.error('autoApply_: ' + err.message);
   }
+}
+
+/**
+ * List every protected range and who may edit it.
+ *
+ * Worth having because protection is easy to misjudge: Google never
+ * restricts the spreadsheet's OWNER, so testing it from your own account
+ * always looks like it failed. This reports what is actually configured,
+ * without needing a second Google account to try it with.
+ */
+function checkProtections() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var me = Session.getEffectiveUser().getEmail();
+  var lines = [];
+  ss.getSheets().forEach(function (sh) {
+    var ps = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+    ps.forEach(function (p) {
+      var who = p.getEditors().map(function (u) { return u.getEmail(); });
+      lines.push('• ' + sh.getName() + ' · ' + p.getRange().getA1Notation() +
+                 '\n   ' + (p.getDescription() || '(ללא תיאור)') +
+                 '\n   ניתן לעריכה ל: ' + (who.join(', ') || '(איש)'));
+    });
+  });
+  notify_(
+    (lines.length ? lines.join('\n\n') : 'לא הוגדרו טווחים מוגנים.') +
+    '\n\n──────────\n' +
+    'הערה חשובה: בעל הגיליון (' + me + ') תמיד יכול לערוך הכול —\n' +
+    'ההגנה חלה על מי שהגיליון שותף איתו כעורך, לא על הבעלים.\n' +
+    'לבדיקה אמיתית יש לנסות מחשבון אחר.');
 }
 
 /** Re-apply every tab's validation. Safe to run at any time. */
@@ -458,10 +496,23 @@ function rulesMessages_(sh) {
   sh.getRange(2, 1, 500).setDataValidation(textRule);
 
   listRule_(sh, 2, TYPES, 'סוג');
-  listRule_(sh, 4, YESNO, 'סאונד');   /* audio on/off, default לא */
-  dateRule_(sh, 5);
-  dateRule_(sh, 6);
-  listRule_(sh, 7, YESNO, 'פעיל');
+  listRule_(sh, 4, YESNO, 'סאונד');   /* audio on/off, only read for וידאו */
+
+  /* Grey out סאונד on rows that are not videos, so it is visibly
+     inapplicable rather than merely ignored. */
+  var marker = '$B2="וידאו"';
+  var rule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND($A2<>"", NOT(' + marker + '))')
+    .setBackground('#efefef')
+    .setFontColor('#b7b7b7')
+    .setRanges([sh.getRange(2, 4, 500)])
+    .build();
+  var rules = sh.getConditionalFormatRules().filter(function (r) {
+    var c = r.getBooleanCondition();
+    return !c || String(c.getCriteriaValues()).indexOf(marker) < 0;
+  });
+  rules.push(rule);
+  sh.setConditionalFormatRules(rules);
 }
 
 function rulesSettings_(sh) {
@@ -641,11 +692,28 @@ function buildSchedule_(sh) {
      stray edit here silently moves classes to another day. Times stay
      editable — bell schedules genuinely differ between schools. */
   lock_(sh.getRange(2, 1, rows.length, 2), 'יום ומספר שיעור — לא לשינוי');
-  sh.getRange(2, 1, rows.length, 2).setHorizontalAlignment('center');
+  /* Protection stops other editors but never the owner, so locked cells
+     also LOOK locked: grey and dimmed, like a form field you cannot
+     type in. Half of "protection" is not inviting the edit. */
+  sh.getRange(2, 1, rows.length, 2)
+    .setHorizontalAlignment('center')
+    .setBackground('#f0f0f0')
+    .setFontColor('#7f7f7f');
   /* a faint band per day, so 60 rows stay readable */
   sh.getRange(2, 1, rows.length, headers.length).setBorder(
     null, null, null, null, null, true, '#d9d9d9',
     SpreadsheetApp.BorderStyle.SOLID);
+
+  /* One colour per grade column, matching that grade's card on the
+     board. Sixty rows of undifferentiated grid is hard to read; the
+     colour makes the six groups obvious at a glance, and means a
+     subject typed into the wrong grade stands out. */
+  GRADES.forEach(function (g, gi) {
+    var col = 5 + gi;
+    sh.getRange(1, col).setBackground(GRADE_HEADER_TINTS[gi % GRADE_HEADER_TINTS.length]);
+    sh.getRange(2, col, rows.length)
+      .setBackground(GRADE_TINTS[gi % GRADE_TINTS.length]);
+  });
 
   rulesSchedule_(sh);
   sh.setColumnWidth(1, 60);
@@ -730,19 +798,17 @@ function buildMessages_(sh) {
   var headers = MESSAGE_HEADERS;
   header_(sh, headers);
   sh.getRange(2, 1, 4, headers.length).setValues([
-    ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', 'לא', '', '', 'כן'],
-    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', 'לא', '', '', 'כן'],
-    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', 'לא', '', '', 'כן'],
-    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', 'לא', '', '', 'כן']
+    ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', ''],
+    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', ''],
+    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', ''],
+    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '']
   ]);
 
   rulesMessages_(sh);
-  sh.setColumnWidth(1, 400);
+  sh.setColumnWidth(1, 460);
   sh.setColumnWidth(2, 90);
-  sh.setColumnWidth(3, 300);
+  sh.setColumnWidth(3, 320);
   sh.setColumnWidth(4, 80);
-  sh.setColumnWidths(5, 2, 110);
-  sh.setColumnWidth(7, 70);
   sh.getRange('C1').setNote(
     'רק לסוג "וידאו".\n\n' +
     'מותר להדביק כאן:\n' +
@@ -751,11 +817,13 @@ function buildMessages_(sh) {
     'חשוב: קובץ בדרייב חייב להיות משותף ל"כל מי שיש לו הקישור".\n' +
     'קישור לתיקייה או לדף אינטרנט לא יעבוד.');
   sh.getRange('D1').setNote(
-    'האם להשמיע את הסאונד של הסרטון.\n' +
-    'ברירת המחדל "לא" — סרטון מושתק, כדי לא להפריע במסדרון.');
-  sh.getRange('E1').setNote('טווח תאריכים להצגה. ריק = תמיד.');
-  sh.getRange('G1').setNote('"לא" מסתיר את ההודעה בלי למחוק אותה.');
-  sh.getRange('A1').setNote(NO_PII_NOTE);
+    'רלוונטי רק לשורות מסוג "וידאו".\n' +
+    'ריק או "לא" = סרטון מושתק (ברירת המחדל, כדי לא להפריע במסדרון).\n' +
+    '"כן" = עם סאונד.\n\n' +
+    'בהודעות רגילות ודחופות הערך נעלם מעצמו ואינו משפיע על כלום.');
+  sh.getRange('A1').setNote(
+    'הרשימה מציגה את מה שרלוונטי עכשיו — מוסיפים שורה כשצריך\n' +
+    'ומוחקים אותה כשההודעה כבר לא רלוונטית.\n\n' + NO_PII_NOTE);
 }
 
 /* Presentation settings the principal can change without touching code.
@@ -768,6 +836,9 @@ function buildSettings_(sh) {
   /* The setting NAMES are structural — the board matches on them. Lock
      the whole column so only the value column is editable. */
   lock_(sh.getRange(2, 1, sh.getMaxRows() - 1), 'שמות הגדרות — לא לשינוי');
+  sh.getRange(2, 1, sh.getMaxRows() - 1)
+    .setBackground('#f0f0f0')
+    .setFontColor('#7f7f7f');
 
   var themeRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(THEMES, true)

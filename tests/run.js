@@ -313,6 +313,30 @@ test("buildMessages: splits by type, honors Active and range", () => {
   assert.deepEqual(m.normal, ["רגילה כאן"]);
   assert.deepEqual(m.urgent, ["דחוף כאן"]);
 });
+test("buildMessages: a sheet with no פעיל column still shows messages", () => {
+  /* the columns are optional; absent must never mean hidden */
+  const rows = [
+    { "הודעה": "שלום", "סוג": "רגילה", "סאונד": "לא" },
+    { "הודעה": "דחוף", "סוג": "דחופה", "סאונד": "לא" }
+  ];
+  const m = L.buildMessages(rows, TODAY);
+  assert.deepEqual(m.normal, ["שלום"]);
+  assert.deepEqual(m.urgent, ["דחוף"]);
+});
+test("buildMessages: סאונד is ignored on non-video messages", () => {
+  const rows = [
+    { "הודעה": "שלום", "סוג": "רגילה", "סאונד": "כן" },
+    { "הודעה": "דחוף", "סוג": "דחופה", "סאונד": "כן" }
+  ];
+  const m = L.buildMessages(rows, TODAY);
+  assert.deepEqual(m.normal, ["שלום"]);
+  assert.deepEqual(m.urgent, ["דחוף"]);
+  assert.deepEqual(m.videos, []);        /* no phantom video row */
+});
+test("buildMessages: an explicit לא still hides a row", () => {
+  const rows = [{ "הודעה": "כבוי", "סוג": "רגילה", "פעיל": "לא" }];
+  assert.deepEqual(L.buildMessages(rows, TODAY).normal, []);
+});
 test("buildMessages: video rows carry src and sound flag", () => {
   const rows = [
     { Text: "", Type: "וידאו", VideoURL: "https://x/y.mp4#sound", From: "", Until: "", Active: "כן" },

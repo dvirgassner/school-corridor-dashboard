@@ -364,7 +364,12 @@
   function buildMessages(rows, todayKey) {
     var out = { normal: [], urgent: [], videos: [] };
     (rows || []).forEach(function (r) {
-      if (!isActive(pick(r, "active"))) return;
+      /* פעיל and the date range are OPTIONAL columns. A sheet that simply
+         lists the messages currently worth showing has none of them, and
+         an absent column must not mean "hidden" — that would blank the
+         board. Only an explicit "לא" hides a row. */
+      var active = pick(r, "active");
+      if (active && !isActive(active)) return;
       if (!inRange(pick(r, "from"), pick(r, "until"), todayKey)) return;
       var type = normalizeType(pick(r, "type"));
       if (!type) return;

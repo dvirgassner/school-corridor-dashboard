@@ -743,6 +743,9 @@ test("buildMessages: a Drive share link becomes playable", () => {
   assert.ok(v.src.indexOf("uc?export=download&id=1AbCdEfGhIjKlMnOp") > 0);
 });
 
+/* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */
+require("./setup-safety.js").run(test);
+
 /* ---------- summary ---------- */
 if (process.exitCode) {
   console.error(`\n${passed} passed, some FAILED`);

@@ -1,0 +1,470 @@
+/* ==================================================================
+   setup-safety.js — does running setup.gs on a live sheet destroy
+   anything?
+
+   The sheet this script runs against holds the school's timetable, the
+   term's exams and whatever the principal typed this morning. Reviewing
+   the code is not enough; these tests execute the real setup.gs against
+   a mock spreadsheet loaded with realistic content and compare every
+   single cell before and after.
+
+   Two independent guards, because they fail in different ways:
+
+     1. BEHAVIOURAL — run it and diff the cells. Catches a destructive
+        call that actually fires.
+     2. STRUCTURAL — scan the source for content-mutating calls outside
+        the four functions allowed to make one. Catches a destructive
+        call added on a path the tests happen not to cover.
+
+   Exported as a function so tests/run.js can fold the results into its
+   own count.
+   ================================================================== */
+
+'use strict';
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const { Spreadsheet, makeEnvironment } = require('./sheets-mock.js');
+
+const SETUP_PATH = path.join(__dirname, '..', 'sheet-template', 'setup.gs');
+const SOURCE = fs.readFileSync(SETUP_PATH, 'utf8');
+
+/* Load setup.gs into a fresh sandbox with the mock globals in place, and
+   hand back its functions. A new context per test means no state leaks
+   between them. */
+function loadScript(ss, opts) {
+  const env = makeEnvironment(ss, opts);
+  const ctx = vm.createContext(env.globals);
+  vm.runInContext(SOURCE, ctx, { filename: 'setup.gs' });
+  return { ctx, env };
+}
+
+/* ---------- a sheet that looks like the school's ---------- */
+
+const DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
+const GRADES = ['ז׳', 'ח׳', 'ט׳', 'י׳', 'י"א', 'י"ב'];
+const PERIOD_TIMES = [
+  ['08:00', '08:45'], ['08:50', '09:35'], ['09:50', '10:35'],
+  ['10:40', '11:25'], ['11:45', '12:30'], ['12:35', '13:20'],
+  ['13:30', '14:15'], ['14:20', '15:05'], ['15:15', '16:00'],
+  ['16:05', '16:50']
+];
+
+/* Deliberately awkward content: quotes, an emoji, an em dash, a comma,
+   a subject over the length limit, and a בס"ד-style abbreviation with a
+   double quote in the middle. If styling mangles any of it, the diff
+   says exactly which cell. */
+const REAL_SUBJECTS = [
+  'מתמטיקה', 'תנ"ך', 'של"ח', 'אנגלית 🎉', 'ספרות — מגמה',
+  'היסטוריה, מגמה מורחבת', 'שם מקצוע ארוך מאוד שחורג מהמגבלה'
+];
+
+function populatedSheet() {
+  const ss = new Spreadsheet();
+
+  const sched = ss.addSheet('מערכת');
+  sched.getRange(1, 1, 1, 10).setValues([
+    ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
+  ]);
+  const rows = [];
+  DAYS.forEach((day, di) => {
+    PERIOD_TIMES.forEach((t, pi) => {
+      const row = [day, pi + 1, t[0], t[1]];
+      GRADES.forEach((g, gi) => {
+        row.push(pi < 7 ? REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length] : '');
+      });
+      rows.push(row);
+    });
+  });
+  sched.getRange(2, 1, rows.length, 10).setValues(rows);
+
+  const exams = ss.addSheet('מבחנים');
+  exams.getRange(1, 1, 1, 6).setValues([
+    ['תאריך', 'שכבה', 'מקצוע', 'התחלה', 'סיום', 'חדר']
+  ]);
+  exams.getRange(2, 1, 3, 6).setValues([
+    [new Date(2026, 8, 3), 'ט׳', 'תנ"ך', '09:00', '10:30', 'חדר 12'],
+    [new Date(2025, 4, 1), 'י"ב', 'אנגלית', '11:45', '12:30', 'ספרייה'],
+    ['', 'ח׳', 'ביולוגיה', '12:35', '13:20', 'מעבדה']   /* no date on purpose */
+  ]);
+
+  const events = ss.addSheet('אירועים');
+  events.getRange(1, 1, 1, 12).setValues([
+    ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'].concat(GRADES).concat(['כולם'])
+  ]);
+  /* ticks in three different shapes: two grades, all-school, and none */
+  events.getRange(2, 1, 3, 12).setValues([
+    [new Date(2026, 8, 1), 'חזרה כללית לטקס', '10:40', '11:25', 'אולם',
+     true, true, '', '', '', '', ''],
+    [new Date(2026, 8, 2), 'טיול שנתי — הגליל', '08:00', '15:00', 'הסעות',
+     '', '', '', '', '', '', true],
+    [new Date(2026, 8, 4), 'אסיפת הורים', '19:00', '20:30', 'אודיטוריום',
+     '', '', true, '', '', true, '']
+  ]);
+
+  const msgs = ss.addSheet('הודעות');
+  msgs.getRange(1, 1, 1, 4).setValues([
+    ['הודעה', 'סוג', 'קישור לוידאו (Google Drive או YouTube)', 'סאונד']
+  ]);
+  msgs.getRange(2, 1, 3, 4).setValues([
+    ['אסיפת הורים ביום שלישי, 19:00, ב"אולם הגדול" 🎉', 'רגילה', '', ''],
+    ['סרטון פתיחת שנה', 'וידאו', 'https://youtu.be/abc123XYZ', 'כן'],
+    ['ההסעה יוצאת ב-14:00', 'דחופה', '', '']
+  ]);
+
+  const settings = ss.addSheet('הגדרות');
+  settings.getRange(1, 1, 1, 2).setValues([['הגדרה', 'ערך']]);
+  settings.getRange(2, 1, 1, 2).setValues([['ערכת נושא', 'בהירה']]);
+
+  return ss;
+}
+
+/* Every value in every sheet, as a comparable string. Dates are stamped
+   by time so a silently rewritten date is caught too. */
+function snapshot(ss) {
+  const out = {};
+  ss.getSheets().forEach((sh) => {
+    const cells = [];
+    for (let r = 1; r <= sh.getMaxRows(); r++) {
+      for (let c = 1; c <= sh.getMaxColumns(); c++) {
+        const v = sh.values[r - 1][c - 1];
+        if (v === '' || v === null || v === undefined) continue;
+        cells.push(r + ',' + c + '=' +
+          (v instanceof Date ? 'D' + v.getTime() : typeof v + ':' + String(v)));
+      }
+    }
+    out[sh.getName()] = cells;
+  });
+  return out;
+}
+
+function diff(before, after) {
+  const changes = [];
+  const names = new Set(Object.keys(before).concat(Object.keys(after)));
+  names.forEach((name) => {
+    const b = new Set(before[name] || []);
+    const a = new Set(after[name] || []);
+    (before[name] || []).forEach((cell) => {
+      if (!a.has(cell)) changes.push(`${name}: LOST ${cell}`);
+    });
+    (after[name] || []).forEach((cell) => {
+      if (!b.has(cell)) changes.push(`${name}: ADDED ${cell}`);
+    });
+  });
+  return changes;
+}
+
+/* ---------- the structural guard ---------- */
+
+/* Calls that change what is IN a cell. Formatting, validation, notes and
+   protection are all absent from this list on purpose — they are the
+   whole point of the style pass. */
+const MUTATORS = [
+  '.setValue(', '.setValues(', '.clear(', '.clearContent(', '.clearContents(',
+  '.setFormula(', '.setFormulas(', '.setRichTextValue(',
+  '.deleteRow(', '.deleteRows(', '.deleteColumn(', '.deleteColumns(',
+  '.deleteSheet(', '.removeSheet(',
+  '.insertCheckboxes(', '.removeCheckboxes(',
+  '.insertRowBefore(', '.insertRowsBefore(', '.moveRows('
+];
+
+/* The only functions permitted to contain one. The first two are the
+   script's own write helpers; the last two answer a click the principal
+   just made in the אירועים tab, where clearing the conflicting box IS
+   the requested behaviour. */
+const MAY_WRITE = new Set([
+  'writeHeader_', 'seedIfEmpty_', 'resolveEventTick_', 'enforceExclusive_'
+]);
+
+/* Blank out block comments, preserving every offset and newline, so the
+   scan reads code and not prose. Without this the guard trips on
+   ensureEventBoxes_'s own docstring, which mentions insertCheckboxes()
+   precisely to explain why the script does NOT call it. */
+function blankComments(src) {
+  let out = src.split('');
+  const re = /\/\*[\s\S]*?\*\//g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    for (let i = m.index; i < m.index + m[0].length; i++) {
+      if (out[i] !== '\n') out[i] = ' ';
+    }
+  }
+  return out.join('');
+}
+
+/* Split the source into top-level functions by tracking brace depth, so
+   each mutating call can be attributed to the function containing it. */
+function functionSpans(src) {
+  const spans = [];
+  const re = /^function\s+([A-Za-z0-9_]+)\s*\(/gm;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    let i = src.indexOf('{', m.index);
+    let depth = 0;
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) break; }
+    }
+    spans.push({ name: m[1], start: m.index, end: i });
+  }
+  return spans;
+}
+
+function ownerOf(spans, index) {
+  const hit = spans.filter((s) => index >= s.start && index <= s.end);
+  return hit.length ? hit[hit.length - 1].name : '(top level)';
+}
+
+/* ---------- tests ---------- */
+
+function run(test) {
+  /* ============ 1. the headline claim ============ */
+
+  test('setup on a populated sheet changes no cell contents', () => {
+    const ss = populatedSheet();
+    const before = snapshot(ss);
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+    const changes = diff(before, snapshot(ss));
+    assert.deepEqual(changes, [],
+      'setup() altered cell contents:\n  ' + changes.join('\n  '));
+    /* "nothing changed" is also true of a run that died on its first
+       call, so insist the run actually completed */
+    const said = env.ss.toasts.map((t) => t.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+  });
+
+  test('setup on a populated sheet reports it styled rather than built', () => {
+    const ss = populatedSheet();
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+    const said = env.ss.toasts.map((t) => t.msg).join('\n');
+    assert.ok(/העיצוב והחוקים עודכנו/.test(said),
+      'expected the "styled" report, got: ' + said);
+    assert.ok(/התוכן שהוזן בגיליון לא השתנה/.test(said),
+      'the report should say the content was left alone');
+  });
+
+  test('setup is idempotent — a second run also changes nothing', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const between = snapshot(ss);
+    ctx.setup();
+    const changes = diff(between, snapshot(ss));
+    assert.deepEqual(changes, [],
+      'the second run altered contents:\n  ' + changes.join('\n  '));
+  });
+
+  test('no content write is even attempted on a populated sheet', () => {
+    const ss = populatedSheet();
+    /* forget the writes that LOADED the fixture — we are auditing what
+       setup() does, not what the test just did */
+    ss.getSheets().forEach((sh) => { sh.writes.length = 0; });
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const writes = [];
+    ss.getSheets().forEach((sh) => {
+      sh.writes.forEach((w) => writes.push(sh.getName() + ' ' + w.a1));
+    });
+    assert.deepEqual(writes, [],
+      'expected zero write calls, saw: ' + writes.join(', '));
+  });
+
+  /* ============ 2. the specific traps ============ */
+
+  test('grade ticks in אירועים survive the checkbox pass', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const ev = ss.getSheetByName('אירועים');
+    /* row 2: ז׳ and ח׳ ticked; row 3: כולם ticked; row 4: ט׳ and י"ב */
+    assert.equal(ev.getRange(2, 6).getValue(), true, 'ז׳ tick lost');
+    assert.equal(ev.getRange(2, 7).getValue(), true, 'ח׳ tick lost');
+    assert.equal(ev.getRange(3, 12).getValue(), true, 'כולם tick lost');
+    assert.equal(ev.getRange(4, 8).getValue(), true, 'ט׳ tick lost');
+    assert.equal(ev.getRange(4, 11).getValue(), true, 'י"ב tick lost');
+    /* and the empty ones stay EMPTY, not FALSE — false would export into
+       the CSV the board reads every minute */
+    assert.equal(ev.getRange(2, 8).getValue(), '', 'an unticked box became FALSE');
+  });
+
+  test('a chosen theme is not reset to the default', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    assert.equal(ss.getSheetByName('הגדרות').getRange(2, 2).getValue(), 'בהירה');
+  });
+
+  test('an out-of-window exam date is left in place, not scrubbed', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    /* row 3 holds a date from 2025 — far outside the new validation
+       window. Validation governs the NEXT entry, never the current one. */
+    const v = ss.getSheetByName('מבחנים').getRange(3, 1).getValue();
+    assert.ok(v instanceof Date && v.getFullYear() === 2025,
+      'the stale date was altered: ' + v);
+  });
+
+  test('an over-length subject is left in place, not truncated', () => {
+    const ss = populatedSheet();
+    const before = ss.getSheetByName('מערכת').getRange(2, 1, 60, 10).getValues();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const after = ss.getSheetByName('מערכת').getRange(2, 1, 60, 10).getValues();
+    assert.deepEqual(after, before);
+  });
+
+  /* ============ 3. styling really did happen ============ */
+
+  test('the style pass reaches the data rows', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const sched = ss.getSheetByName('מערכת');
+    /* grade tint on a cell deep in the timetable, not just the header */
+    assert.equal(sched.getRange(40, 5).getBackground(), '#d9ead3',
+      'the ז׳ column tint did not reach row 40');
+    assert.equal(sched.getRange(61, 10).getBackground(), '#d0e0e3',
+      'the י"ב column tint did not reach the last row');
+    /* the locked day column is greyed all the way down */
+    assert.equal(sched.getRange(61, 1).getBackground(), '#f0f0f0');
+    /* six thick day boxes were drawn */
+    assert.ok(sched.borders.length >= 7,
+      'expected the day boxes, saw ' + sched.borders.length + ' border calls');
+  });
+
+  test('validation is applied to data rows that already hold content', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const exams = ss.getSheetByName('מבחנים');
+    assert.ok(exams.getRange(2, 1).getDataValidation(),
+      'no date rule on the first exam row');
+    assert.ok(exams.getRange(2, 2).getDataValidation(),
+      'no grade dropdown on the first exam row');
+    const ev = ss.getSheetByName('אירועים');
+    assert.equal(ev.getRange(2, 6).getDataValidation().getCriteriaType(),
+      'CHECKBOX', 'the tick cell lost its checkbox');
+  });
+
+  test('re-running does not stack duplicate conditional format rules', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const once = ss.getSheetByName('מבחנים').getConditionalFormatRules().length;
+    ctx.setup();
+    const twice = ss.getSheetByName('מבחנים').getConditionalFormatRules().length;
+    assert.equal(twice, once,
+      `conditional format rules grew from ${once} to ${twice}`);
+  });
+
+  test('re-running does not stack duplicate protections', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const once = ss.getSheetByName('מערכת').protections.length;
+    ctx.setup();
+    const twice = ss.getSheetByName('מערכת').protections.length;
+    assert.equal(twice, once,
+      `protections grew from ${once} to ${twice}`);
+  });
+
+  /* ============ 4. the empty-sheet path still works ============ */
+
+  test('setup on an empty spreadsheet builds and seeds every tab', () => {
+    const ss = new Spreadsheet();
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+    const names = ss.getSheets().map((s) => s.getName());
+    ['מערכת', 'מבחנים', 'אירועים', 'הודעות', 'הגדרות'].forEach((n) => {
+      assert.ok(names.indexOf(n) >= 0, 'missing tab ' + n);
+      assert.ok(ss.getSheetByName(n).getLastRow() >= 2,
+        'tab ' + n + ' was not seeded');
+    });
+    assert.equal(ss.getSheetByName('מערכת').getLastRow(), 61,
+      'the timetable should be 60 rows plus a header');
+    const said = env.ss.toasts.map((t) => t.msg).join('\n');
+    assert.ok(/הגיליון נבנה בהצלחה/.test(said),
+      'expected the first-build report, got: ' + said);
+  });
+
+  test('a half-filled sheet is seeded only where it is empty', () => {
+    const ss = new Spreadsheet();
+    /* the principal typed the timetable but nothing else yet */
+    const sched = ss.addSheet('מערכת');
+    sched.getRange(1, 1, 1, 10).setValues([
+      ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
+    ]);
+    sched.getRange(2, 1, 1, 10).setValues([
+      ['א', 1, '08:00', '08:45', 'מתמטיקה', '', '', '', '', '']
+    ]);
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    /* untouched: still one lesson row, not sixty seeded ones */
+    assert.equal(sched.getLastRow(), 2, 'the typed timetable was overwritten');
+    assert.equal(sched.getRange(2, 5).getValue(), 'מתמטיקה');
+    /* but the empty tabs did get their examples */
+    assert.ok(ss.getSheetByName('הודעות').getLastRow() >= 2);
+  });
+
+  test('seedIfEmpty_ refuses a tab holding a single stray cell', () => {
+    const ss = new Spreadsheet();
+    const sh = ss.addSheet('הודעות');
+    sh.getRange(9, 3).setValue('הערה של מישהו');
+    const { ctx } = loadScript(ss);
+    const seeded = ctx.seedIfEmpty_(sh, [['a', 'b', 'c', 'd']]);
+    assert.equal(seeded, false, 'seeded over an occupied tab');
+    assert.equal(sh.getRange(9, 3).getValue(), 'הערה של מישהו');
+    assert.equal(sh.getRange(2, 1).getValue(), '');
+  });
+
+  /* ============ 5. the structural guard ============ */
+
+  test('no content-mutating call outside the four write helpers', () => {
+    const code = blankComments(SOURCE);
+    const spans = functionSpans(code);
+    const offenders = [];
+    MUTATORS.forEach((token) => {
+      let i = -1;
+      while ((i = code.indexOf(token, i + 1)) !== -1) {
+        const owner = ownerOf(spans, i);
+        if (MAY_WRITE.has(owner)) continue;
+        const line = SOURCE.slice(0, i).split('\n').length;
+        offenders.push(`${token} in ${owner}() at setup.gs:${line}`);
+      }
+    });
+    assert.deepEqual(offenders, [],
+      'content-mutating calls outside the allowed helpers:\n  ' +
+      offenders.join('\n  '));
+  });
+
+  test('every function named in the write allowlist still exists', () => {
+    const spans = functionSpans(SOURCE);
+    const names = new Set(spans.map((s) => s.name));
+    MAY_WRITE.forEach((n) => {
+      assert.ok(names.has(n),
+        'the allowlist names ' + n + '(), which no longer exists — ' +
+        'if it was renamed, update MAY_WRITE so the guard keeps biting');
+    });
+  });
+
+  test('the write helpers are the only callers of seedIfEmpty_ contents', () => {
+    /* seedIfEmpty_ must keep BOTH of its guards: a missing one would let
+       a re-run overwrite a populated tab and no other test would notice,
+       because the mock sheet is either clearly empty or clearly full. */
+    const spans = functionSpans(SOURCE);
+    const span = spans.find((s) => s.name === 'seedIfEmpty_');
+    assert.ok(span, 'seedIfEmpty_ is gone');
+    const body = SOURCE.slice(span.start, span.end);
+    assert.ok(/getLastRow\(\)\s*>=\s*2/.test(body),
+      'seedIfEmpty_ lost its getLastRow guard');
+    assert.ok(/isBlank\(\)/.test(body),
+      'seedIfEmpty_ lost its isBlank guard');
+  });
+}
+
+module.exports = { run };

@@ -18,8 +18,31 @@ the board, and Google handles the accounts.
    `מערכת`, `מבחנים`, `אירועים`, `הודעות`, `הגדרות` — with headers,
    sample rows, and validation already in place.
 
-Re-running `setup` rebuilds the tabs from scratch — it **erases
-existing content**, so only run it again on a fresh sheet.
+### Re-running `setup` is safe, at any point in the sheet's life
+
+`setup` applies the current design, notes, protections and validation to
+whatever is already there. It **never erases content**: the example rows
+go only into a tab that is empty, so once the school's real timetable is
+in, every later run restyles and re-validates and seeds nothing.
+
+That is enforced rather than intended. Every content write in the script
+goes through `writeHeader_()` or `seedIfEmpty_()`, and `node tests/run.js`
+fails if a content-mutating call appears anywhere else, or if running
+`setup()` against a mock sheet full of realistic data changes a single
+cell. See [`tests/setup-safety.js`](../tests/setup-safety.js).
+
+Two consequences worth knowing, both verified by those tests:
+
+- **A stricter rule never rejects data already in a cell.** Validation
+  governs the next entry, not the current one — an exam dated outside the
+  allowed window, or a subject name over the length limit, stays exactly
+  as typed.
+- **Checkbox ticks survive.** The script uses checkbox *validation*, not
+  `Range.insertCheckboxes()`, which would set every box it touches to
+  `false` and silently clear the grade ticks on every event.
+
+`setup` is deliberately absent from the לוח מסדרון menu. It is run from
+the Apps Script editor by whoever maintains the board.
 
 ## 2. Publish the five tabs as CSV
 

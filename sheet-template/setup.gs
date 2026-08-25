@@ -1,20 +1,31 @@
 /**
- * setup.gs — run ONCE to build the corridor-board spreadsheet.
+ * setup.gs — builds the corridor-board spreadsheet, and keeps it up to
+ * date for the rest of its life.
  *
- * Creates four tabs (מערכת / מבחנים / אירועים / הודעות), right-to-left,
- * with headers, sample rows, and data validation that rejects anything
- * the dashboard cannot display — including per-field length limits
- * derived from the pixel budget of each element on the 1920x1080 board.
+ * Creates five tabs (מערכת / מבחנים / אירועים / הודעות / הגדרות),
+ * right-to-left, with headers, colours, notes, protections and data
+ * validation that rejects anything the dashboard cannot display —
+ * including per-field length limits derived from the pixel budget of
+ * each element on the 1920x1080 board.
  *
- * How to run: Extensions -> Apps Script, paste this file, Run "setup",
- * authorize when asked. Safe to re-run: it clears and rebuilds the tabs.
+ * IT NEVER ERASES WHAT SOMEONE TYPED. Every run applies the current
+ * design and rules; example rows go only into a tab that is empty. This
+ * is not a convention to be careful about — it is enforced. All content
+ * writes go through writeHeader_() and seedIfEmpty_(), and tests/run.js
+ * fails the build if a content-mutating call appears anywhere else, or
+ * if running setup() against a mock sheet full of data changes so much
+ * as one cell.
+ *
+ * How to run: Extensions -> Apps Script, Run "setup", authorize when
+ * asked. Deliberately NOT on the לוח מסדרון menu — the principal has no
+ * reason to run it, and every reason not to wonder whether she should.
  */
 
 /* Bump when this file changes. Run checkVersion() to see which copy the
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.183';
+var SCRIPT_VERSION = '0.190';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -118,6 +129,20 @@ var GRADE_TINTS  = ['#d9ead3', '#cfe2f3', '#fce5cd',
 var GRADE_HEADER_TINTS = ['#b6d7a8', '#9fc5e8', '#f9cb9c',
                           '#d5a6bd', '#b4a7d6', '#a2c4c9', '#ea9999'];
 
+/**
+ * The five tabs, each split into the part that may write (seed) and the
+ * part that never does (style). setup() walks this list.
+ */
+function tabs_() {
+  return [
+    { name: 'מערכת',   seed: seedSchedule_, style: styleSchedule_ },
+    { name: 'מבחנים',  seed: seedExams_,    style: styleExams_ },
+    { name: 'אירועים', seed: seedEvents_,   style: styleEvents_ },
+    { name: 'הודעות',  seed: seedMessages_, style: styleMessages_ },
+    { name: 'הגדרות',  seed: seedSettings_, style: styleSettings_ }
+  ];
+}
+
 /** Re-apply one tab's dropdowns, checkboxes and limits. */
 function applyRules_(sh, name) {
   if (name === 'מערכת')  return rulesSchedule_(sh);
@@ -127,45 +152,64 @@ function applyRules_(sh, name) {
   if (name === 'הגדרות') return rulesSettings_(sh);
 }
 
+/**
+ * Build the sheet, or bring an existing one up to date. Safe to run at
+ * any point in the sheet's life, including on a live one mid-term.
+ *
+ * A tab that is empty gets its example rows. A tab that already holds the
+ * school's real content gets styled and re-validated and NOTHING ELSE —
+ * there is no path through this script that erases a populated tab, which
+ * is why it no longer needs a warning or a confirmation step.
+ *
+ * Deliberately absent from the לוח מסדרון menu: harmless is not the same
+ * as useful to the principal, and a run takes half a minute.
+ */
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ss.setSpreadsheetLocale('he_IL');
   ss.setSpreadsheetTimeZone('Asia/Jerusalem');
 
-  /* Build each tab under its own guard. Without this, one bad call aborts
-     the run with a stack trace and leaves the tab it was working on
-     already cleared — which reads as "the script wiped my data". */
-  var built = [], failed = [];
-  [['מערכת', buildSchedule_], ['מבחנים', buildExams_],
-   ['אירועים', buildEvents_], ['הודעות', buildMessages_],
-   ['הגדרות', buildSettings_]].forEach(function (pair) {
+  /* Each tab under its own guard. Without this, one bad call aborts the
+     run with a stack trace partway through, leaving the rest of the sheet
+     on the old design with no report of how far it got. */
+  var seeded = [], styled = [], failed = [];
+  tabs_().forEach(function (tab) {
     try {
-      pair[1](sheet_(ss, pair[0]));
-      built.push(pair[0]);
+      var sh = ensureSheet_(ss, tab.name);
+      var isNew = tab.seed(sh);
+      tab.style(sh);
+      applyRules_(sh, tab.name);
+      (isNew ? seeded : styled).push(tab.name);
     } catch (err) {
-      failed.push(pair[0] + ': ' + err.message);
+      failed.push(tab.name + ': ' + err.message);
     }
   });
 
-  /* drop the default empty sheet if it is still around */
-  var extra = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
-  if (extra && ss.getSheets().length > 5) ss.deleteSheet(extra);
-
   if (failed.length) {
     toast_(
-      'הבנייה הושלמה חלקית.\n\n' +
-      'נבנו: ' + built.join(', ') + '\n\n' +
+      'ההרצה הושלמה חלקית.\n\n' +
+      'הצליחו: ' + seeded.concat(styled).join(', ') + '\n\n' +
       'נכשלו:\n' + failed.join('\n') + '\n\n' +
-      'יש להריץ שוב לאחר תיקון, או לפנות לאחראי הטכני עם הטקסט הזה.');
+      'לא נמחק מידע. אפשר להריץ שוב לאחר תיקון, ' +
+      'או לפנות לאחראי הטכני עם הטקסט הזה.');
+    return;
+  }
+
+  if (!styled.length) {
+    toast_(
+      'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
+      'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
+      'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
+      'ראו את ההוראות המלאות בקובץ README.\n\n' +
+      '─────────────────────────\n' + NO_PII_NOTE);
     return;
   }
 
   toast_(
-    'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
-    'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
-    'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
-    'ראו את ההוראות המלאות בקובץ README.\n\n' +
-    '─────────────────────────\n' + NO_PII_NOTE);
+    'העיצוב והחוקים עודכנו. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
+    'עודכנו: ' + styled.join(', ') +
+    (seeded.length ? '\nנבנו מחדש (היו ריקים): ' + seeded.join(', ') : '') +
+    '\n\nהתוכן שהוזן בגיליון לא השתנה.');
 }
 
 /**
@@ -373,20 +417,26 @@ function eventColumns_(sh) {
 
 /* ---------- helpers ---------- */
 
-function sheet_(ss, name) {
+/**
+ * Get the tab, creating it only if it is genuinely absent, and make room
+ * for the rules that follow. Nothing here removes cell CONTENT.
+ *
+ * The stale data validation IS cleared: dropdowns and checkboxes are
+ * properties of a cell alongside its value, not the value itself, and
+ * wiping them first is what stops an old layout's rules from surviving
+ * under a new one. A tick stays a tick; only the box around it is redrawn.
+ */
+function ensureSheet_(ss, name) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
-  sh.clear();
   sh.clearConditionalFormatRules();
-  /* clearDataValidations() lives on Range, not on Sheet — clearing them
-     matters because sh.clear() leaves old dropdowns and checkboxes behind,
-     which would then conflict with the rules set below. */
   sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations();
   try { sh.setRightToLeft(true); } catch (e) {}
   /* A sheet converted from an uploaded CSV arrives sized to its data
      (sometimes 2x2). Any later setDataValidation() over a taller range
      would throw "out of bounds" and abort the whole script, so make
-     room up front. */
+     room up front. Inserting rows past the end adds blank ones; it never
+     displaces anything already typed. */
   if (sh.getMaxRows() < 100) {
     sh.insertRowsAfter(sh.getMaxRows(), 100 - sh.getMaxRows());
   }
@@ -396,15 +446,57 @@ function sheet_(ss, name) {
   return sh;
 }
 
-function header_(sh, headers) {
-  sh.getRange(1, 1, 1, headers.length).setValues([headers])
-    .setFontWeight('bold')
-    .setBackground('#efefef');
+/* ---------- the only two functions here that write cell contents -------
+   Everything else in this file formats, validates, protects or annotates.
+   Those operations reach the data rows freely — a background colour or a
+   dropdown is stored beside a cell's value, not in place of it — which is
+   how a design change can be applied to a sheet full of real timetable
+   without disturbing a single subject name.
+
+   tests/run.js enforces this mechanically: it walks the whole file and
+   fails if any content-mutating call appears outside the four functions
+   allowed to make one (these two, plus the two that answer a click in
+   the אירועים tab). Keep it that way. */
+
+/**
+ * Write the header row — and only when it actually differs, so a re-run
+ * on a live sheet is a no-op rather than a rewrite.
+ */
+function writeHeader_(sh, headers) {
+  var row = sh.getRange(1, 1, 1, headers.length);
+  var current = row.getValues()[0];
+  var same = true;
+  for (var i = 0; i < headers.length; i++) {
+    if (String(current[i]) !== String(headers[i])) { same = false; break; }
+  }
+  if (!same) row.setValues([headers]);
+
+  row.setFontWeight('bold').setBackground('#efefef');
   sh.setFrozenRows(1);
   /* Headers are structural: the board finds its columns by these names,
      so a well-meaning rename silently empties a panel. Genuinely locked,
      not merely warned about. */
   lock_(sh.getRange(1, 1, 1, sh.getMaxColumns()), 'כותרות — לא לשינוי');
+}
+
+/**
+ * Put the example rows in, but ONLY into a tab that has nothing below its
+ * header. This is what makes setup() safe to re-run for the rest of the
+ * sheet's life: once the school's real timetable is in, every later run
+ * restyles and re-validates and seeds nothing.
+ *
+ * Two independent checks, because this is the one call that could destroy
+ * a term's work: getLastRow() says where content ends, and isBlank()
+ * confirms the specific target rows really are empty. Either one saying
+ * "occupied" is enough to skip.
+ */
+function seedIfEmpty_(sh, rows) {
+  if (!rows || !rows.length) return false;
+  if (sh.getLastRow() >= 2) return false;
+  var rng = sh.getRange(2, 1, rows.length, rows[0].length);
+  if (!rng.isBlank()) return false;
+  rng.setValues(rows);
+  return true;
 }
 
 /**
@@ -599,7 +691,7 @@ function dateFlags_(sh, dateCol, contentCol) {
 function rulesSchedule_(sh) {
   /* No dropdown on the day column: every row is pre-filled with its day
      and period, so there is nothing to choose. The column is locked
-     instead (see buildSchedule_). */
+     instead (see styleSchedule_). */
   timeRule_(sh, 3);
   timeRule_(sh, 4);
   var last = Math.max(5, sh.getLastColumn());
@@ -650,6 +742,13 @@ function rulesSettings_(sh) {
     .setHelpText('ערכת נושא: ' + THEMES.join(' / '))
     .build();
   sh.getRange(2, 2, Math.max(2, sh.getMaxRows() - 1)).setDataValidation(rule);
+
+  /* verify rather than assume: a missing dropdown here is invisible
+     until someone tries to change the theme on a live board */
+  if (!sh.getRange('B2').getDataValidation()) {
+    throw new Error('התפריט הנפתח של ערכת הנושא לא נוצר — ' +
+                    'יש לבחור בתפריט "לוח מסדרון" → "תיקון חוקי הגיליון"');
+  }
 }
 
 function rulesExams_(sh) {
@@ -783,22 +882,29 @@ function colLetter_(n) {
   return s;
 }
 
-/* ---------- tab builders ---------- */
+/* ---------- the timetable's fixed shape ----------
+   Ten period rows for every day, always. The principal fills in the
+   subjects and leaves the rest empty — an empty cell simply means no
+   class, so the day ends after the last subject entered. Nothing to add
+   or delete, and no day to pick from a dropdown.
 
-function buildSchedule_(sh) {
-  var headers = ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
-  header_(sh, headers);
+   styleSchedule_ needs this geometry as much as seedSchedule_ does: the
+   thick day boxes are drawn from it, on a sheet whose contents it never
+   reads. */
+var PERIODS = [
+  [1, '08:00', '08:45'], [2, '08:50', '09:35'], [3, '09:50', '10:35'],
+  [4, '10:40', '11:25'], [5, '11:45', '12:30'], [6, '12:35', '13:20'],
+  [7, '13:30', '14:15'], [8, '14:20', '15:05'], [9, '15:15', '16:00'],
+  [10, '16:05', '16:50']
+];
 
-  /* Ten period rows for every day, always. The principal fills in the
-     subjects and leaves the rest empty — an empty cell simply means no
-     class, so the day ends after the last subject entered. Nothing to
-     add or delete, and no day to pick from a dropdown. */
-  var PERIODS = [
-    [1, '08:00', '08:45'], [2, '08:50', '09:35'], [3, '09:50', '10:35'],
-    [4, '10:40', '11:25'], [5, '11:45', '12:30'], [6, '12:35', '13:20'],
-    [7, '13:30', '14:15'], [8, '14:20', '15:05'], [9, '15:15', '16:00'],
-    [10, '16:05', '16:50']
-  ];
+function scheduleHeaders_() {
+  return ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
+}
+
+/* ---------- seeds: example content for an EMPTY tab only ---------- */
+
+function seedSchedule_(sh) {
   var SUBJECTS = ['מתמטיקה', 'אנגלית', 'לשון', 'היסטוריה', 'ביולוגיה',
                   'פיזיקה', 'כימיה', 'ספרות', 'תנ"ך', 'אזרחות',
                   'חינוך גופני', 'מחשבים'];
@@ -816,88 +922,20 @@ function buildSchedule_(sh) {
       rows.push(row);
     }
   });
-  sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
-
-  /* Day and period are structural: the board groups rows by them, and a
-     stray edit here silently moves classes to another day. Times stay
-     editable — bell schedules genuinely differ between schools. */
-  lock_(sh.getRange(2, 1, rows.length, 2), 'יום ומספר שיעור — לא לשינוי');
-  /* Protection stops other editors but never the owner, so locked cells
-     also LOOK locked: grey and dimmed, like a form field you cannot
-     type in. Half of "protection" is not inviting the edit. */
-  sh.getRange(2, 1, rows.length, 2)
-    .setHorizontalAlignment('center')
-    .setBackground('#f0f0f0')
-    .setFontColor('#7f7f7f');
-  /* a faint band per day, so 60 rows stay readable */
-  sh.getRange(2, 1, rows.length, headers.length).setBorder(
-    null, null, null, null, null, true, '#d9d9d9',
-    SpreadsheetApp.BorderStyle.SOLID);
-
-  /* One colour per grade column, matching that grade's card on the
-     board. Sixty rows of undifferentiated grid is hard to read; the
-     colour makes the six groups obvious at a glance, and means a
-     subject typed into the wrong grade stands out. */
-  GRADES.forEach(function (g, gi) {
-    var col = 5 + gi;
-    sh.getRange(1, col).setBackground(GRADE_HEADER_TINTS[gi % GRADE_HEADER_TINTS.length]);
-    sh.getRange(2, col, rows.length)
-      .setBackground(GRADE_TINTS[gi % GRADE_TINTS.length]);
-  });
-
-  /* A thick box around each day's ten rows. Sixty rows of timetable is
-     one undifferentiated block otherwise, and the day column alone is
-     easy to lose track of when scrolling. */
-  DAYS.forEach(function (day, di) {
-    sh.getRange(2 + di * PERIODS.length, 1, PERIODS.length, headers.length)
-      .setBorder(true, true, true, true, null, null,
-                 '#555555', SpreadsheetApp.BorderStyle.SOLID_THICK);
-  });
-
-  rulesSchedule_(sh);
-  sh.setColumnWidth(1, 60);
-  sh.setColumnWidth(2, 70);
-  sh.setColumnWidths(3, 2, 80);
-  sh.setColumnWidths(5, GRADES.length, 130);
-  sh.getRange('A1').setNote(
-    'עשר שורות לכל יום, מוכנות מראש.\n\n' +
-    'ממלאים רק את שמות המקצועות בעמודות השכבות.\n' +
-    'תא ריק = אין שיעור. יום הלימודים מסתיים אחרי המקצוע האחרון\n' +
-    'שהוזן, וכל מה שאחריו לא יוצג על הלוח.\n\n' +
-    'עמודות "יום" ו"שיעור" נעולות — אין צורך לשנות אותן.\n' +
-    'כל עמודה אחרי "סיום" היא שכבה — הלוח מתאים את עצמו אוטומטית.');
+  return seedIfEmpty_(sh, rows);
 }
 
-function buildExams_(sh) {
-  var headers = ['תאריך', 'שכבה', 'מקצוע', 'התחלה', 'סיום', 'חדר'];
-  header_(sh, headers);
+function seedExams_(sh) {
   /* dated today so they appear on the board straight away */
   var today = new Date();
-  sh.getRange(2, 1, 3, headers.length).setValues([
+  return seedIfEmpty_(sh, [
     [today, GRADES[2], 'מתמטיקה', '09:00', '10:30', 'חדר 12'],
     [today, GRADES[5], 'אנגלית', '11:45', '12:30', 'ספרייה'],
     [today, GRADES[1], 'ביולוגיה', '12:35', '13:20', 'מעבדה']
   ]);
-
-  rulesExams_(sh);
-  sh.setColumnWidths(1, headers.length, 110);
-  sh.getRange('C1').setNote(
-    'להזין את שם המקצוע בלבד — הלוח מוסיף מעצמו "מבחן ב".');
-  sh.getRange('B1').setNote(NO_PII_NOTE);
 }
 
-/* An event can apply to several grades. Google Sheets cannot multi-select
-   inside one cell, so each grade gets its own checkbox column — tick as
-   many as apply, and the board shows whichever are ticked. */
-function buildEvents_(sh) {
-  var FIXED = EVENT_FIXED;
-  /* ...GRADES, then a כולם box for a whole-school activity, so nobody has
-     to tick every grade one at a time. onEdit() keeps כולם and the
-     individual grades mutually exclusive. */
-  var TICKS = GRADES.concat(['כולם']);
-  var headers = FIXED.concat(TICKS);
-  header_(sh, headers);
-
+function seedEvents_(sh) {
   var today = new Date();
   var first = [today, 'חזרה כללית לטקס', '10:40', '11:25', 'אולם ספורט'];
   var second = [today, 'הרצאה: בטיחות ברשת', '12:35', '13:20', 'אודיטוריום'];
@@ -912,9 +950,100 @@ function buildEvents_(sh) {
   first.push('');
   second.push('');
   third.push(true);                     /* the כולם box */
-  sh.getRange(2, 1, 3, headers.length).setValues([first, second, third]);
+  return seedIfEmpty_(sh, [first, second, third]);
+}
 
-  rulesEvents_(sh);
+function seedMessages_(sh) {
+  return seedIfEmpty_(sh, [
+    ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', ''],
+    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', ''],
+    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', ''],
+    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '']
+  ]);
+}
+
+function seedSettings_(sh) {
+  return seedIfEmpty_(sh, [['ערכת נושא', 'כהה']]);
+}
+
+/* ---------- styles: applied to every tab, every run ----------
+   These reach the data rows on purpose — that is where the grade tints,
+   the day boxes and the locked columns belong. What they never do is
+   read or replace what is typed in those rows. */
+
+function styleSchedule_(sh) {
+  var headers = scheduleHeaders_();
+  writeHeader_(sh, headers);
+  var rows = DAYS.length * PERIODS.length;
+
+  /* Day and period are structural: the board groups rows by them, and a
+     stray edit here silently moves classes to another day. Times stay
+     editable — bell schedules genuinely differ between schools. */
+  lock_(sh.getRange(2, 1, rows, 2), 'יום ומספר שיעור — לא לשינוי');
+  /* Protection stops other editors but never the owner, so locked cells
+     also LOOK locked: grey and dimmed, like a form field you cannot
+     type in. Half of "protection" is not inviting the edit. */
+  sh.getRange(2, 1, rows, 2)
+    .setHorizontalAlignment('center')
+    .setBackground('#f0f0f0')
+    .setFontColor('#7f7f7f');
+  /* a faint band per day, so 60 rows stay readable */
+  sh.getRange(2, 1, rows, headers.length).setBorder(
+    null, null, null, null, null, true, '#d9d9d9',
+    SpreadsheetApp.BorderStyle.SOLID);
+
+  /* One colour per grade column, matching that grade's card on the
+     board. Sixty rows of undifferentiated grid is hard to read; the
+     colour makes the six groups obvious at a glance, and means a
+     subject typed into the wrong grade stands out. */
+  GRADES.forEach(function (g, gi) {
+    var col = 5 + gi;
+    sh.getRange(1, col).setBackground(GRADE_HEADER_TINTS[gi % GRADE_HEADER_TINTS.length]);
+    sh.getRange(2, col, rows)
+      .setBackground(GRADE_TINTS[gi % GRADE_TINTS.length]);
+  });
+
+  /* A thick box around each day's ten rows. Sixty rows of timetable is
+     one undifferentiated block otherwise, and the day column alone is
+     easy to lose track of when scrolling. */
+  DAYS.forEach(function (day, di) {
+    sh.getRange(2 + di * PERIODS.length, 1, PERIODS.length, headers.length)
+      .setBorder(true, true, true, true, null, null,
+                 '#555555', SpreadsheetApp.BorderStyle.SOLID_THICK);
+  });
+
+  sh.setColumnWidth(1, 60);
+  sh.setColumnWidth(2, 70);
+  sh.setColumnWidths(3, 2, 80);
+  sh.setColumnWidths(5, GRADES.length, 130);
+  sh.getRange('A1').setNote(
+    'עשר שורות לכל יום, מוכנות מראש.\n\n' +
+    'ממלאים רק את שמות המקצועות בעמודות השכבות.\n' +
+    'תא ריק = אין שיעור. יום הלימודים מסתיים אחרי המקצוע האחרון\n' +
+    'שהוזן, וכל מה שאחריו לא יוצג על הלוח.\n\n' +
+    'עמודות "יום" ו"שיעור" נעולות — אין צורך לשנות אותן.\n' +
+    'כל עמודה אחרי "סיום" היא שכבה — הלוח מתאים את עצמו אוטומטית.');
+}
+
+function styleExams_(sh) {
+  var headers = ['תאריך', 'שכבה', 'מקצוע', 'התחלה', 'סיום', 'חדר'];
+  writeHeader_(sh, headers);
+  sh.setColumnWidths(1, headers.length, 110);
+  sh.getRange('C1').setNote(
+    'להזין את שם המקצוע בלבד — הלוח מוסיף מעצמו "מבחן ב".');
+  sh.getRange('B1').setNote(NO_PII_NOTE);
+}
+
+/* An event can apply to several grades. Google Sheets cannot multi-select
+   inside one cell, so each grade gets its own checkbox column — tick as
+   many as apply, and the board shows whichever are ticked. */
+function styleEvents_(sh) {
+  var FIXED = EVENT_FIXED;
+  /* ...GRADES, then a כולם box for a whole-school activity, so nobody has
+     to tick every grade one at a time. onEdit() keeps כולם and the
+     individual grades mutually exclusive. */
+  var TICKS = GRADES.concat(['כולם']);
+  writeHeader_(sh, FIXED.concat(TICKS));
 
   var firstGradeCol = FIXED.length + 1;
   sh.setColumnWidths(1, FIXED.length, 130);
@@ -925,25 +1054,10 @@ function buildEvents_(sh) {
   sh.getRange(1, firstGradeCol + GRADES.length).setNote(
     'אירוע לכל בית הספר — לסמן ✓ כאן במקום לסמן כל שכבה בנפרד.\n' +
     'הלוח יציג "כולם".');
-
-  /* verify rather than assume — a missing checkbox column is the kind of
-     failure nobody notices until an event shows no grades at all */
-  if (!sh.getRange(2, firstGradeCol).getDataValidation()) {
-    throw new Error('לא נוצרו תיבות סימון בגיליון "אירועים".');
-  }
 }
 
-function buildMessages_(sh) {
-  var headers = MESSAGE_HEADERS;
-  header_(sh, headers);
-  sh.getRange(2, 1, 4, headers.length).setValues([
-    ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', ''],
-    ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', ''],
-    ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', ''],
-    ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '']
-  ]);
-
-  rulesMessages_(sh);
+function styleMessages_(sh) {
+  writeHeader_(sh, MESSAGE_HEADERS);
   sh.setColumnWidth(1, 460);
   sh.setColumnWidth(2, 90);
   sh.setColumnWidth(3, 320);
@@ -968,9 +1082,8 @@ function buildMessages_(sh) {
 /* Presentation settings the principal can change without touching code.
    A plain key/value tab, so more settings can be added later without
    changing its shape. */
-function buildSettings_(sh) {
-  header_(sh, ['הגדרה', 'ערך']);
-  sh.getRange(2, 1, 1, 2).setValues([['ערכת נושא', 'כהה']]);
+function styleSettings_(sh) {
+  writeHeader_(sh, ['הגדרה', 'ערך']);
 
   /* The setting NAMES are structural — the board matches on them. Lock
      the whole column so only the value column is editable. */
@@ -978,21 +1091,6 @@ function buildSettings_(sh) {
   sh.getRange(2, 1, sh.getMaxRows() - 1)
     .setBackground('#f0f0f0')
     .setFontColor('#7f7f7f');
-
-  var themeRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(THEMES, true)
-    .setAllowInvalid(false)
-    .setHelpText('ערכת נושא: ' + THEMES.join(' / '))
-    .build();
-  sh.getRange(2, 2, 50).setDataValidation(themeRule);
-
-  /* verify rather than assume: a missing dropdown here is invisible
-     until someone tries to change the theme on a live board */
-  var check = sh.getRange('B2').getDataValidation();
-  if (!check) {
-    throw new Error('התפריט הנפתח של ערכת הנושא לא נוצר — ' +
-                    'יש לבחור בתפריט "לוח מסדרון" → "תיקון חוקי הגיליון"');
-  }
 
   sh.setColumnWidth(1, 180);
   sh.setColumnWidth(2, 160);

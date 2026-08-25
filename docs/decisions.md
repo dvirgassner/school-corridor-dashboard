@@ -148,3 +148,42 @@ Not because anything is known to leak. It is a cheap insurance policy
 against the class of slow failures that are hard to reproduce and easy
 to prevent: a browser that has been rendering the same page for three
 months is not a well-tested configuration.
+
+## Why can't `setup` erase the sheet?
+
+Because the sheet holds the school's timetable, and the script that
+styles it is the same script that once built it. The original `setup`
+called `sh.clear()` on every tab and wrote sample rows over the top —
+fine for a template, catastrophic the first time a design change is
+applied to a live sheet mid-term.
+
+The fix was to split each tab builder in two. `styleX_()` applies
+headers, widths, grade tints, day borders, notes, protections and
+validation; it reaches every data row on purpose, because that is where
+the colours and rules belong, but it never reads or replaces a value —
+in Sheets a background or a dropdown is stored beside a cell's content,
+not in place of it. `seedX_()` holds the example rows and runs only
+against a tab that is empty.
+
+The part that matters is that this is checked rather than trusted. Two
+independent guards run on every `node tests/run.js`:
+
+- **Behavioural.** A mock of the `SpreadsheetApp` API
+  (`tests/sheets-mock.js`) lets the real `setup.gs` execute against a
+  spreadsheet loaded with a full timetable, dated exams, ticked events,
+  messages with quotes and emoji, and a chosen theme. Every cell is
+  compared before and after; any difference fails the build.
+- **Structural.** The source is scanned for content-mutating calls, which
+  are legal only inside the four functions allowed to make one:
+  `writeHeader_`, `seedIfEmpty_`, and the two that answer a checkbox
+  click. This catches a destructive call added on a path the behavioural
+  test happens not to reach.
+
+Both were mutation-tested — `sh.clear()` reintroduced, each of
+`seedIfEmpty_`'s two guards removed, a stray `setValues()` planted in a
+style function, `insertCheckboxes()` swapped back in — and every mutation
+was caught, most by several tests at once.
+
+No destructive rebuild was kept, not even a hidden one. Starting a tab
+over means deleting it by hand and re-running `setup`, which cannot
+happen by accident.

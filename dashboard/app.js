@@ -343,11 +343,33 @@ function renderAgenda() {
       ? `<span class="gchip all">כולם</span>`
       : grades.map(chipFor).join("");
     return `
-      <div class="exam">
+      <div class="exam" data-start="${esc(e.start)}" data-end="${esc(e.end)}">
         <div class="row1">${chips}<span class="ttl">${title}</span></div>
         <div class="row2"><span>${ICON_CLOCK}${esc(e.start)}–${esc(e.end)}</span><span>${ICON_PIN}${esc(e.room)}</span></div>
       </div>`;
   }).join("");
+  const n = NOW();
+  markAgendaDone(n.getHours() * 60 + n.getMinutes());
+}
+
+/* Drop agenda entries whose end time has passed, exactly as the grade
+   panes drop finished classes: an exam that ended at 10:30 is no longer
+   news at 11:00, and the space is better spent on what is still to come.
+   Driven from tick() rather than from the model, because the model is
+   only rebuilt on a fetch — once a minute at best, and up to ten minutes
+   stale if the network is down. */
+function markAgendaDone(nowMin) {
+  const wrap = document.querySelector(".agendawrap");
+  if (!wrap) return;
+  let left = 0;
+  wrap.querySelectorAll(".exam").forEach((x) => {
+    const done = nowMin >= minutes(x.dataset.end);
+    x.classList.toggle("done", done);
+    if (!done) left++;
+  });
+  /* everything has happened already — say so, rather than leaving a
+     pane that looks like it failed to load */
+  wrap.classList.toggle("empty", left === 0);
   layoutAgendaScroll();
 }
 
@@ -358,12 +380,22 @@ function layoutAgendaScroll() {
   const box = $("examlist");
   const wrap = box.querySelector(".agendawrap");
   if (!wrap) return;
-  wrap.classList.remove("scrolling");
   const overflow = wrap.scrollHeight - box.clientHeight;
-  if (overflow <= 4) return;                  /* fits — stay still */
+  const want = overflow > 4 ? String(overflow) : "";   /* "" = fits, stay still */
+
+  /* Called every second now that entries disappear as they finish, so do
+     nothing unless the distance to scroll actually changed. Re-adding the
+     class unconditionally would restart the slide from the top on every
+     tick and the list would never visibly move. */
+  if (wrap.dataset.shift === want) return;
+  wrap.dataset.shift = want;
+
+  wrap.classList.remove("scrolling");
+  if (!want) return;
   wrap.style.setProperty("--shift", `-${overflow}px`);
   /* pace by distance so a long list is not faster than a short one */
   wrap.style.setProperty("--adur", `${Math.round(overflow / 18 + 16)}s`);
+  void wrap.offsetHeight;        /* reflow, so the restart actually takes */
   wrap.classList.add("scrolling");
 }
 
@@ -489,6 +521,7 @@ function tick() {
     const left = c.querySelectorAll(".period:not(.done)").length;
     c.classList.toggle("empty", left === 0);
   });
+  markAgendaDone(nowMin);
   layoutPages();   /* row visibility changed → recompute pages */
   stamp();
 }

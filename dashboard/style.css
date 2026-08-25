@@ -371,6 +371,13 @@
                      min-width: 0; }
   .exam .row2 svg { width: 19px; height: 19px; flex: none;
                     opacity: 0.85; }
+  /* passed exams and events disappear, exactly as passed classes do */
+  .exam.done { display: none; }
+  .agendawrap.empty::after {
+    content: "האירועים והמבחנים הסתיימו";
+    display: block; color: var(--muted); font-size: 26px;
+    text-align: center; margin-top: 40px;
+  }
   #noexams { color: var(--muted); font-size: 26px; text-align: center;
              margin-top: 40px; }
 

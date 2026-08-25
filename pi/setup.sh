@@ -202,6 +202,13 @@ if [ "$REGISTERED" != "XDG autostart (.desktop)" ] && \
   echo "    removed duplicate XDG autostart entry"
 fi
 
+# Keyboard layout. Part of provisioning because a Hebrew-only keyboard
+# locks out the person standing at the Pi trying to fix it — including
+# from the settings dialog that would change it, which asks for a
+# password that cannot be typed.
+echo "==> Setting keyboard layout (English primary, Hebrew secondary)"
+bash "$SCRIPT_DIR/keyboard.sh" || echo "    keyboard setup skipped" >&2
+
 # An escape hatch that works with nothing but a keyboard plugged into the
 # TV. If SSH is unreachable — dead Wi-Fi, wrong network, Tailscale down —
 # every remote instruction is useless, and the kiosk covers the whole

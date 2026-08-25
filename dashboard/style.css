@@ -31,12 +31,12 @@
     --chipink:     var(--page);
     --nowmix:      16%;
     /* grade accents = categorical dark slots 1–7, documented order */
-    --g1: #3987e5;  /* blue    */
-    --g2: #d95926;  /* orange  */
-    --g3: #199e70;  /* aqua    */
-    --g4: #c98500;  /* yellow  */
-    --g5: #d55181;  /* magenta */
-    --g6: #008300;  /* green   */
+    --g1: #008300;  /* green   — ז    */
+    --g2: #d95926;  /* orange  — ח    */
+    --g3: #199e70;  /* aqua    — ט    */
+    --g4: #d55181;  /* magenta — י    */
+    --g5: #c98500;  /* yellow  — י"א  */
+    --g6: #3987e5;  /* blue    — י"ב  */
     --g7: #9085e9;  /* violet — used only if a 7th grade appears */
     --critical: #d03b3b;
     --warning:  #fab219;
@@ -56,12 +56,12 @@
     --border:      rgba(11,11,11,0.12);
     --chipink:     #ffffff;
     --nowmix:      14%;
-    --g1: #2a78d6;
-    --g2: #c24a19;
-    --g3: #12805a;
-    --g4: #8f6000;
-    --g5: #b8386a;
-    --g6: #006300;
+    --g1: #006300;  /* green   — ז    */
+    --g2: #c24a19;  /* orange  — ח    */
+    --g3: #12805a;  /* teal    — ט    */
+    --g4: #b8386a;  /* magenta — י    */
+    --g5: #8f6000;  /* amber   — י"א  */
+    --g6: #2a78d6;  /* blue    — י"ב  */
     --g7: #4a3aa7;
     --critical: #c0392b;
     --warning:  #a06800;
@@ -87,12 +87,12 @@
     --border:      rgba(23,23,58,0.16);
     --chipink:     #ffffff;
     --nowmix:      36%;
-    --g1: #1f6feb;  /* blue    */
-    --g2: #e2560f;  /* orange  */
-    --g3: #0f9488;  /* teal    */
-    --g4: #a86a00;  /* amber   */
-    --g5: #d6337f;  /* magenta */
-    --g6: #2f9e00;  /* green   */
+    --g1: #2f9e00;  /* green   — ז    */
+    --g2: #e2560f;  /* orange  — ח    */
+    --g3: #0f9488;  /* teal    — ט    */
+    --g4: #d6337f;  /* magenta — י    */
+    --g5: #a86a00;  /* amber   — י"א  */
+    --g6: #1f6feb;  /* blue    — י"ב  */
     --g7: #6d4aff;  /* violet  */
     --critical: #d92d20;
     --warning:  #a35a00;
@@ -112,12 +112,12 @@
     --border:      rgba(23,23,58,0.14);
     --chipink:     #ffffff;
     --nowmix:      26%;
-    --g1: #1f6feb;  /* blue    */
-    --g2: #e2560f;  /* orange  */
-    --g3: #0f9488;  /* teal    */
-    --g4: #a86a00;  /* amber   */
-    --g5: #d6337f;  /* magenta */
-    --g6: #2f9e00;  /* green   */
+    --g1: #2f9e00;  /* green   — ז    */
+    --g2: #e2560f;  /* orange  — ח    */
+    --g3: #0f9488;  /* teal    — ט    */
+    --g4: #d6337f;  /* magenta — י    */
+    --g5: #a86a00;  /* amber   — י"א  */
+    --g6: #1f6feb;  /* blue    — י"ב  */
     --g7: #6d4aff;  /* violet  */
     --critical: #d92d20;
     --warning:  #a35a00;
@@ -221,7 +221,7 @@
   #urgent.on ~ #school { display: none; }
   #urgent .icon { display: flex; align-items: center; color: var(--critical); }
   #urgent .icon svg { width: 28px; height: 28px; }
-  #urgent .tag  { color: var(--critical); font-size: 20px; font-weight: 700;
+  #urgent .tag  { color: var(--critical); font-size: 24px; font-weight: 700;
                   border: 1.5px solid var(--critical); border-radius: 8px;
                   padding: 1px 10px; white-space: nowrap; }
   #urgenttext   { transition: opacity 0.6s; white-space: nowrap;

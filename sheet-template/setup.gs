@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.161';
+var SCRIPT_VERSION = '0.170';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -76,7 +76,7 @@ var NO_PII_NOTE =
 var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 var TYPES = ['רגילה', 'דחופה', 'וידאו'];
 var YESNO = ['כן', 'לא'];
-var THEMES = ['כהה', 'בהירה', 'צבעונית'];
+var THEMES = ['כהה', 'בהירה', 'צבעוני 1', 'צבעוני 2'];
 
 /* the אירועים tab's fixed columns, before the per-grade checkboxes */
 var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
@@ -790,6 +790,6 @@ function buildSettings_(sh) {
     'ערכת נושא של הלוח — בחירה מהתפריט והלוח מתחלף בתוך דקה:\n' +
     '  כהה — רקע שחור (ברירת המחדל; הידידותית ביותר למסך OLED)\n' +
     '  בהירה — רקע לבן, למסדרון מואר\n' +
-    '  צבעונית — רקע כחול-כהה עם צבע לכל שכבה\n\n' +
+    '  צבעוני 1 — רקע כהה וכרטיסים צבעוניים בולטים\n  צבעוני 2 — רקע בהיר וגוון עדין לכל שכבה\n\n' +
     'המבנה, הגדלים והגופנים זהים בכל הערכות — רק הצבעים מתחלפים.');
 }

@@ -453,10 +453,13 @@
   /* ---------- settings tab ----------
      A simple two-column key/value tab, so the principal can change
      presentation (currently the colour theme) without touching code. */
+  /* "צבעונית" was the name before the two variants existed; it still maps
+     to צבעוני 1 so an older sheet keeps working. */
   var THEMES = {
     "כהה": "dark", "dark": "dark",
     "בהירה": "light", "light": "light",
-    "צבעונית": "colorful", "colorful": "colorful"
+    "צבעוני 1": "colorful", "colorful": "colorful", "צבעונית": "colorful",
+    "צבעוני 2": "colorful2", "colorful2": "colorful2"
   };
 
   function buildSettings(rows) {

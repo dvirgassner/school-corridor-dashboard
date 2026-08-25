@@ -553,8 +553,14 @@ test("buildSettings: defaults to the dark theme", () => {
 });
 test("buildSettings: reads the Hebrew theme names", () => {
   assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "בהירה" }]).theme, "light");
-  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "צבעונית" }]).theme, "colorful");
   assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "כהה" }]).theme, "dark");
+});
+test("buildSettings: the two colourful variants are distinct", () => {
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "צבעוני 1" }]).theme, "colorful");
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "צבעוני 2" }]).theme, "colorful2");
+});
+test("buildSettings: the old name צבעונית still maps to צבעוני 1", () => {
+  assert.equal(L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": "צבעונית" }]).theme, "colorful");
 });
 test("buildSettings: accepts English names and ignores junk", () => {
   assert.equal(L.buildSettings([{ Setting: "theme", Value: "light" }]).theme, "light");

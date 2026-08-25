@@ -122,7 +122,9 @@ Then check, in this order:
 | Check exactly one board is running | `pgrep -c -f kiosk.sh` — must be **1** |
 | Read the kiosk log | `tail -30 ~/kiosk.log` |
 | See the board's log | `journalctl --user -f` or run `~/kiosk.sh` in a terminal |
-| Restart just the browser | `pkill chromium` (the loop relaunches it) |
+| **Get to the desktop** | `~/board.sh stop` — then `~/board.sh start` to return |
+| Restart the board | `~/board.sh restart` |
+| What is running | `~/board.sh status` |
 | Change the board URL or sheet token | edit `~/.dashboard-env`, then `sudo reboot` |
 | Update the dashboard code | `cd <repo> && git pull` (only if you self-host; with GitHub Pages the Pi just reloads the page) |
 | Force the TV on/off now | `echo "on 0" \| cec-client -s -d 1` / `echo "standby 0" \| cec-client -s -d 1` |
@@ -191,3 +193,18 @@ ssh kit 'pkill chromium'
 ```
 
 The watchdog relaunches it within five seconds with the current build.
+
+## Getting to the desktop
+
+The kiosk is a watchdog loop that relaunches the browser within five
+seconds, so closing Chromium on its own just makes it blink. Stop the
+loop first:
+
+```bash
+~/board.sh stop      # browser closed, no relaunch — the desktop is yours
+~/board.sh start     # put the board back
+~/board.sh status    # what is running right now
+```
+
+A reboot also restores the board, so there is no way to leave it
+accidentally switched off for good.

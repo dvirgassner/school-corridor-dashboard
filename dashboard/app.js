@@ -605,6 +605,18 @@ function maybePlayVideo() {
   if (p && p.catch) p.catch(v.onerror);
 }
 
+/* Register the service worker, which keeps a copy of the page's own
+   files so a restart during an internet outage still has something to
+   load. Needs a real origin — over file:// it is unavailable, which is
+   why this is guarded rather than assumed. */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.error("service worker registration failed:", err);
+    });
+  });
+}
+
 /* ================================================================
    SELF-UPDATE
    The board re-reads the sheet every minute, but the page's own code is

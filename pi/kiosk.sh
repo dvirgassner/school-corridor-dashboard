@@ -24,10 +24,11 @@ until curl -sfI --max-time 10 "$REACH_URL" >/dev/null 2>&1; do
   echo "$(date '+%F %T') waiting for network (${WAITED}s) ..." >>"$HOME/kiosk.log"
   sleep 3
   WAITED=$((WAITED + 3))
-  # Give up waiting after two minutes and start anyway: Chromium showing
-  # its own error page is better than the desktop showing through, and the
-  # page reloads itself once the network appears.
-  [ "$WAITED" -ge 120 ] && GAVE_UP=1 && break
+  # Give up after 45 seconds. The service worker keeps a copy of the page,
+  # so starting without a network usually still shows the board (with
+  # yesterday's data and an amber stamp) rather than an error page — far
+  # better than staring at a desktop while the school's Wi-Fi wakes up.
+  [ "$WAITED" -ge 45 ] && GAVE_UP=1 && break
 done
 
 # If we started before the network was ready, Chromium will be sitting on

@@ -97,6 +97,40 @@
     --critical: #d92d20;
     --warning:  #a35a00;
   }
+  /* צבעוני 2 — the softer original: white cards on a pale ground, each
+     washed with a hint of its grade colour. Kept alongside צבעוני 1
+     because "vivid" and "calm" are both defensible for a corridor, and
+     which one works depends on the light in the actual hallway. */
+  :root[data-theme="colorful2"] {
+    --page:        #e8ecfa;
+    --surface:     #ffffff;
+    --ink:         #17173a;
+    --ink-strong:  #08081c;
+    --ink-2:       #43436b;
+    --muted:       #6c6c93;
+    --hairline:    #dfe3f5;
+    --border:      rgba(23,23,58,0.14);
+    --chipink:     #ffffff;
+    --nowmix:      26%;
+    --g1: #1f6feb;  /* blue    */
+    --g2: #e2560f;  /* orange  */
+    --g3: #0f9488;  /* teal    */
+    --g4: #a86a00;  /* amber   */
+    --g5: #d6337f;  /* magenta */
+    --g6: #2f9e00;  /* green   */
+    --g7: #6d4aff;  /* violet  */
+    --critical: #d92d20;
+    --warning:  #a35a00;
+  }
+  :root[data-theme="colorful2"] .card:not(#exams):not(#dayofday) {
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  :root[data-theme="colorful2"] .card:not(#exams):not(#dayofday) h2 {
+    color: color-mix(in srgb, var(--accent) 70%, var(--ink-strong));
+    border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
   /* what makes "colorful" actually colorful: each grade card carries a
      wash of its own accent, instead of every card being the same grey */
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) {

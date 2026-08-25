@@ -115,6 +115,7 @@ chmod 600 "$HOME/.dashboard-env"    # token — keep it to this user
 echo "==> Installing ~/kiosk.sh"
 install -m 755 "$SCRIPT_DIR/kiosk.sh" "$HOME/kiosk.sh"
 install -m 755 "$SCRIPT_DIR/screenshot.sh" "$HOME/screenshot.sh"
+install -m 755 "$SCRIPT_DIR/board.sh" "$HOME/board.sh"
 
 # The launcher sources the env file, then execs the kiosk loop.
 cat > "$HOME/start-board.sh" <<'EOF'

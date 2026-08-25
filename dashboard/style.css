@@ -379,9 +379,13 @@
   /* passed exams and events disappear, exactly as passed classes do */
   .exam.done { display: none; }
   .agendawrap.empty::after {
-    content: "האירועים והמבחנים הסתיימו";
+    content: "לא נותרו אירועים או מבחנים היום";
     display: block; color: var(--muted); font-size: 26px;
-    text-align: center; margin-top: 40px;
+    text-align: center; margin-top: 40px; padding: 0 18px;
+    /* without this the line breaks after "מבחנים" and leaves "היום"
+       stranded on a line of its own; ignored by anything too old to
+       know the property, which degrades to exactly today's wrap */
+    text-wrap: balance;
   }
   #noexams { color: var(--muted); font-size: 26px; text-align: center;
              margin-top: 40px; }

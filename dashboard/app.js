@@ -225,12 +225,25 @@ const ICON_WARN = SVG_OPEN +
   '<path d="M12 3.6 22.2 20.4H1.8z"/><path d="M12 9.4v4.8"/>' +
   '<circle cx="12" cy="17.6" r="0.9" fill="currentColor" stroke="none"/></svg>';
 
-/* currentColor makes it follow the badge's colour in every theme. */
+/* The two-arc refresh mark, not the single-loop one.
+   currentColor makes it follow the badge's colour in every theme.
+
+   The single loop this replaced was a 300° arc with a stroked corner for
+   its arrowhead. At 17px the arc closes up into a plain circle and the
+   corner shrinks to a nub, so the badge read as a bullet rather than as
+   "this changed". Two separated arcs cannot collapse that way — the gaps
+   are part of the silhouette — and the heads are solid triangles rather
+   than strokes, which is what survives being scaled down. Chosen by
+   rendering six candidates at the shipping size and looking at the
+   pixels, not by reading the path data. */
 const UPD_BADGE =
   `<span class="upd"><svg viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
+     stroke="currentColor" stroke-width="3" stroke-linecap="round"
      stroke-linejoin="round" aria-hidden="true">
-     <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/>
+     <path d="M2.8 9.4A9.2 9.2 0 0 1 18.6 6.6"/>
+     <path d="M21.2 14.6A9.2 9.2 0 0 1 5.4 17.4"/>
+     <path d="M19.8 1.4l.4 6.2-6 .4z" fill="currentColor" stroke="none"/>
+     <path d="M4.2 22.6l-.4-6.2 6-.4z" fill="currentColor" stroke="none"/>
    </svg>עודכן</span>`;
 
 /* ================================================================

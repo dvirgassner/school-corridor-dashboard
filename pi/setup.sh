@@ -135,7 +135,14 @@ fi
 set -a; . "$HOME/.dashboard-env"; set +a
 # never blank or dim the screen (X11 only; harmless elsewhere)
 xset s off -dpms 2>/dev/null || true
-unclutter -idle 0 &            # hide the mouse pointer
+# Hide the mouse pointer. NOT -idle 0: that means "hide with zero delay",
+# which makes classic unclutter poll the pointer in a tight loop instead of
+# sleeping between checks. Measured on the live Pi 3B+ it burned 53% of a
+# core continuously — a whole core of a four-core board, on hardware that
+# was already pinned at 100% and browning out its power supply. With a
+# non-zero idle it sits at 0.0%. The two-second delay before the pointer
+# vanishes costs nothing: nobody is looking at a corridor board's cursor.
+unclutter -idle 2 &
 exec "$HOME/kiosk.sh"
 EOF
 chmod 755 "$HOME/start-board.sh"

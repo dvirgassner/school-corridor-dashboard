@@ -118,7 +118,7 @@ Then check, in this order:
 
 | Task | Command |
 |---|---|
-| **See what the TV is showing** | from your PC: `ssh kit '~/screenshot.sh' > board.png` |
+| **See what the TV is showing** | from your PC: `ssh dvir@kit '~/screenshot.sh' > board.png` |
 | Check exactly one board is running | `pgrep -c -f kiosk.sh` — must be **1** |
 | Read the kiosk log | `tail -30 ~/kiosk.log` |
 | See the board's log | `journalctl --user -f` or run `~/kiosk.sh` in a terminal |
@@ -135,7 +135,7 @@ Then check, in this order:
 output, so one command from your own machine both takes and fetches it:
 
 ```bash
-ssh kit '~/screenshot.sh' > board.png
+ssh dvir@kit '~/screenshot.sh' > board.png
 ```
 
 Nothing is written to the Pi's SD card — that card is the part most
@@ -189,12 +189,39 @@ screens pick it up within a quarter of an hour.
 To force it immediately:
 
 ```bash
-ssh kit 'pkill chromium'
+ssh dvir@kit 'pkill chromium'
 ```
 
 The watchdog relaunches it within five seconds with the current build.
 
 ## Getting to the desktop
+
+### Standing at the TV, no SSH (the case that matters)
+
+If the network is down, Tailscale is unreachable or the Pi is on the
+wrong Wi-Fi, every remote instruction is useless — and the kiosk covers
+the whole screen. Two ways out, using only a keyboard plugged into the
+Pi:
+
+**1. Keyboard shortcut** (registered by `pi/setup.sh`):
+
+| Keys | What happens |
+|---|---|
+| **Ctrl + Alt + B** | board stops — the desktop appears |
+| **Ctrl + Alt + N** | board starts again |
+
+**2. Text console** — works on any Linux, needs no configuration, and is
+the fallback if the shortcut was not registered for your compositor:
+
+1. **Ctrl + Alt + F2** — a plain login prompt appears
+2. Log in as `dvir` with the Pi's password
+3. `~/board.sh stop`
+4. **Ctrl + Alt + F1** (or F7) — back to the desktop, now usable
+
+To bring the board back: `~/board.sh start`, or just reboot. There is no
+way to leave it off permanently by accident.
+
+### Over SSH
 
 The kiosk is a watchdog loop that relaunches the browser within five
 seconds, so closing Chromium on its own just makes it blink. Stop the

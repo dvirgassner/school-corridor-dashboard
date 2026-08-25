@@ -202,6 +202,53 @@ if [ "$REGISTERED" != "XDG autostart (.desktop)" ] && \
   echo "    removed duplicate XDG autostart entry"
 fi
 
+# An escape hatch that works with nothing but a keyboard plugged into the
+# TV. If SSH is unreachable — dead Wi-Fi, wrong network, Tailscale down —
+# every remote instruction is useless, and the kiosk covers the whole
+# screen with no way out.
+#
+# Ctrl+Alt+B stops the board; Ctrl+Alt+N starts it again. The universal
+# fallback, needing no configuration at all, is a text console:
+# Ctrl+Alt+F2, log in, run ~/board.sh stop.
+echo "==> Registering the keyboard escape hatch (Ctrl+Alt+B / Ctrl+Alt+N)"
+if [ -f "$HOME/.config/wayfire.ini" ]; then
+  if ! grep -q "board_stop" "$HOME/.config/wayfire.ini"; then
+    cat >> "$HOME/.config/wayfire.ini" <<EOF
+
+[command]
+binding_board_stop = <ctrl> <alt> KEY_B
+command_board_stop = $HOME/board.sh stop
+binding_board_start = <ctrl> <alt> KEY_N
+command_board_start = $HOME/board.sh start
+EOF
+  fi
+  echo "    wayfire: Ctrl+Alt+B stops, Ctrl+Alt+N starts"
+elif [ -f "$HOME/.config/labwc/rc.xml" ]; then
+  # Insert into the existing keyboard section rather than replacing the
+  # file — a fresh rc.xml would drop labwc's own default keybindings.
+  if ! grep -q "board.sh stop" "$HOME/.config/labwc/rc.xml"; then
+    python3 - "$HOME/.config/labwc/rc.xml" "$HOME" <<'PY' || \
+      echo "    labwc: could not add keybinds — use Ctrl+Alt+F2 instead" >&2
+import sys
+path, home = sys.argv[1], sys.argv[2]
+xml = open(path, encoding="utf-8").read()
+binds = (
+  '  <keybind key="C-A-b"><action name="Execute" '
+  'command="%s/board.sh stop"/></keybind>\n'
+  '  <keybind key="C-A-n"><action name="Execute" '
+  'command="%s/board.sh start"/></keybind>\n' % (home, home))
+if "</keyboard>" in xml:
+    xml = xml.replace("</keyboard>", binds + "</keyboard>", 1)
+    open(path, "w", encoding="utf-8").write(xml)
+else:
+    raise SystemExit(1)
+PY
+  fi
+  echo "    labwc: Ctrl+Alt+B stops, Ctrl+Alt+N starts"
+else
+  echo "    no compositor config found — use Ctrl+Alt+F2 (text console)"
+fi
+
 echo "==> Installing cron jobs (screen schedule, heartbeat, nightly reboot)"
 CRON_TMP="$(mktemp)"
 crontab -l 2>/dev/null | grep -v "corridor-board" > "$CRON_TMP" || true

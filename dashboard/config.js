@@ -28,7 +28,7 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.177",
+  version: "0.178",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   /* How often to check whether a new build has been published. On a
@@ -37,6 +37,12 @@ window.DASH_CONFIG = {
      so checking much more often than that buys nothing. */
   updateCheckMinutes: 15,
   staleMinutes: 10,          /* stamp turns amber after this long     */
+  /* A bell is an approximation: a lesson often runs a few minutes over.
+     The last class of the day therefore stays on the board this long
+     after its official end time, and only then does the pane switch to
+     "יום הלימודים הסתיים". Applies to the final class only — earlier
+     ones still make way for the next as soon as they end. */
+  endOfDayGraceMinutes: 5,
   videoIntervalMinutes: 10,  /* minimum gap between video plays       */
   /* A YouTube embed gives no "finished" signal without loading YouTube's
      own API, so this caps how long the overlay can cover the board.

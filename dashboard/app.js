@@ -234,16 +234,29 @@ const ICON_WARN = SVG_OPEN +
    "this changed". Two separated arcs cannot collapse that way — the gaps
    are part of the silhouette — and the heads are solid triangles rather
    than strokes, which is what survives being scaled down. Chosen by
-   rendering six candidates at the shipping size and looking at the
-   pixels, not by reading the path data. */
+   rendering candidates at the shipping size and looking at the pixels,
+   not by reading the path data.
+
+   Two details that are easy to get wrong. The arcs are SHALLOW crescents
+   (121° of a big r=9.2 circle whose centre sits below the icon's), not
+   segments of a ring centred on the glyph — tighten them and the mark
+   turns back into a circle with lumps on it, which was the whole problem.
+   And the viewBox is -1..25 rather than 0..24 because the enlarged heads
+   overhang the nominal box by 0.4 units; an svg clips to its viewBox, so
+   without the margin both tips would be shaved flat.
+
+   Geometry is generated rather than hand-tuned: each head sits on its
+   arc's end point, aligned to the tangent there, and the lower half is
+   the upper one rotated 180° so the two can never drift apart. */
+const UPD_HALF =
+  '<path d="M2.8 9.39A9.2 9.2 0 0 1 16.97 5.05"/>' +
+  '<path d="M23.04 9.56L11.87 6.99L17.35 -0.4z" fill="currentColor" stroke="none"/>';
 const UPD_BADGE =
-  `<span class="upd"><svg viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="3" stroke-linecap="round"
+  `<span class="upd"><svg viewBox="-1 -1 26 26" fill="none"
+     stroke="currentColor" stroke-width="2.6" stroke-linecap="round"
      stroke-linejoin="round" aria-hidden="true">
-     <path d="M2.8 9.4A9.2 9.2 0 0 1 18.6 6.6"/>
-     <path d="M21.2 14.6A9.2 9.2 0 0 1 5.4 17.4"/>
-     <path d="M19.8 1.4l.4 6.2-6 .4z" fill="currentColor" stroke="none"/>
-     <path d="M4.2 22.6l-.4-6.2 6-.4z" fill="currentColor" stroke="none"/>
+     <g>${UPD_HALF}</g>
+     <g transform="rotate(180 12 12)">${UPD_HALF}</g>
    </svg>עודכן</span>`;
 
 /* ================================================================
@@ -531,6 +544,27 @@ function tick() {
     p.classList.toggle("done", nowMin >= e);   /* passed → hidden */
   });
   document.querySelectorAll(".periods").forEach((c) => {
+    const rows = [...c.querySelectorAll(".period")];
+    if (!rows.length) {                    /* no classes at all today */
+      c.classList.add("empty");
+      c.removeAttribute("data-endtime");
+      return;
+    }
+    /* The bell is approximate and a lesson often runs over, so the FINAL
+       class of the day stays put for a grace period after its end time
+       rather than vanishing on the stroke. Earlier classes are unaffected
+       — they still make way for the next one immediately. */
+    let lastEnd = -1, lastEndText = "";
+    rows.forEach((p) => {
+      const e = minutes(p.dataset.end);
+      if (e > lastEnd) { lastEnd = e; lastEndText = p.dataset.end; }
+    });
+    if (nowMin < lastEnd + (CFG.endOfDayGraceMinutes || 0)) {
+      rows.forEach((p) => {
+        if (minutes(p.dataset.end) === lastEnd) p.classList.remove("done");
+      });
+    }
+    c.dataset.endtime = lastEndText;       /* read by the CSS message */
     const left = c.querySelectorAll(".period:not(.done)").length;
     c.classList.toggle("empty", left === 0);
   });

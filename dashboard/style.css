@@ -276,10 +276,18 @@
              transition: transform 0.9s cubic-bezier(.4,0,.2,1);
              will-change: transform; }
   /* card overflows: the wrapper is translated page by page */
-  /* all of today's classes are over */
+  /* All of today's classes are over. The end time comes from the card's
+     own last row via attr(), so each grade states its own finishing time
+     rather than a single time for the whole school — the panes genuinely
+     end at different hours. The bare fallback covers a grade with no
+     classes listed at all, where there is no time to name. */
   .periods.empty::after { content: "יום הלימודים הסתיים";
+                          display: block;
                           color: var(--muted); font-size: 24px;
                           text-align: center; margin-top: 42px; }
+  .periods.empty[data-endtime]::after {
+    content: "יום הלימודים הסתיים בשעה " attr(data-endtime);
+  }
   .period  { display: flex; align-items: center; gap: 12px;
              font-size: 28px; line-height: 1.1; height: 52px; flex: none;
              padding: 2px 8px; border-radius: 8px; }

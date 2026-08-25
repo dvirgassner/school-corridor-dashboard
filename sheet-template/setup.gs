@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.181';
+var SCRIPT_VERSION = '0.182';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -30,12 +30,26 @@ function notify_(message) {
     SpreadsheetApp.getUi().alert(message);
     return;
   } catch (e) {}
+  toast_(message);
+}
+
+/**
+ * Non-blocking report. Use this for anything a script says on its way
+ * out, and never getUi().alert().
+ *
+ * alert() waits for a click, and when the function was started from the
+ * Apps Script editor that dialog opens in the SPREADSHEET tab — which
+ * nobody is looking at. The editor just shows a spinner, for as long as
+ * it takes someone to notice, which looks exactly like a hang. A
+ * completion message must never be able to stall the run that produced
+ * it.
+ */
+function toast_(message) {
   try {
     SpreadsheetApp.getActiveSpreadsheet()
-      .toast(String(message).slice(0, 180), 'לוח מסדרון', 10);
-    return;
+      .toast(String(message).slice(0, 400), 'לוח מסדרון', 15);
   } catch (e) {}
-  Logger.log(message);          /* last resort: the execution log */
+  Logger.log(message);          /* always in the execution log too */
 }
 
 /** Run this to confirm which version of the script is loaded. */
@@ -138,7 +152,7 @@ function setup() {
   if (extra && ss.getSheets().length > 5) ss.deleteSheet(extra);
 
   if (failed.length) {
-    notify_(
+    toast_(
       'הבנייה הושלמה חלקית.\n\n' +
       'נבנו: ' + built.join(', ') + '\n\n' +
       'נכשלו:\n' + failed.join('\n') + '\n\n' +
@@ -146,7 +160,7 @@ function setup() {
     return;
   }
 
-  notify_(
+  toast_(
     'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
     'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
     'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
@@ -454,9 +468,16 @@ function effLen_(cell) {
          EMOJI_CLUSTER + '", "xx")), LEN(' + cell + '))';
 }
 
-/** Text-length rule with a Hebrew rejection message. */
+/**
+ * Text-length rule with a Hebrew rejection message.
+ *
+ * Applied to the rows that exist rather than a flat 500: the length
+ * formula runs a regex per cell, and covering six grade columns × 500
+ * rows made setup crawl for no benefit — nobody types below the block.
+ */
 function lenRule_(sh, col, max, label) {
-  var rng = sh.getRange(2, col, 500);
+  var rows = Math.max(50, Math.min(sh.getMaxRows() - 1, sh.getLastRow() + 20));
+  var rng = sh.getRange(2, col, rows);
   var rule = SpreadsheetApp.newDataValidation()
     .requireFormulaSatisfied('=' + effLen_('INDIRECT("RC", FALSE)') + '<=' + max)
     .setAllowInvalid(false)
@@ -527,7 +548,8 @@ function rulesMessages_(sh) {
                  'הודעה דחופה: עד ' + LIMITS.messageUrgent + ' תווים. ' +
                  'אמוג\'י נחשב כשני תווים.')
     .build();
-  sh.getRange(2, 1, 500).setDataValidation(textRule);
+  var msgRows = Math.max(50, Math.min(sh.getMaxRows() - 1, sh.getLastRow() + 20));
+  sh.getRange(2, 1, msgRows).setDataValidation(textRule);
 
   listRule_(sh, 2, TYPES, 'סוג');
   listRule_(sh, 4, YESNO, 'סאונד');   /* audio on/off, only read for וידאו */
@@ -747,6 +769,15 @@ function buildSchedule_(sh) {
     sh.getRange(1, col).setBackground(GRADE_HEADER_TINTS[gi % GRADE_HEADER_TINTS.length]);
     sh.getRange(2, col, rows.length)
       .setBackground(GRADE_TINTS[gi % GRADE_TINTS.length]);
+  });
+
+  /* A thick box around each day's ten rows. Sixty rows of timetable is
+     one undifferentiated block otherwise, and the day column alone is
+     easy to lose track of when scrolling. */
+  DAYS.forEach(function (day, di) {
+    sh.getRange(2 + di * PERIODS.length, 1, PERIODS.length, headers.length)
+      .setBorder(true, true, true, true, null, null,
+                 '#555555', SpreadsheetApp.BorderStyle.SOLID_THICK);
   });
 
   rulesSchedule_(sh);

@@ -112,7 +112,12 @@
      because "vivid" and "calm" are both defensible for a corridor, and
      which one works depends on the light in the actual hallway. */
   :root[data-theme="colorful2"] {
-    --page:        #e8ecfa;
+    /* The page has to sit clear of SIX card washes, not just look nice on
+       its own. At #e8ecfa it was ΔE 0.6 from the ח card — the same colour
+       to the eye, so that pane appeared to have no background at all.
+       This blue-grey clears the nearest wash (י"א violet) by ΔE 11.9 and
+       reads as a frame, which lets the tints carry the colour. */
+    --page:        #bfc5db;
     --surface:     #ffffff;
     --ink:         #17173a;
     --ink-strong:  #08081c;

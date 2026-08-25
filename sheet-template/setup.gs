@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.180';
+var SCRIPT_VERSION = '0.181';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -423,13 +423,45 @@ function lock_(range, description) {
   } catch (e) {}
 }
 
+/**
+ * Effective length, counting any emoji as exactly two characters.
+ *
+ * LEN() counts UTF-16 units, so 🎉 is 2 but 👨‍👩‍👧 is 11 and 🏃‍♀️ is 5 —
+ * a composite emoji would eat most of a 16-character subject name for no
+ * corresponding width on screen. Two is right both as a cap and as a
+ * width estimate: an emoji renders about as wide as two Hebrew letters.
+ *
+ * The regex matches one emoji CLUSTER: a flag pair, or a base emoji with
+ * its modifiers and any ZWJ-joined continuation. Each is rewritten to
+ * "xx" before measuring. Verified against real strings before shipping,
+ * because a wrong rule here rejects text the principal legitimately
+ * typed.
+ *
+ * IFERROR is the safety net: if this build of Sheets rejects the pattern,
+ * the rule silently falls back to plain LEN — today's behaviour — rather
+ * than failing shut and refusing every edit.
+ */
+var EMOJI_BASE = '[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}' +
+                 '\\x{2B00}-\\x{2BFF}\\x{2190}-\\x{21FF}]';
+var EMOJI_TAIL = '[\\x{FE0F}\\x{1F3FB}-\\x{1F3FF}\\x{20E3}]';
+var EMOJI_RI   = '[\\x{1F1E6}-\\x{1F1FF}]';
+var EMOJI_CLUSTER =
+  '(?:' + EMOJI_RI + EMOJI_RI + '|' +
+  EMOJI_BASE + EMOJI_TAIL + '*(?:\\x{200D}' + EMOJI_BASE + EMOJI_TAIL + '*)*)';
+
+function effLen_(cell) {
+  return 'IFERROR(LEN(REGEXREPLACE(TO_TEXT(' + cell + '), "' +
+         EMOJI_CLUSTER + '", "xx")), LEN(' + cell + '))';
+}
+
 /** Text-length rule with a Hebrew rejection message. */
 function lenRule_(sh, col, max, label) {
   var rng = sh.getRange(2, col, 500);
   var rule = SpreadsheetApp.newDataValidation()
-    .requireFormulaSatisfied('=LEN(INDIRECT("RC", FALSE))<=' + max)
+    .requireFormulaSatisfied('=' + effLen_('INDIRECT("RC", FALSE)') + '<=' + max)
     .setAllowInvalid(false)
-    .setHelpText(label + ': עד ' + max + ' תווים (מגבלת רוחב במסך).')
+    .setHelpText(label + ': עד ' + max + ' תווים (מגבלת רוחב במסך). ' +
+                 'אמוג\'י נחשב כשני תווים.')
     .build();
   rng.setDataValidation(rule);
 }
@@ -487,11 +519,13 @@ function rulesMessages_(sh) {
   /* length depends on the type: urgent text is displayed larger */
   var textRule = SpreadsheetApp.newDataValidation()
     .requireFormulaSatisfied(
-      '=LEN(INDIRECT("RC", FALSE))<=IF(INDIRECT("RC[1]", FALSE)="דחופה",' +
+      '=' + effLen_('INDIRECT("RC", FALSE)') +
+      '<=IF(INDIRECT("RC[1]", FALSE)="דחופה",' +
       LIMITS.messageUrgent + ',' + LIMITS.messageNormal + ')')
     .setAllowInvalid(false)
     .setHelpText('הודעה רגילה: עד ' + LIMITS.messageNormal + ' תווים. ' +
-                 'הודעה דחופה: עד ' + LIMITS.messageUrgent + ' תווים.')
+                 'הודעה דחופה: עד ' + LIMITS.messageUrgent + ' תווים. ' +
+                 'אמוג\'י נחשב כשני תווים.')
     .build();
   sh.getRange(2, 1, 500).setDataValidation(textRule);
 

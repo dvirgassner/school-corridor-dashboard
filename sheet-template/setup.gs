@@ -14,7 +14,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.182';
+var SCRIPT_VERSION = '0.183';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -469,14 +469,21 @@ function effLen_(cell) {
 }
 
 /**
- * Text-length rule with a Hebrew rejection message.
+ * How far down a validation or conditional-format rule should reach.
  *
- * Applied to the rows that exist rather than a flat 500: the length
- * formula runs a regex per cell, and covering six grade columns × 500
- * rows made setup crawl for no benefit — nobody types below the block.
+ * The rows that exist plus room to grow, rather than a flat 500: the
+ * length formula runs a regex per cell, and covering six grade columns ×
+ * 500 rows made setup crawl for no benefit — nobody types below the
+ * block. The sheet's own height is the last clamp, so the range can
+ * never be asked to extend past the final row.
  */
+function ruleRows_(sh) {
+  return Math.min(sh.getMaxRows() - 1, Math.max(50, sh.getLastRow() + 20));
+}
+
+/** Text-length rule with a Hebrew rejection message. */
 function lenRule_(sh, col, max, label) {
-  var rows = Math.max(50, Math.min(sh.getMaxRows() - 1, sh.getLastRow() + 20));
+  var rows = ruleRows_(sh);
   var rng = sh.getRange(2, col, rows);
   var rule = SpreadsheetApp.newDataValidation()
     .requireFormulaSatisfied('=' + effLen_('INDIRECT("RC", FALSE)') + '<=' + max)
@@ -508,15 +515,80 @@ function timeRule_(sh, col) {
   sh.getRange(2, col, 500).setNumberFormat('@');   /* plain text */
 }
 
-/** Date rule — real dates only. */
+/**
+ * Date rule. Rejects more than "is this a date", because the typing
+ * errors that actually cost something all produce PERFECTLY VALID dates:
+ *
+ *   • a mistyped year (2072 instead of 2027) — the exam never appears
+ *   • last year's date on a repeated exam — same
+ *   • a date already past — the row is silently skipped
+ *
+ * None of those look wrong in the cell, and the board cannot report
+ * them: an exam that never shows produces no error anywhere. So the
+ * window is bounded, from a month back to a year ahead.
+ */
 function dateRule_(sh, col) {
+  var n = ruleRows_(sh);
+  var cell = 'INDIRECT("RC", FALSE)';
   var rule = SpreadsheetApp.newDataValidation()
-    .requireDate()
+    .requireFormulaSatisfied(
+      '=AND(ISDATE(' + cell + '), ' + cell + '>=TODAY()-30, ' +
+      cell + '<=TODAY()+400)')
     .setAllowInvalid(false)
-    .setHelpText('תאריך, למשל 01/09/2026')
+    .setHelpText('יש להזין תאריך תקין, מהחודש האחרון ועד שנה קדימה.\n' +
+                 'לדוגמה: 01/09/2026. שימו לב לשנה!')
     .build();
-  sh.getRange(2, col, 500).setDataValidation(rule);
-  sh.getRange(2, col, 500).setNumberFormat('yyyy-mm-dd');
+  sh.getRange(2, col, n).setDataValidation(rule)
+    .setNumberFormat('yyyy-mm-dd');
+}
+
+/**
+ * Two visual warnings on the date column, for the mistakes validation
+ * cannot catch because nothing was typed at all, or because the value
+ * was legal when entered and has since gone stale.
+ *
+ *   red   — the row has content but NO date: it will never be shown,
+ *           and this is the single most confusing failure in the sheet
+ *   grey  — the date has passed: the row is inert, not broken
+ */
+function dateFlags_(sh, dateCol, contentCol) {
+  var n = ruleRows_(sh);
+  var d = '$' + colLetter_(dateCol) + '2';
+  var c = '$' + colLetter_(contentCol) + '2';
+  var range = sh.getRange(2, dateCol, n);
+
+  var missing = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND(' + c + '<>"", ' + d + '="")')
+    .setBackground('#f4c7c3')
+    .setRanges([range])
+    .build();
+  var past = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND(' + d + '<>"", ' + d + '<TODAY())')
+    .setBackground('#efefef')
+    .setFontColor('#9e9e9e')
+    .setRanges([range])
+    .build();
+
+  /* Drop this column's previous flags before re-adding them, or every
+     re-run of setup stacks another identical pair. Matching on the RANGE
+     rather than on the formula text is what makes that reliable: the two
+     formulas differ from each other, while "a single-column rule sitting
+     on the date column" describes both and describes nothing else in
+     these tabs (the כולם rules live on the checkbox columns). */
+  var rules = sh.getConditionalFormatRules().filter(function (r) {
+    var g = r.getRanges();
+    return !g.length || !g.every(function (x) {
+      return x.getColumn() === dateCol && x.getNumColumns() === 1;
+    });
+  });
+  rules.push(missing, past);
+  sh.setConditionalFormatRules(rules);
+  sh.getRange(1, dateCol).setNote(
+    'התאריך קובע באיזה יום הפריט יופיע על הלוח — הוא עצמו לא מוצג.\n\n' +
+    '• תא אדום = יש תוכן בשורה אבל חסר תאריך. הפריט לא יופיע כלל.\n' +
+    '• תא אפור = התאריך עבר. הפריט כבר לא מוצג; אפשר למחוק את השורה.\n\n' +
+    'הגיליון לא יקבל תאריך שאינו תקין, או שרחוק מדי (שנה קדימה ומעלה) —\n' +
+    'כדי לתפוס טעויות הקלדה בשנה, שאחרת פשוט גורמות לפריט לא להופיע.');
 }
 
 /* ---------- validation rules, separated so they can be restored ----------
@@ -548,7 +620,7 @@ function rulesMessages_(sh) {
                  'הודעה דחופה: עד ' + LIMITS.messageUrgent + ' תווים. ' +
                  'אמוג\'י נחשב כשני תווים.')
     .build();
-  var msgRows = Math.max(50, Math.min(sh.getMaxRows() - 1, sh.getLastRow() + 20));
+  var msgRows = ruleRows_(sh);
   sh.getRange(2, 1, msgRows).setDataValidation(textRule);
 
   listRule_(sh, 2, TYPES, 'סוג');
@@ -582,6 +654,7 @@ function rulesSettings_(sh) {
 
 function rulesExams_(sh) {
   dateRule_(sh, 1);
+  dateFlags_(sh, 1, 3);          /* flag a subject with no date */
   listRule_(sh, 2, GRADES, 'שכבה');
   lenRule_(sh, 3, LIMITS.examSubject, 'מקצוע');
   timeRule_(sh, 4);
@@ -591,6 +664,7 @@ function rulesExams_(sh) {
 
 function rulesEvents_(sh) {
   dateRule_(sh, 1);
+  dateFlags_(sh, 1, 2);          /* flag a title with no date */
   lenRule_(sh, 2, LIMITS.eventTitle, 'כותרת');
   timeRule_(sh, 3);
   timeRule_(sh, 4);

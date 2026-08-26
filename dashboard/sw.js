@@ -31,7 +31,8 @@ const CORE = [
   "./logic.js",
   "./app.js",
   "./vendor/papaparse.min.js",
-  "./vendor/gveret-levin-hebrew.woff2"
+  "./vendor/gveret-levin-hebrew.woff2",
+  "./vendor/school-logo.png"
 ];
 
 self.addEventListener("install", (e) => {

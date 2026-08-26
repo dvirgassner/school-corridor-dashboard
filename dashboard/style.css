@@ -249,13 +249,32 @@
   /* auto margin so the name still sits hard left when there is no urgent
      strip; with one present, the strip's flex:1 eats the slack and the
      margin collapses to nothing */
-  /* Gveret Levin is a handwriting face, so it reads smaller than the UI
-     font at the same nominal size — hence the step up from 28px, and the
-     lighter weight, since the strokes are already lively. */
+  /* The school's own logo. The font styling below is not dead code — it
+     is what the alt text wears if the image ever fails to load, so the
+     board stays named instead of going blank. */
   #school { margin-inline-start: auto; flex: none; white-space: nowrap;
+            display: flex; align-items: center;
             font-family: "Gveret Levin", "Noto Sans Hebrew", sans-serif;
             font-size: 40px; font-weight: 400; line-height: 1;
             color: var(--ink-2); }
+  /* Height-driven so the aspect ratio is the image's own, never squashed
+     by a width the header happens to have spare. */
+  #school img { height: 62px; width: auto; display: block; }
+
+  /* The logo is dark brown on transparent — near-invisible on the dark
+     themes, which are the ones the board actually runs in. Lifting it
+     with a filter keeps ONE asset and one aspect ratio, rather than
+     asking the school for a second file that could drift out of sync
+     with the first.
+
+     Picked by rendering six treatments against the real background:
+     brightness alone pushes the mark towards orange, so saturation comes
+     DOWN as brightness goes up, landing on a warm sand that still reads
+     as the school's colour rather than a new one. */
+  :root[data-theme="dark"] #school img,
+  :root[data-theme="colorful"] #school img {
+    filter: brightness(2.1) saturate(0.6);
+  }
 
   /* urgent strip: shares the header with the school name */
   #urgent {

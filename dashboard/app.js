@@ -566,6 +566,25 @@ function stamp() {
   el.classList.toggle("stale", !DEMO && ageMin > CFG.staleMinutes);
 }
 
+/**
+ * Name the board, without disturbing the logo.
+ *
+ * config.js still carries schoolName so a fork can set its own without
+ * editing markup; here it becomes the logo's alt text, which is also the
+ * fallback shown if the image ever fails to load. Idempotent, so calling
+ * it from tick() costs nothing.
+ */
+function setSchoolName(name) {
+  const box = $("school");
+  if (!box) return;
+  const logo = box.querySelector("img");
+  if (logo) {
+    if (logo.alt !== name) logo.alt = name;
+  } else if (box.textContent !== name) {
+    box.textContent = name;          /* no logo in this build */
+  }
+}
+
 function tick() {
   const now = NOW();
   $("clock").textContent = now.toLocaleTimeString("he-IL",
@@ -573,7 +592,14 @@ function tick() {
   $("date").textContent = now.toLocaleDateString("he-IL",
     { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   $("hebdate").textContent = hebrewDate(now);
-  $("school").textContent = CFG.schoolName;
+  /* The school's identity is the logo in index.html, and it does not
+     change from second to second. This used to be
+     `$("school").textContent = CFG.schoolName`, which rewrote the element
+     on every tick and so deleted the <img> the moment it was added —
+     the board fell back to the alt text and looked, convincingly, as
+     though the image had failed to load. The name now reaches the page
+     as that alt text, set once. */
+  setSchoolName(CFG.schoolName);
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   document.querySelectorAll(".period").forEach((p) => {

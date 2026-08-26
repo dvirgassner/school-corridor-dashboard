@@ -71,7 +71,9 @@ function populatedSheet() {
   const rows = [];
   DAYS.forEach((day, di) => {
     PERIOD_TIMES.forEach((t, pi) => {
-      const row = [day, pi + 1, t[0], t[1]];
+      /* the day letter only on the first row of each block — the shape a
+         merged יום column exports, and the shape setup() maintains */
+      const row = [pi === 0 ? day : '', pi + 1, t[0], t[1]];
       GRADES.forEach((g, gi) => {
         row.push(pi < 7 ? REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length] : '');
       });
@@ -79,6 +81,7 @@ function populatedSheet() {
     });
   });
   sched.getRange(2, 1, rows.length, 10).setValues(rows);
+  DAYS.forEach((d, di) => { sched.getRange(2 + di * 10, 1, 10, 1).merge(); });
 
   const exams = ss.addSheet('מבחנים');
   exams.getRange(1, 1, 1, 6).setValues([
@@ -175,7 +178,8 @@ const MUTATORS = [
    just made in the אירועים tab, where clearing the conflicting box IS
    the requested behaviour. */
 const MAY_WRITE = new Set([
-  'writeHeader_', 'seedIfEmpty_', 'resolveEventTick_', 'enforceExclusive_'
+  'writeHeader_', 'writeDayColumn_', 'seedIfEmpty_',
+  'resolveEventTick_', 'enforceExclusive_'
 ]);
 
 /* Blank out block comments, preserving every offset and newline, so the
@@ -258,7 +262,7 @@ function run(test) {
       'the second run altered contents:\n  ' + changes.join('\n  '));
   });
 
-  test('no content write is even attempted on a populated sheet', () => {
+  test('the only content write on a populated sheet is the day column', () => {
     const ss = populatedSheet();
     /* forget the writes that LOADED the fixture — we are auditing what
        setup() does, not what the test just did */
@@ -269,8 +273,68 @@ function run(test) {
     ss.getSheets().forEach((sh) => {
       sh.writes.forEach((w) => writes.push(sh.getName() + ' ' + w.a1));
     });
-    assert.deepEqual(writes, [],
-      'expected zero write calls, saw: ' + writes.join(', '));
+    /* Pinned exactly rather than allowlisted by pattern. Column A of
+       מערכת is script-owned and re-stated every run; anything else
+       appearing in this list is a regression, and the assertion names it. */
+    assert.deepEqual(writes, ['מערכת A2:A61'],
+      'unexpected write calls: ' + writes.join(', '));
+  });
+
+  test('the day column ends up merged, one block per day', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const sched = ss.getSheetByName('מערכת');
+    assert.deepEqual(sched.merges,
+      ['A2:A11', 'A12:A21', 'A22:A31', 'A32:A41', 'A42:A51', 'A52:A61'],
+      'day blocks not merged as expected: ' + sched.merges.join(', '));
+  });
+
+  test('each merged block carries its letter once, blank below', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const sched = ss.getSheetByName('מערכת');
+    DAYS.forEach((d, di) => {
+      const top = 2 + di * 10;
+      assert.equal(sched.getRange(top, 1).getValue(), d,
+        `block ${di} should start with ${d}`);
+      for (let r = top + 1; r < top + 10; r++) {
+        assert.equal(sched.getRange(r, 1).getValue(), '',
+          `row ${r} of the ${d} block should be blank`);
+      }
+    });
+  });
+
+  test('the day letter is 30pt and black', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const a2 = ss.getSheetByName('מערכת').getRange(2, 1);
+    assert.equal(a2.getFontSize(), 30);
+    assert.equal(a2.getFontColor(), '#000000');
+  });
+
+  test('an unmerged sheet is migrated without touching the subjects', () => {
+    /* the shape every existing sheet is in today: the letter repeated on
+       all ten rows of each day, nothing merged */
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.merges.length = 0;
+    DAYS.forEach((d, di) => {
+      for (let i = 0; i < 10; i++) sched.getRange(2 + di * 10 + i, 1).setValue(d);
+    });
+    const subjectsBefore = sched.getRange(2, 5, 60, 6).getValues();
+
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+
+    assert.equal(sched.merges.length, 6, 'the old shape was not merged');
+    assert.equal(sched.getRange(2, 1).getValue(), 'א');
+    assert.equal(sched.getRange(3, 1).getValue(), '',
+      'the repeated letter was left behind under the merge');
+    assert.deepEqual(sched.getRange(2, 5, 60, 6).getValues(), subjectsBefore,
+      'migrating the day column disturbed the timetable');
   });
 
   /* ============ 2. the specific traps ============ */
@@ -402,11 +466,19 @@ function run(test) {
     sched.getRange(2, 1, 1, 10).setValues([
       ['א', 1, '08:00', '08:45', 'מתמטיקה', '', '', '', '', '']
     ]);
+    sched.writes.length = 0;
     const { ctx } = loadScript(ss);
     ctx.setup();
-    /* untouched: still one lesson row, not sixty seeded ones */
-    assert.equal(sched.getLastRow(), 2, 'the typed timetable was overwritten');
+    /* The one typed lesson survives, and no example rows were pasted over
+       it — that is what "seeded only where empty" has to mean. It cannot
+       mean "the sheet is untouched": column A is script-owned, so setup
+       restates the day skeleton there whatever else is going on. */
     assert.equal(sched.getRange(2, 5).getValue(), 'מתמטיקה');
+    assert.equal(sched.getRange(3, 5).getValue(), '',
+      'an example row was seeded into a tab that already had content');
+    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A61'],
+      'setup wrote outside the day column: ' +
+      sched.writes.map((w) => w.a1).join(', '));
     /* but the empty tabs did get their examples */
     assert.ok(ss.getSheetByName('הודעות').getLastRow() >= 2);
   });

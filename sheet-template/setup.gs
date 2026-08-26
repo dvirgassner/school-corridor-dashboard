@@ -25,7 +25,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.191';
+var SCRIPT_VERSION = '0.192';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -84,7 +84,11 @@ var LIMITS = {
   eventTitle: 22,
   eventLocation: 12,
   messageNormal: 90,
-  messageUrgent: 75
+  /* Was 75, when the urgent strip truncated anything too wide for it and
+     the cap was the only thing preventing a half-shown notice. The strip
+     scrolls now, so the limit is about how long a passer-by will wait for
+     the text to come round rather than about what fits. */
+  messageUrgent: 90
 };
 
 /* The four tabs are published as public CSV feeds so the board can read
@@ -457,6 +461,49 @@ function ensureSheet_(ss, name) {
    fails if any content-mutating call appears outside the four functions
    allowed to make one (these two, plus the two that answer a click in
    the אירועים tab). Keep it that way. */
+
+/**
+ * Own the יום column: one merged cell per day, carrying the day letter
+ * once, large and centred in its block.
+ *
+ * This writes cell contents, which is why it lives here with the other
+ * write helpers rather than in styleSchedule_. It is not the principal's
+ * content though — column A is generated, locked, and cannot be typed
+ * into, exactly like the header row. What it must never touch is a
+ * subject name, and it only ever addresses column A.
+ *
+ * Idempotent: unmerge, write, re-merge, every run. On a sheet already in
+ * this shape the values written are identical to the ones already there,
+ * so a re-run changes nothing. Order matters — Sheets refuses to set
+ * values across merged cells, so the block has to come apart first.
+ *
+ * The board reads this column to group rows by day, and a merged cell
+ * exports to CSV as its value on the first row and BLANKS below. That is
+ * handled in buildSchedule(), which treats a blank day as "same as
+ * above". The two must change together.
+ */
+function writeDayColumn_(sh) {
+  var per = PERIODS.length;
+  var col = sh.getRange(2, 1, DAYS.length * per, 1);
+
+  try { col.breakApart(); } catch (e) {}   /* no-op when nothing is merged */
+
+  var vals = [];
+  DAYS.forEach(function (d) {
+    for (var i = 0; i < per; i++) vals.push([i === 0 ? d : '']);
+  });
+  col.setValues(vals);
+
+  DAYS.forEach(function (d, di) {
+    sh.getRange(2 + di * per, 1, per, 1).merge();
+  });
+
+  col.setFontSize(30)
+     .setFontColor('#000000')
+     .setFontWeight('bold')
+     .setHorizontalAlignment('center')
+     .setVerticalAlignment('middle');
+}
 
 /**
  * Write the header row — and only when it actually differs, so a re-run
@@ -990,6 +1037,8 @@ function styleSchedule_(sh) {
     .setHorizontalAlignment('center')
     .setBackground('#f0f0f0')
     .setFontColor('#000000');
+  /* after the block styling above, so the day letter's own size wins */
+  writeDayColumn_(sh);
   /* a faint band per day, so 60 rows stay readable */
   sh.getRange(2, 1, rows, headers.length).setBorder(
     null, null, null, null, null, true, '#d9d9d9',

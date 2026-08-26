@@ -239,8 +239,17 @@
   function buildSchedule(rows, fields) {
     var grades = (fields || []).slice(SCHEDULE_FIXED_COLS).map(txt).filter(Boolean);
     var byDay = {};
+    /* The יום column is a merged cell per day in the sheet, and Sheets
+       exports a merged cell as its value on the FIRST row and blanks on
+       the rest. So a blank day means "same day as above", not "no day" —
+       carry it forward. A sheet with the letter repeated on every row
+       (the older shape, or one typed by hand) still works: each row
+       simply states its own day and replaces what was carried. */
+    var carried = "";
     (rows || []).forEach(function (r) {
-      var day = pick(r, "day");
+      var stated = pick(r, "day");
+      if (stated) carried = stated;
+      var day = stated || carried;
       var start = pick(r, "start"), end = pick(r, "end");
       if (!day || !validTime(start) || !validTime(end)) return;
       var subjects = {};

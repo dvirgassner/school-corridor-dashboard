@@ -180,6 +180,11 @@ class Range {
         `setValues shape ${rows.length}x${rows[0].length} != ` +
         `range ${this.numRows}x${this.numCols}`);
     }
+    if (this.numRows * this.numCols > 1 && this._isMerged()) {
+      throw new Error(
+        `cannot setValues across the merged range ${this.getA1Notation()} ` +
+        `on "${this.sheet.name}" — break it apart first`);
+    }
     this.sheet.writes.push({ a1: this.getA1Notation(), kind: 'setValues' });
     for (let r = 0; r < this.numRows; r++) {
       for (let c = 0; c < this.numCols; c++) {
@@ -216,6 +221,41 @@ class Range {
       }
     }
     return this;
+  }
+  /* Merging is modelled because setup.gs merges the יום column, and the
+     rule that makes it worth modelling is the one that bites: Sheets
+     refuses to write values across a merged range. If the script ever
+     stops breaking the block apart first, this throws in the tests
+     instead of failing on the live sheet. */
+  merge() {
+    this.sheet.merges.push(this.getA1Notation());
+    return this;
+  }
+  breakApart() {
+    const a1 = this.getA1Notation();
+    this.sheet.merges = this.sheet.merges.filter((m) => !this._covers(m));
+    return this;
+  }
+  _covers(a1) {
+    const r = this.sheet.getRange(a1);
+    return r.row >= this.row && r.getLastRow() <= this.getLastRow() &&
+           r.col >= this.col && r.getLastColumn() <= this.getLastColumn();
+  }
+  _isMerged() {
+    return this.sheet.merges.some((m) => {
+      const r = this.sheet.getRange(m);
+      return !(r.getLastRow() < this.row || r.row > this.getLastRow() ||
+               r.getLastColumn() < this.col || r.col > this.getLastColumn());
+    });
+  }
+
+  setFontSize(s) { return this._stamp('fontSize', s); }
+  setVerticalAlignment(a) { return this._stamp('valign', a); }
+  getFontSize() {
+    return (this.sheet.format.fontSize || {})[this.row + ',' + this.col];
+  }
+  getFontColor() {
+    return (this.sheet.format.fontColor || {})[this.row + ',' + this.col];
   }
   setBackground(c) { return this._stamp('background', c); }
   setFontColor(c) { return this._stamp('fontColor', c); }
@@ -258,6 +298,7 @@ class Sheet {
     this.values = Array.from({ length: maxRows },
                              () => Array(maxCols).fill(EMPTY));
     this.format = {};
+    this.merges = [];
     this.borders = [];
     this.protections = [];
     this.condRules = [];

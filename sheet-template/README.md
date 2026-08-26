@@ -25,11 +25,17 @@ whatever is already there. It **never erases content**: the example rows
 go only into a tab that is empty, so once the school's real timetable is
 in, every later run restyles and re-validates and seeds nothing.
 
-That is enforced rather than intended. Every content write in the script
-goes through `writeHeader_()` or `seedIfEmpty_()`, and `node tests/run.js`
-fails if a content-mutating call appears anywhere else, or if running
-`setup()` against a mock sheet full of realistic data changes a single
-cell. See [`tests/setup-safety.js`](../tests/setup-safety.js).
+That is enforced rather than intended. Every content write goes through
+one of three named helpers — `writeHeader_()`, `writeDayColumn_()` and
+`seedIfEmpty_()` — and `node tests/run.js` fails if a content-mutating
+call appears anywhere else, or if running `setup()` against a mock sheet
+full of realistic data changes a single cell outside those helpers' own
+columns. See [`tests/setup-safety.js`](../tests/setup-safety.js).
+
+The first two own *generated structure* — the header row, and the `יום`
+column in `מערכת` — which are locked and cannot be typed into. Only
+`seedIfEmpty_()` ever writes where a person could have, and it refuses
+any tab holding so much as one cell.
 
 Two consequences worth knowing, both verified by those tests:
 
@@ -231,7 +237,7 @@ never overflow its box:
 | Event title | 22 |
 | Event location | 12 |
 | Normal message | 90 |
-| Urgent message | 75 |
+| Urgent message | 90 |
 | Grade column header | 4 |
 
 ### Video clips

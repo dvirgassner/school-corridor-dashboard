@@ -163,6 +163,45 @@ test("buildSchedule: groups periods by day letter", () => {
   assert.equal(s.byDay["א"][0].subjects["ז׳"], "מתמטיקה");
   assert.equal(s.byDay["א"][1].subjects["ח׳"], "");
 });
+/* The יום column is one merged cell per day, and Sheets exports a merged
+   cell as its value on the first row and blanks below. These four tests
+   are the contract between that sheet layout and the board. */
+test("buildSchedule: a blank day means the day above (merged cell)", () => {
+  const rows = [
+    { Day: "א", Period: "1", Start: "08:00", End: "08:45", "ז׳": "מתמטיקה", "ח׳": "" },
+    { Day: "",  Period: "2", Start: "08:50", End: "09:35", "ז׳": "לשון", "ח׳": "" },
+    { Day: "",  Period: "3", Start: "09:50", End: "10:35", "ז׳": "אנגלית", "ח׳": "" },
+    { Day: "ב", Period: "1", Start: "08:00", End: "08:45", "ז׳": "כימיה", "ח׳": "" },
+    { Day: "",  Period: "2", Start: "08:50", End: "09:35", "ז׳": "ספרות", "ח׳": "" },
+  ];
+  const s = L.buildSchedule(rows, SCHED_FIELDS);
+  assert.equal(s.byDay["א"].length, 3, "sunday lost its merged rows");
+  assert.equal(s.byDay["ב"].length, 2, "monday lost its merged rows");
+  assert.equal(s.byDay["א"][2].subjects["ז׳"], "אנגלית");
+});
+test("buildSchedule: the repeated-letter shape still works", () => {
+  const s = L.buildSchedule(SCHED_ROWS, SCHED_FIELDS);
+  assert.equal(s.byDay["א"].length, 2);
+  assert.equal(s.byDay["ב"].length, 1);
+});
+test("buildSchedule: blank rows before any day are not invented into one", () => {
+  const rows = [
+    { Day: "", Period: "1", Start: "08:00", End: "08:45", "ז׳": "x", "ח׳": "" },
+    { Day: "א", Period: "2", Start: "08:50", End: "09:35", "ז׳": "y", "ח׳": "" },
+  ];
+  const s = L.buildSchedule(rows, SCHED_FIELDS);
+  assert.equal(Object.keys(s.byDay).length, 1);
+  assert.equal(s.byDay["א"].length, 1);
+});
+test("buildSchedule: a skipped bad-time row still carries its day on", () => {
+  const rows = [
+    { Day: "א", Period: "1", Start: "nope", End: "08:45", "ז׳": "x", "ח׳": "" },
+    { Day: "",  Period: "2", Start: "08:50", End: "09:35", "ז׳": "y", "ח׳": "" },
+  ];
+  const s = L.buildSchedule(rows, SCHED_FIELDS);
+  assert.equal(s.byDay["א"].length, 1, "the day was lost with the bad row");
+});
+
 test("buildSchedule: skips rows with missing or bad times", () => {
   const rows = SCHED_ROWS.concat([
     { Day: "א", Period: "9", Start: "", End: "10:00", "ז׳": "x", "ח׳": "" },

@@ -25,7 +25,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.190';
+var SCRIPT_VERSION = '0.191';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -981,12 +981,15 @@ function styleSchedule_(sh) {
      editable — bell schedules genuinely differ between schools. */
   lock_(sh.getRange(2, 1, rows, 2), 'יום ומספר שיעור — לא לשינוי');
   /* Protection stops other editors but never the owner, so locked cells
-     also LOOK locked: grey and dimmed, like a form field you cannot
-     type in. Half of "protection" is not inviting the edit. */
+     also LOOK locked. The grey BACKGROUND carries that signal on its own,
+     like a form field you cannot type in; the text stays black, because
+     these two columns are the ones you actually read while finding the
+     right row, and dimming them made the sheet harder to use for no gain
+     in clarity about what is editable. */
   sh.getRange(2, 1, rows, 2)
     .setHorizontalAlignment('center')
     .setBackground('#f0f0f0')
-    .setFontColor('#7f7f7f');
+    .setFontColor('#000000');
   /* a faint band per day, so 60 rows stay readable */
   sh.getRange(2, 1, rows, headers.length).setBorder(
     null, null, null, null, null, true, '#d9d9d9',

@@ -186,6 +186,25 @@
     display: none;
   }
 
+  /* The board's only webfont, used for the school name alone.
+     Self-hosted rather than linked from fonts.googleapis.com on purpose:
+     the whole point of this board is that it keeps working when the
+     school's network does not, and a webfont fetched from a third-party
+     domain at boot is a dependency the rest of the page does not have.
+     Vendored here, it is cached by the service worker like every other
+     asset and needs no internet at all after the first load.
+     Hebrew subset only (11 KB); the unicode-range means anything outside
+     it falls back to the body font rather than rendering blank. */
+  @font-face {
+    font-family: "Gveret Levin";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("vendor/gveret-levin-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; background: var(--page); overflow: hidden; }
   body {
@@ -215,18 +234,30 @@
     100% { transform: translate( 0px,  0px); }
   }
 
-  /* -- header: clock + dates on the right, urgent strip (or school
-        name when there is nothing urgent) filling the left ---------- */
+  /* -- header: clock + dates on the right, the school name pinned to the
+        left, and the urgent strip taking whatever is left between them.
+        The name is the board's identity and stays put whatever else is
+        happening — it used to be replaced by the urgent strip, so the
+        school appeared to be nameless exactly when the board was most
+        worth looking at. ------------------------------------------- */
   header { display: flex; align-items: center; gap: 24px; height: 72px; }
   #clock  { font-size: 60px; font-weight: 700; color: var(--ink-strong);
             font-variant-numeric: tabular-nums; line-height: 1; flex: none; }
   .dates  { display: flex; flex-direction: column; gap: 2px; flex: none; }
   #date   { font-size: 22px; color: var(--ink-2); }
   #hebdate{ font-size: 20px; color: var(--muted); }
-  #school { margin-inline-start: auto; font-size: 28px; font-weight: 600;
+  /* auto margin so the name still sits hard left when there is no urgent
+     strip; with one present, the strip's flex:1 eats the slack and the
+     margin collapses to nothing */
+  /* Gveret Levin is a handwriting face, so it reads smaller than the UI
+     font at the same nominal size — hence the step up from 28px, and the
+     lighter weight, since the strokes are already lively. */
+  #school { margin-inline-start: auto; flex: none; white-space: nowrap;
+            font-family: "Gveret Levin", "Noto Sans Hebrew", sans-serif;
+            font-size: 40px; font-weight: 400; line-height: 1;
             color: var(--ink-2); }
 
-  /* urgent strip lives in the header, in lieu of the school name */
+  /* urgent strip: shares the header with the school name */
   #urgent {
     display: none; align-items: center; gap: 14px; flex: 1; min-width: 0;
     background: rgba(208,59,59,0.16);
@@ -234,15 +265,28 @@
     border-radius: 12px; padding: 8px 18px;
   }
   #urgent.on { display: flex; }
-  #urgent.on ~ #school { display: none; }
   #urgent .icon { display: flex; align-items: center; color: var(--critical); }
   #urgent .icon svg { width: 28px; height: 28px; }
   #urgent .tag  { color: var(--critical); font-size: 24px; font-weight: 700;
                   border: 1.5px solid var(--critical); border-radius: 8px;
                   padding: 1px 10px; white-space: nowrap; }
-  #urgenttext   { transition: opacity 0.6s; white-space: nowrap;
-                  overflow: hidden; text-overflow: ellipsis;
+  /* the viewport; the text inside it is what moves */
+  #urgenttext   { flex: 1; min-width: 0; overflow: hidden;
+                  transition: opacity 0.6s;
                   font-size: 26px; font-weight: 700; color: var(--ink-strong); }
+  .uslide       { display: inline-block; white-space: nowrap; }
+  .uslide.scrolling {
+    animation: urgentslide var(--udur, 20s) ease-in-out infinite;
+  }
+  /* Positive X: the strip is RTL, so the text begins at the right edge and
+     its tail hangs off the left. Moving it rightward is what brings the
+     tail into view. Pauses at each end give the eye time to catch the
+     start and finish of the notice. */
+  @keyframes urgentslide {
+    0%, 12%   { transform: translateX(0); }
+    50%, 62%  { transform: translateX(var(--ushift, 0)); }
+    97%, 100% { transform: translateX(0); }
+  }
 
   /* -- main grid: 3 grade columns (start/right) + left column ------ */
   main {

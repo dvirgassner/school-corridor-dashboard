@@ -30,7 +30,8 @@ const CORE = [
   "./sample-data.js",
   "./logic.js",
   "./app.js",
-  "./vendor/papaparse.min.js"
+  "./vendor/papaparse.min.js",
+  "./vendor/gveret-levin-hebrew.woff2"
 ];
 
 self.addEventListener("install", (e) => {

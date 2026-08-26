@@ -426,20 +426,58 @@ function layoutAgendaScroll() {
 }
 
 /* urgent messages rotate in place with a fade; each shows (n/total) */
-let urgentTimer = null;
+let urgentTimer = null;   /* when to swap to the next urgent message */
+let urgentFade  = null;   /* the fade half of that swap                */
+/**
+ * Fit one urgent message to the strip, scrolling it if it does not fit,
+ * and report how long it needs on screen.
+ *
+ * The strip is narrower than it used to be — it now shares the header
+ * with the school name — so overflow is the normal case rather than the
+ * exception, and truncating with an ellipsis would hide the end of a
+ * notice that was marked urgent. It slides to the end and back instead.
+ *
+ * The dwell time is returned rather than fixed at 8s: a message that
+ * takes 20 seconds to read through must not be swapped out after 8, and
+ * a short one should not linger for 20.
+ */
+function fitUrgent(el) {
+  const slide = el.querySelector(".uslide");
+  if (!slide) return 8000;
+  slide.classList.remove("scrolling");
+  const over = slide.scrollWidth - el.clientWidth;
+  if (over <= 4) return 8000;                    /* fits — hold it still */
+  slide.style.setProperty("--ushift", `${over}px`);
+  /* pace by distance, so a very long notice is not read at a sprint */
+  const secs = Math.round(over / 38 + 9);
+  slide.style.setProperty("--udur", `${secs}s`);
+  slide.classList.add("scrolling");
+  return secs * 1000;        /* one full there-and-back before the next */
+}
+
 function rotateUrgent(items) {
-  if (urgentTimer) { clearInterval(urgentTimer); urgentTimer = null; }
+  if (urgentTimer) { clearTimeout(urgentTimer); urgentTimer = null; }
+  if (urgentFade) { clearTimeout(urgentFade); urgentFade = null; }
   const el = $("urgenttext");
-  const set = (i) =>
-    el.innerHTML = `<span class="count">(${i + 1}/${items.length})</span> ${esc(items[i])}`;
-  set(0);
-  if (items.length > 1) {
-    let i = 1;
-    urgentTimer = setInterval(() => {
+  let i = 0;
+  const show = () => {
+    el.innerHTML =
+      `<span class="uslide"><span class="count">(${i + 1}/${items.length})</span> ` +
+      `${esc(items[i])}</span>`;
+    const hold = fitUrgent(el);
+    /* A single message still scrolls — it just loops instead of being
+       replaced, which is the whole point of not truncating it. */
+    if (items.length < 2) return;
+    urgentTimer = setTimeout(() => {
       el.style.opacity = 0;
-      setTimeout(() => { set(i % items.length); i++; el.style.opacity = 1; }, 600);
-    }, 8000);
-  }
+      urgentFade = setTimeout(() => {
+        i = (i + 1) % items.length;
+        show();
+        el.style.opacity = 1;
+      }, 600);
+    }, hold);
+  };
+  show();
 }
 
 function renderMessages() {

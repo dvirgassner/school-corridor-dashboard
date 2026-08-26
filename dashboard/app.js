@@ -448,11 +448,16 @@ function fitUrgent(el) {
   const over = slide.scrollWidth - el.clientWidth;
   if (over <= 4) return 8000;                    /* fits — hold it still */
   slide.style.setProperty("--ushift", `${over}px`);
-  /* Paced by distance so a long notice is not read at a sprint, but at
-     twice the original rate — both terms halved, which keeps the pacing
-     proportional instead of just clipping the total. The floor stops a
-     barely-overflowing message from twitching. */
-  const secs = Math.max(5, Math.round(over / 76 + 4.5));
+  /* Paced by distance, halved twice from the original — both terms each
+     time, so long and short notices stay proportional to each other
+     rather than all converging on one speed. The floor stops a barely
+     overflowing message from twitching.
+
+     If this ever reads as too brisk, the travel is not the thing to
+     lengthen: widen the pauses in the urgentslide keyframes instead. The
+     eye needs a still moment at each end to catch the start and the end
+     of the sentence; the sweep between them can be quick. */
+  const secs = Math.max(4, Math.round(over / 152 + 2.25));
   slide.style.setProperty("--udur", `${secs}s`);
   slide.classList.add("scrolling");
   return secs * 1000;        /* one full there-and-back before the next */

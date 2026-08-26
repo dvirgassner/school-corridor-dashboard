@@ -431,7 +431,12 @@
   #dayofday.off { display: none; }
   .dodicon { font-size: 56px; line-height: 1; flex: none;
              display: flex; align-items: center; }
-  .dodicon svg { width: 62px; height: auto; display: block; }
+  /* Sized by HEIGHT, not width. The pane is 132px tall and the icons vary
+     from square (the globe) to nearly 2:1 (the three science marks), so a
+     fixed width made the wide ones tiny while leaving the pane's height
+     unused. The max-width keeps the widest one from crowding the title. */
+  .dodicon svg { height: 66px; width: auto; max-width: 120px;
+                 display: block; }
   .dodtext { font-size: 31px; font-weight: 700; color: var(--ink-strong);
              line-height: 1.25; unicode-bidi: isolate;
              display: -webkit-box; -webkit-line-clamp: 3;

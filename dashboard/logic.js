@@ -45,8 +45,13 @@
 
   /* ---------- time & dates ---------- */
   function minutes(hhmm) {
-    var p = String(hhmm).split(":");
-    return (+p[0]) * 60 + (+p[1]);
+    var s = String(hhmm).trim();
+    var pm = /[Pp][Mm]\s*$/.test(s), am = /[Aa][Mm]\s*$/.test(s);
+    var p = s.replace(/\s*[AaPp][Mm]\s*$/, "").split(":");
+    var h = +p[0];
+    if (pm && h < 12) h += 12;          /* 1 PM -> 13 */
+    if (am && h === 12) h = 0;          /* 12 AM -> 00 */
+    return h * 60 + (+p[1]);
   }
 
   function pad(n) { return (n < 10 ? "0" : "") + n; }
@@ -156,7 +161,13 @@
      House rule: one bad row must never blank the board. Every builder
      validates per row and silently drops what it cannot use.
      ================================================================== */
-  var TIME_RE = /^\d{1,2}:\d{2}$/;
+  /* HH:MM, optionally with seconds, and optionally with an AM/PM suffix.
+     The sheet's time columns are real time-of-day values displayed hh:mm,
+     and a CSV export carries the DISPLAYED text — so HH:MM is what
+     normally arrives. The extra tolerance is deliberate insurance: if a
+     sheet is ever left on a 12-hour or seconds-bearing format, the board
+     keeps working instead of silently dropping every lesson. */
+  var TIME_RE = /^\d{1,2}:\d{2}(:\d{2})?(\s*[AaPp][Mm])?$/;
   function validTime(s) { return TIME_RE.test(String(s || "").trim()); }
   function txt(v) { return String(v == null ? "" : v).trim(); }
 
@@ -585,6 +596,7 @@
     toGematria: toGematria,
     hebrewDate: hebrewDate,
     minutes: minutes,
+    validTime: validTime,
     dateKey: dateKey,
     parseSheetDate: parseSheetDate,
     dayLetter: dayLetter,

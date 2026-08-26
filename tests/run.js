@@ -144,6 +144,28 @@ test("esc escapes HTML metacharacters", () => {
   assert.equal(L.esc("מתמטיקה"), "מתמטיקה");
 });
 
+/* The sheet's time columns are real time values now, and a CSV export
+   carries whatever they are FORMATTED as. hh:mm is what the script sets,
+   but these guard the board against a sheet left on another time format
+   rather than letting it drop every lesson silently. */
+test("minutes: seconds in the string are ignored", () => {
+  assert.equal(L.minutes("08:50:00"), 530);
+});
+test("minutes: 12-hour times resolve correctly", () => {
+  assert.equal(L.minutes("1:20 PM"), 800);
+  assert.equal(L.minutes("12:30 AM"), 30);
+  assert.equal(L.minutes("12:30 PM"), 750);
+  assert.equal(L.minutes("8:50 AM"), 530);
+});
+test("validTime accepts the formats a sheet might export", () => {
+  ["08:50", "8:50", "08:50:00", "1:20 PM", "12:30 am"].forEach((s) =>
+    assert.ok(L.validTime(s), s + " should be accepted"));
+});
+test("validTime still rejects what is not a time", () => {
+  ["", "מתמטיקה", "0.368055", "850", "8", "8:5:", "nope"].forEach((s) =>
+    assert.ok(!L.validTime(s), s + " should be rejected"));
+});
+
 /* ---------- buildSchedule ---------- */
 const SCHED_FIELDS = ["Day", "Period", "Start", "End", "ז׳", "ח׳"];
 const SCHED_ROWS = [

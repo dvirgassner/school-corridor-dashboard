@@ -45,12 +45,19 @@ function loadScript(ss, opts) {
 
 const DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 const GRADES = ['ז׳', 'ח׳', 'ט׳', 'י׳', 'י"א', 'י"ב'];
+/* A time-of-day as Sheets stores it: a fraction of a day. The fixture
+   uses these rather than "08:00" strings because that is the steady
+   state — setup converts text times once and then leaves them alone. */
+const t = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h * 60 + m) / 1440;
+};
 const PERIOD_TIMES = [
   ['08:00', '08:45'], ['08:50', '09:35'], ['09:50', '10:35'],
   ['10:40', '11:25'], ['11:45', '12:30'], ['12:35', '13:20'],
   ['13:30', '14:15'], ['14:20', '15:05'], ['15:15', '16:00'],
   ['16:05', '16:50']
-];
+].map((pair) => pair.map(t));
 
 /* Deliberately awkward content: quotes, an emoji, an em dash, a comma,
    a subject over the length limit, and a בס"ד-style abbreviation with a
@@ -70,10 +77,10 @@ function populatedSheet() {
   ]);
   const rows = [];
   DAYS.forEach((day, di) => {
-    PERIOD_TIMES.forEach((t, pi) => {
+    PERIOD_TIMES.forEach((times, pi) => {
       /* the day letter only on the first row of each block — the shape a
          merged יום column exports, and the shape setup() maintains */
-      const row = [pi === 0 ? day : '', pi + 1, t[0], t[1]];
+      const row = [pi === 0 ? day : '', pi + 1, times[0], times[1]];
       GRADES.forEach((g, gi) => {
         row.push(pi < 7 ? REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length] : '');
       });
@@ -88,9 +95,9 @@ function populatedSheet() {
     ['תאריך', 'שכבה', 'מקצוע', 'התחלה', 'סיום', 'חדר']
   ]);
   exams.getRange(2, 1, 3, 6).setValues([
-    [new Date(2026, 8, 3), 'ט׳', 'תנ"ך', '09:00', '10:30', 'חדר 12'],
-    [new Date(2025, 4, 1), 'י"ב', 'אנגלית', '11:45', '12:30', 'ספרייה'],
-    ['', 'ח׳', 'ביולוגיה', '12:35', '13:20', 'מעבדה']   /* no date on purpose */
+    [new Date(2026, 8, 3), 'ט׳', 'תנ"ך', t('09:00'), t('10:30'), 'חדר 12'],
+    [new Date(2025, 4, 1), 'י"ב', 'אנגלית', t('11:45'), t('12:30'), 'ספרייה'],
+    ['', 'ח׳', 'ביולוגיה', t('12:35'), t('13:20'), 'מעבדה']   /* no date on purpose */
   ]);
 
   const events = ss.addSheet('אירועים');
@@ -99,11 +106,11 @@ function populatedSheet() {
   ]);
   /* ticks in three different shapes: two grades, all-school, and none */
   events.getRange(2, 1, 3, 12).setValues([
-    [new Date(2026, 8, 1), 'חזרה כללית לטקס', '10:40', '11:25', 'אולם',
+    [new Date(2026, 8, 1), 'חזרה כללית לטקס', t('10:40'), t('11:25'), 'אולם',
      true, true, '', '', '', '', ''],
-    [new Date(2026, 8, 2), 'טיול שנתי — הגליל', '08:00', '15:00', 'הסעות',
+    [new Date(2026, 8, 2), 'טיול שנתי — הגליל', t('08:00'), t('15:00'), 'הסעות',
      '', '', '', '', '', '', true],
-    [new Date(2026, 8, 4), 'אסיפת הורים', '19:00', '20:30', 'אודיטוריום',
+    [new Date(2026, 8, 4), 'אסיפת הורים', t('19:00'), t('20:30'), 'אודיטוריום',
      '', '', true, '', '', true, '']
   ]);
 
@@ -179,7 +186,7 @@ const MUTATORS = [
    the requested behaviour. */
 const MAY_WRITE = new Set([
   'writeHeader_', 'writeDayColumn_', 'seedIfEmpty_',
-  'resolveEventTick_', 'enforceExclusive_'
+  'resolveEventTick_', 'enforceExclusive_', 'convertTimeColumn_'
 ]);
 
 /* Blank out block comments, preserving every offset and newline, so the
@@ -493,7 +500,7 @@ function run(test) {
       ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
     ]);
     sched.getRange(2, 1, 1, 10).setValues([
-      ['א', 1, '08:00', '08:45', 'מתמטיקה', '', '', '', '', '']
+      ['א', 1, t('08:00'), t('08:45'), 'מתמטיקה', '', '', '', '', '']
     ]);
     sched.writes.length = 0;
     const { ctx } = loadScript(ss);
@@ -521,6 +528,66 @@ function run(test) {
     assert.equal(seeded, false, 'seeded over an occupied tab');
     assert.equal(sh.getRange(9, 3).getValue(), 'הערה של מישהו');
     assert.equal(sh.getRange(2, 1).getValue(), '');
+  });
+
+  /* ============ 4b. times are real time values, shown HH:MM ========== */
+
+  test('timeValue_ reads the forms a person types', () => {
+    const { ctx } = loadScript(new Spreadsheet());
+    assert.equal(ctx.timeValue_('8:50'), 530 / 1440);
+    assert.equal(ctx.timeValue_('08:50'), 530 / 1440);
+    assert.equal(ctx.timeValue_('8.50'), 530 / 1440, 'a dot is ordinary here');
+    assert.equal(ctx.timeValue_('0:00'), 0);
+    assert.equal(ctx.timeValue_('23:59'), 1439 / 1440);
+  });
+
+  test('timeValue_ leaves alone anything that is not a time', () => {
+    const { ctx } = loadScript(new Spreadsheet());
+    [ '', null, undefined, 'מתמטיקה', '25:00', '8:70', '8', 'בערך 8:50',
+      0.5 /* already a time value */ ].forEach((v) => {
+      assert.equal(ctx.timeValue_(v), null, 'should not have converted ' + v);
+    });
+  });
+
+  test('text times left by the old scheme are converted once', () => {
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    /* the shape the sheet is in today: times stored as plain text */
+    sched.getRange(2, 3).setValue('8:00');
+    sched.getRange(2, 4).setValue('08:45');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    assert.equal(sched.getRange(2, 3).getValue(), 480 / 1440,
+      '8:00 was not converted to a time value');
+    assert.equal(sched.getRange(2, 4).getValue(), 525 / 1440);
+  });
+
+  test('the time columns carry an hh:mm format', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const fmt = ss.getSheetByName('מערכת').format.numberFormat || {};
+    assert.equal(fmt['2,3'], 'hh:mm', 'התחלה is not formatted as a time');
+    assert.equal(fmt['2,4'], 'hh:mm', 'סיום is not formatted as a time');
+    const ex = ss.getSheetByName('מבחנים').format.numberFormat || {};
+    assert.equal(ex['2,4'], 'hh:mm');
+    assert.equal(ex['2,5'], 'hh:mm');
+  });
+
+  test('converting times is idempotent — a second run rewrites nothing', () => {
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.getRange(2, 3).setValue('8:00');      /* force one conversion */
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    ss.getSheets().forEach((sh) => { sh.writes.length = 0; });
+    ctx.setup();
+    const writes = [];
+    ss.getSheets().forEach((sh) => {
+      sh.writes.forEach((w) => writes.push(sh.getName() + ' ' + w.a1));
+    });
+    assert.deepEqual(writes, ['מערכת A2:A61'],
+      'the second run rewrote time columns: ' + writes.join(', '));
   });
 
   /* ============ 5. the structural guard ============ */

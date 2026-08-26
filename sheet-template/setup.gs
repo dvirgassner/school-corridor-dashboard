@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.193';
+var SCRIPT_VERSION = '0.194';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -679,15 +679,72 @@ function listRule_(sh, col, values, label) {
   sh.getRange(2, col, 500).setDataValidation(rule);
 }
 
-/** HH:MM time rule (kept as text so no timezone surprises). */
+/**
+ * Fraction of a day for a typed time, or null to leave the cell alone.
+ *
+ * This is how Sheets stores a time-of-day: 08:50 is 530/1440. No date
+ * component and therefore no timezone — which is what the old "keep it
+ * as text to avoid timezone surprises" comment was really worried about,
+ * and it does not apply to a bare time.
+ */
+function timeValue_(v) {
+  if (typeof v === 'number') return null;          /* already a time */
+  var m = /^\s*(\d{1,2})[:.](\d{1,2})\s*$/.exec(String(v == null ? '' : v));
+  if (!m) return null;
+  var h = Number(m[1]), min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return (h * 60 + min) / 1440;
+}
+
+/**
+ * Turn text like "8:50" in a time column into an actual time value.
+ *
+ * These columns used to be plain TEXT, which meant "8:50" stayed "8:50"
+ * on screen — a number format cannot pad text — and a column of times
+ * did not line up. Real time values let Sheets do the formatting itself,
+ * out of the box, which is the right answer.
+ *
+ * That leaves the times already typed under the old scheme, so they are
+ * converted here. Semantically lossless, bounded to the time columns,
+ * and idempotent: a cell already holding a number is skipped, so the
+ * second run and every run after it writes nothing at all.
+ */
+function convertTimeColumn_(sh, col) {
+  var rng = sh.getRange(2, col, ruleRows_(sh));
+  var vals = rng.getValues();
+  var touched = false;
+  for (var i = 0; i < vals.length; i++) {
+    var t = timeValue_(vals[i][0]);
+    if (t !== null) { vals[i][0] = t; touched = true; }
+  }
+  if (touched) rng.setValues(vals);
+}
+
+/**
+ * A real time-of-day, displayed HH:MM.
+ *
+ * Type 8:50, 8.50 or 08:50 and Sheets parses all three and shows 08:50 —
+ * no script involved. The rule only checks that what landed IS a
+ * time-of-day (a number from midnight to just before midnight), and it
+ * WARNS rather than refuses, for the same reason as the date rule: a
+ * validator should never be the thing standing between the principal and
+ * her own sheet.
+ */
 function timeRule_(sh, col) {
+  convertTimeColumn_(sh, col);
+  var n = ruleRows_(sh);
+  var cell = 'INDIRECT("RC", FALSE)';
   var rule = SpreadsheetApp.newDataValidation()
-    .requireFormulaSatisfied('=REGEXMATCH(TO_TEXT(INDIRECT("RC", FALSE)), "^\\d{1,2}:\\d{2}$")')
-    .setAllowInvalid(false)
-    .setHelpText('שעה בפורמט HH:MM, למשל 08:50')
+    .requireFormulaSatisfied(
+      '=AND(ISNUMBER(' + cell + '), ' + cell + '>=0, ' + cell + '<1)')
+    .setAllowInvalid(true)
+    .setHelpText('שעה ביום, למשל 8:50 או 08:50 — הגיליון יציג 08:50.\n' +
+                 'תא שאינו נראה כשעה יסומן, אך לא ייחסם.')
     .build();
-  sh.getRange(2, col, 500).setDataValidation(rule);
-  sh.getRange(2, col, 500).setNumberFormat('@');   /* plain text */
+  sh.getRange(2, col, n)
+    .setDataValidation(rule)
+    .setNumberFormat('hh:mm')
+    .setHorizontalAlignment('center');
 }
 
 /**

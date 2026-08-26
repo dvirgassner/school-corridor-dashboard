@@ -11,10 +11,11 @@
  * IT NEVER ERASES WHAT SOMEONE TYPED. Every run applies the current
  * design and rules; example rows go only into a tab that is empty. This
  * is not a convention to be careful about — it is enforced. All content
- * writes go through writeHeader_() and seedIfEmpty_(), and tests/run.js
- * fails the build if a content-mutating call appears anywhere else, or
- * if running setup() against a mock sheet full of data changes so much
- * as one cell.
+ * writes go through writeHeader_(), writeDayColumn_() and seedIfEmpty_()
+ * — the first two owning generated structure that is locked against
+ * typing — and tests/run.js fails the build if a content-mutating call
+ * appears anywhere else, or if running setup() against a mock sheet full
+ * of data changes so much as one cell outside those columns.
  *
  * How to run: Extensions -> Apps Script, Run "setup", authorize when
  * asked. Deliberately NOT on the לוח מסדרון menu — the principal has no
@@ -25,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.192';
+var SCRIPT_VERSION = '0.193';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -134,6 +135,41 @@ var GRADE_HEADER_TINTS = ['#b6d7a8', '#9fc5e8', '#f9cb9c',
                           '#d5a6bd', '#b4a7d6', '#a2c4c9', '#ea9999'];
 
 /**
+ * Say something about the locale only when it is worth saying — i.e.
+ * when it is NOT Hebrew, and every date typed into the sheet is about to
+ * be read in the wrong order.
+ */
+function localeNote_(locale) {
+  if (/^(iw|he)/.test(locale || '')) return '';
+  return '\n\n⚠️ שפת הגיליון היא "' + locale + '" ולא עברית.\n' +
+         'המשמעות: 1/9/2026 ייקרא כ-9 בינואר ולא כ-1 בספטמבר.\n' +
+         'יש לתקן ידנית: קובץ → הגדרות → אזור → ישראל.';
+}
+
+/**
+ * Put the spreadsheet into a Hebrew locale, and report which code stuck.
+ *
+ * This is not cosmetic — it decides how a typed date is READ. In an
+ * en_US locale "01/09/2026" is the 9th of January; in a Hebrew one it is
+ * the 1st of September. Get it wrong and every date the principal enters
+ * lands three seasons away from where she meant, with nothing on screen
+ * to say so.
+ *
+ * Google Sheets wants "iw_IL" for Hebrew — the legacy ISO code, the same
+ * quirk that makes Java call Hebrew "iw". "he_IL" is the modern spelling
+ * and is quietly IGNORED: no error, no change, the sheet simply stays on
+ * whatever locale it was created with. That is exactly the bug this
+ * function exists to close, so it verifies rather than assumes.
+ */
+function setHebrewLocale_(ss) {
+  ['iw_IL', 'iw', 'he_IL'].forEach(function (code) {
+    if (/^(iw|he)/.test(ss.getSpreadsheetLocale() || '')) return;
+    try { ss.setSpreadsheetLocale(code); } catch (e) {}
+  });
+  return ss.getSpreadsheetLocale();
+}
+
+/**
  * The five tabs, each split into the part that may write (seed) and the
  * part that never does (style). setup() walks this list.
  */
@@ -170,7 +206,7 @@ function applyRules_(sh, name) {
  */
 function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  ss.setSpreadsheetLocale('he_IL');
+  var locale = setHebrewLocale_(ss);
   ss.setSpreadsheetTimeZone('Asia/Jerusalem');
 
   /* Each tab under its own guard. Without this, one bad call aborts the
@@ -205,7 +241,7 @@ function setup() {
       'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
       'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
       'ראו את ההוראות המלאות בקובץ README.\n\n' +
-      '─────────────────────────\n' + NO_PII_NOTE);
+      '─────────────────────────\n' + NO_PII_NOTE + localeNote_(locale));
     return;
   }
 
@@ -213,7 +249,7 @@ function setup() {
     'העיצוב והחוקים עודכנו. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
     'עודכנו: ' + styled.join(', ') +
     (seeded.length ? '\nנבנו מחדש (היו ריקים): ' + seeded.join(', ') : '') +
-    '\n\nהתוכן שהוזן בגיליון לא השתנה.');
+    '\n\nהתוכן שהוזן בגיליון לא השתנה.' + localeNote_(locale));
 }
 
 /**
@@ -671,14 +707,26 @@ function dateRule_(sh, col) {
   var cell = 'INDIRECT("RC", FALSE)';
   var rule = SpreadsheetApp.newDataValidation()
     .requireFormulaSatisfied(
-      '=AND(ISDATE(' + cell + '), ' + cell + '>=TODAY()-30, ' +
-      cell + '<=TODAY()+400)')
-    .setAllowInvalid(false)
-    .setHelpText('יש להזין תאריך תקין, מהחודש האחרון ועד שנה קדימה.\n' +
-                 'לדוגמה: 01/09/2026. שימו לב לשנה!')
+      '=AND(ISDATE(' + cell + '), ' + cell + '>=TODAY()-60, ' +
+      cell + '<=TODAY()+500)')
+    /* WARN, never refuse. setAllowInvalid(false) made this rule the thing
+       standing between the principal and her own sheet: a date Sheets
+       would have parsed perfectly well was rejected outright, with a
+       message naming the very format she had just typed. A date that
+       looks wrong is worth a flag; it is never worth refusing to record.
+       The colour flags below do the actual telling. */
+    .setAllowInvalid(true)
+    .setHelpText('אפשר להזין תאריך בכל צורה מקובלת: 1/9/2026 או 01.09.2026 ' +
+                 'או 1 בספטמבר 2026 — הגיליון ימיר לתבנית אחידה.\n\n' +
+                 'תאריך שנראה חריג (רחוק מדי אחורה או קדימה) יסומן בצבע ' +
+                 'כאזהרה, אבל לא ייחסם.')
     .build();
   sh.getRange(2, col, n).setDataValidation(rule)
-    .setNumberFormat('yyyy-mm-dd');
+    /* One display format for everything the locale accepts — the Israeli
+       convention, and still self-checking: under a wrong locale, typing
+       1/9/2026 comes back as 09/01/2026, and the swapped day and month
+       are visible at a glance. */
+    .setNumberFormat('dd/mm/yyyy');
 }
 
 /**
@@ -696,13 +744,35 @@ function dateFlags_(sh, dateCol, contentCol) {
   var c = '$' + colLetter_(contentCol) + '2';
   var range = sh.getRange(2, dateCol, n);
 
+  /* Order matters: Sheets applies the FIRST rule that matches, so the
+     loudest problems have to come first. */
+
+  /* something is in the cell but Sheets could not read it as a date —
+     usually a typo, or text where a date belongs */
+  var notdate = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND(' + d + '<>"", NOT(ISDATE(' + d + ')))')
+    .setBackground('#f4c7c3')
+    .setFontColor('#a50e0e')
+    .setRanges([range])
+    .build();
+  /* the row has content but no date at all — it will never be shown */
   var missing = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied('=AND(' + c + '<>"", ' + d + '="")')
     .setBackground('#f4c7c3')
     .setRanges([range])
     .build();
+  /* a real date, but implausibly far away — this is what catches the
+     mistyped year, now that the rule warns instead of refusing */
+  var far = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(
+      '=AND(ISDATE(' + d + '), OR(' + d + '<TODAY()-60, ' +
+      d + '>TODAY()+500))')
+    .setBackground('#fce8b2')
+    .setFontColor('#7f6000')
+    .setRanges([range])
+    .build();
   var past = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=AND(' + d + '<>"", ' + d + '<TODAY())')
+    .whenFormulaSatisfied('=AND(ISDATE(' + d + '), ' + d + '<TODAY())')
     .setBackground('#efefef')
     .setFontColor('#9e9e9e')
     .setRanges([range])
@@ -720,14 +790,15 @@ function dateFlags_(sh, dateCol, contentCol) {
       return x.getColumn() === dateCol && x.getNumColumns() === 1;
     });
   });
-  rules.push(missing, past);
+  rules.push(notdate, missing, far, past);
   sh.setConditionalFormatRules(rules);
   sh.getRange(1, dateCol).setNote(
     'התאריך קובע באיזה יום הפריט יופיע על הלוח — הוא עצמו לא מוצג.\n\n' +
-    '• תא אדום = יש תוכן בשורה אבל חסר תאריך. הפריט לא יופיע כלל.\n' +
-    '• תא אפור = התאריך עבר. הפריט כבר לא מוצג; אפשר למחוק את השורה.\n\n' +
-    'הגיליון לא יקבל תאריך שאינו תקין, או שרחוק מדי (שנה קדימה ומעלה) —\n' +
-    'כדי לתפוס טעויות הקלדה בשנה, שאחרת פשוט גורמות לפריט לא להופיע.');
+    'אפשר להזין בכל צורה מקובלת: 1/9/2026, 01.09.2026, 1 בספטמבר 2026.\n' +
+    'הגיליון ממיר לתבנית אחידה (01/09/2026). שום תאריך לא נחסם.\n\n' +
+    '• תא אדום = חסר תאריך, או שמה שהוזן אינו תאריך. הפריט לא יופיע.\n' +
+    '• תא כתום = תאריך רחוק מדי. בדקו את השנה — כנראה טעות הקלדה.\n' +
+    '• תא אפור = התאריך עבר. הפריט כבר לא מוצג; אפשר למחוק את השורה.');
 }
 
 /* ---------- validation rules, separated so they can be restored ----------

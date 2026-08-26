@@ -337,6 +337,35 @@ function run(test) {
       'migrating the day column disturbed the timetable');
   });
 
+  /* ============ 1b. the locale, which decides how dates are READ ====== */
+
+  test('setup lands the sheet in a Hebrew locale', () => {
+    const ss = populatedSheet();
+    assert.equal(ss.locale, 'en_US', 'fixture should start American');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    assert.ok(/^iw/.test(ss.locale),
+      'locale is "' + ss.locale + '" — dates will be read in the wrong ' +
+      'order (01/09 as 9 January)');
+  });
+
+  test('the ignored "he_IL" code alone would not have worked', () => {
+    /* guards the fallback chain: if someone "tidies" it down to the
+       modern spelling, this fails instead of the school's dates */
+    const ss = populatedSheet();
+    ss.setSpreadsheetLocale('he_IL');
+    assert.equal(ss.locale, 'en_US',
+      'the mock should ignore he_IL, as Sheets does');
+  });
+
+  test('a non-Hebrew locale produces a visible warning', () => {
+    const { ctx } = loadScript(new Spreadsheet());
+    assert.ok(/^$/.test(ctx.localeNote_('iw_IL')), 'no warning when Hebrew');
+    const warn = ctx.localeNote_('en_US');
+    assert.ok(/en_US/.test(warn) && /ינואר/.test(warn),
+      'the warning should name the locale and the consequence');
+  });
+
   /* ============ 2. the specific traps ============ */
 
   test('grade ticks in אירועים survive the checkbox pass', () => {

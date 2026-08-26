@@ -396,7 +396,9 @@ class Sheet {
 class Spreadsheet {
   constructor() {
     this.sheets = [];
-    this.locale = null;
+    /* what a sheet created from sheets.new actually starts as, and the
+       locale that reads 01/09/2026 as the 9th of January */
+    this.locale = "en_US";
     this.timeZone = null;
     this.toasts = [];
   }
@@ -414,7 +416,17 @@ class Spreadsheet {
     const i = this.sheets.indexOf(sh);
     if (i >= 0) this.sheets.splice(i, 1);
   }
-  setSpreadsheetLocale(l) { this.locale = l; return this; }
+  /* Sheets recognises only the LEGACY code for Hebrew. "he_IL" is
+     accepted by the call and then silently ignored — no error, no change.
+     Modelling that is the point: it is what made every date in the sheet
+     read in American order, and a mock that quietly accepted "he_IL"
+     would let the same bug back in unnoticed. */
+  setSpreadsheetLocale(l) {
+    if (l === "he_IL" || l === "he") return this;
+    this.locale = l;
+    return this;
+  }
+  getSpreadsheetLocale() { return this.locale; }
   setSpreadsheetTimeZone(t) { this.timeZone = t; return this; }
   toast(msg, title) { this.toasts.push({ msg, title }); }
 }

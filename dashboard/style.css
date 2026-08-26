@@ -437,6 +437,14 @@
      unused. The max-width keeps the widest one from crowding the title. */
   .dodicon svg { height: 66px; width: auto; max-width: 120px;
                  display: block; }
+  /* A traced-photograph portrait, which is black ink on transparent. It
+     would disappear on the dark themes, and inverting it would make a
+     photographic negative — so it gets a light plate and reads as a
+     portrait on every theme instead. */
+  .dodicon .portrait { height: 66px; background: #efe9dc; border-radius: 9px;
+                       padding: 3px 7px; box-sizing: border-box; flex: none;
+                       display: inline-flex; align-items: center; }
+  .dodicon .portrait img { height: 100%; width: auto; display: block; }
   .dodtext { font-size: 31px; font-weight: 700; color: var(--ink-strong);
              line-height: 1.25; unicode-bidi: isolate;
              display: -webkit-box; -webkit-line-clamp: 3;

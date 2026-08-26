@@ -804,6 +804,52 @@ test("buildMessages: a Drive share link becomes playable", () => {
   assert.ok(v.src.indexOf("uc?export=download&id=1AbCdEfGhIjKlMnOp") > 0);
 });
 
+/* ---------- days.js actually loads, and every entry is usable ----------
+   A syntax check is not enough here: days.js is a list of art constants
+   followed by a table that references them, so deleting or reordering one
+   constant leaves the file perfectly parseable and throws only when it
+   runs. That failure is silent on the board — window.DAYS never gets
+   assigned, and the special-day pane simply never appears again. */
+const vm = require("vm");
+const fs = require("fs");
+const path = require("path");
+function loadDays() {
+  const ctx = { window: {} };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "..", "dashboard", "days.js"), "utf8"),
+    ctx, { filename: "days.js" });
+  return ctx.window.DAYS;
+}
+test("days.js runs and defines window.DAYS", () => {
+  const d = loadDays();
+  assert.ok(d && d.israeli && d.international, "window.DAYS was not assigned");
+  assert.ok(d.israeli.length > 15 && d.international.length > 15);
+});
+test("every day has a title and exactly one kind of art", () => {
+  const d = loadDays();
+  [].concat(d.israeli, d.international).forEach((e) => {
+    assert.ok(e.title && e.title.trim(), "an entry has no title");
+    const art = (e.icon ? 1 : 0) + (e.svg ? 1 : 0);
+    assert.equal(art, 1, `"${e.title}" should have either icon or svg, has ${art}`);
+    if (e.svg) assert.ok(/^<(svg|span)/.test(e.svg),
+      `"${e.title}" svg does not start with markup — a missing constant ` +
+      `would arrive here as undefined`);
+  });
+});
+test("every day is keyed by a Hebrew or Gregorian date", () => {
+  const d = loadDays();
+  d.israeli.forEach((e) => assert.ok(e.heb || e.greg, `"${e.title}" has no date key`));
+  d.international.forEach((e) =>
+    assert.ok(/^\d{2}-\d{2}$/.test(e.greg || ""), `"${e.title}" has a bad greg key`));
+});
+test("the two removed days are gone", () => {
+  const titles = [].concat(loadDays().israeli, loadDays().international)
+    .map((e) => e.title);
+  ["היום הבינלאומי לשפת האם",
+   "יום הזיכרון לחללים שמקום קבורתם לא נודע"].forEach((t) =>
+    assert.ok(titles.indexOf(t) < 0, t + " is still listed"));
+});
+
 /* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */
 require("./setup-safety.js").run(test);
 

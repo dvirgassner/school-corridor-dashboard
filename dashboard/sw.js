@@ -32,7 +32,8 @@ const CORE = [
   "./app.js",
   "./vendor/papaparse.min.js",
   "./vendor/gveret-levin-hebrew.woff2",
-  "./vendor/school-logo.png"
+  "./vendor/school-logo.png",
+  "./vendor/herzl.svg"
 ];
 
 self.addEventListener("install", (e) => {

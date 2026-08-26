@@ -57,33 +57,21 @@ var ART_JERUSALEM =
   '<path d="M36 51V43a7 7 0 0 1 14 0v8z" fill="#5a4a34"/>' +
   '</svg>';
 
-/* Theodor Herzl. The three things that make him recognisable at this size
-   are the high forehead with hair only at the temples, the long
-   square-cut beard reaching the chest, and the formal dark coat with a
-   white shirt. An earlier version put the hair across the crown and cut
-   the beard short and round, which read as a cleric rather than as him —
-   the silhouette does all the work here, so those proportions matter. */
+/* Theodor Herzl — the Wikimedia Commons stencil portrait, which is an
+   actual likeness rather than my approximation of one. Two hand-drawn
+   attempts read as "a bearded cleric" instead of as him; a traced
+   photograph does not have that problem.
+
+   LICENCE: CC BY-SA 4.0 by AlkTheShadow. Attribution is required and the
+   file stays under that licence — see CREDITS.md. It is kept as its own
+   file in vendor/ rather than inlined here, so the licensed asset stays
+   identifiable instead of dissolving into this one.
+
+   The source is black on transparent, which would vanish on the dark
+   themes; inverting it produces a photographic negative. So it sits on a
+   light plate instead and reads as a portrait on every theme. */
 var ART_HERZL =
-  '<svg viewBox="0 0 56 62" role="img" aria-label="בנימין זאב הרצל">' +
-  '<path d="M4 62c0-11.5 9.5-17 24-17s24 5.5 24 17z" fill="#2f3a49"/>' +
-  '<path d="M20 46h16l-4 10h-8z" fill="#f4f1e8"/>' +
-  '<path d="M24.6 46.8h6.8l-1.3 5h-4.2z" fill="#1d232d"/>' +
-  '<path d="M28 8c7.2 0 11.6 4.8 11.6 13 0 8-4.2 14-11.6 14s-11.6-6-11.6-14C16.4 12.8 20.8 8 28 8z"' +
-  ' fill="#e8c9a6"/>' +
-  '<path d="M16.6 24c-1.4-6.6-.6-11 2.4-13.4-.8 4-.6 8 .6 12z" fill="#241b15"/>' +
-  '<path d="M39.4 24c1.4-6.6.6-11-2.4-13.4.8 4 .6 8-.6 12z" fill="#241b15"/>' +
-  '<path d="M18.2 13.4C20.4 9.4 23.6 7.4 28 7.4s7.6 2 9.8 6c-2.8-2.4-6.1-3.6-9.8-3.6' +
-  's-7 1.2-9.8 3.6z" fill="#241b15"/>' +
-  '<path d="M21.4 20.6h4.6M30 20.6h4.6" stroke="#241b15" stroke-width="2" stroke-linecap="round"/>' +
-  '<circle cx="23.7" cy="24.2" r="1.6" fill="#241b15"/>' +
-  '<circle cx="32.3" cy="24.2" r="1.6" fill="#241b15"/>' +
-  '<path d="M16.8 25c-.4 5 0 9.4 1.2 13.2 1.2 3.8 2.6 6.6 4.2 8.4 1.6 1.8 3.5 2.7 5.8 2.7' +
-  's4.2-.9 5.8-2.7c1.6-1.8 3-4.6 4.2-8.4 1.2-3.8 1.6-8.2 1.2-13.2-.9 5.2-2.6 8.4-5.2 9.6' +
-  '-1.8.9-3.8 1.3-6 1.3s-4.2-.4-6-1.3c-2.6-1.2-4.3-4.4-5.2-9.6z" fill="#1c1510"/>' +
-  '<path d="M24.4 27.8h7.2c-.6 1.8-1.8 2.7-3.6 2.7s-3-.9-3.6-2.7z" fill="#1c1510"/>' +
-  '<path d="M23.6 33.4c1.4.5 2.9.8 4.4.8s3-.3 4.4-.8" stroke="#2f241c" stroke-width="1.4"' +
-  ' fill="none"/>' +
-  '</svg>';
+  '<span class="portrait"><img src="vendor/herzl.svg" alt="בנימין זאב הרצל"></span>';
 
 /* Science, as the three school subjects it means here: a DNA strand for
    biology, a flask for chemistry, an atom for physics. Three marks side
@@ -106,17 +94,23 @@ var ART_SCIENCE =
   '<circle r="4" fill="#e8558f" stroke="none"/></g>' +
   '</svg>';
 
-/* A girl and a boy, for children's rights. */
+/* A girl and a boy, for children's rights. The girl's hair is one
+   rounded mass behind the head and past the jaw — an earlier version
+   drew two side tufts, which at this size read as horns. */
 var ART_CHILDREN =
   '<svg viewBox="0 0 72 56" role="img" aria-label="ילדה וילד">' +
-  '<circle cx="20" cy="14" r="9" fill="#e8b98f"/>' +
-  '<path d="M11 14a9 9 0 0 1 18 0c0-6-3-9-9-9s-9 3-9 9z" fill="#7a4a2b"/>' +
-  '<path d="M11.5 15c-1.6 0-2.5-2-2.2-5M28.5 15c1.6 0 2.5-2 2.2-5" ' +
-  'stroke="#7a4a2b" stroke-width="3" fill="none" stroke-linecap="round"/>' +
-  '<path d="M20 25c6 0 10 4 11.5 12l1.5 15H7l1.5-15C10 29 14 25 20 25z" fill="#e0468c"/>' +
-  '<circle cx="52" cy="14" r="9" fill="#d9a06a"/>' +
-  '<path d="M43 13a9 9 0 0 1 18 0c-2.5-2.5-5.4-3.6-9-3.6s-6.5 1.1-9 3.6z" fill="#2f2a24"/>' +
-  '<path d="M52 25c5.5 0 9 3 9.5 9L62 40h-4l-1 12h-10l-1-12h-4l.5-6c.5-6 4-9 9.5-9z" ' +
+  '<path d="M20 3c7.2 0 11.4 4.6 11.4 11.6 0 4.6-.6 8.4-1.8 11.4h-3.2' +
+  'c1.2-2.4 1.8-5.2 1.8-8.4 0-1.6-.3-2.9-.9-3.9-2 1.2-4.4 1.8-7.3 1.8' +
+  's-5.3-.6-7.3-1.8c-.6 1-.9 2.3-.9 3.9 0 3.2.6 6 1.8 8.4h-3.2' +
+  'c-1.2-3-1.8-6.8-1.8-11.4C8.6 7.6 12.8 3 20 3z" fill="#7a4a2b"/>' +
+  '<circle cx="20" cy="15.5" r="8.6" fill="#e8b98f"/>' +
+  '<path d="M11.4 14.6c0-5.6 2.9-8.4 8.6-8.4s8.6 2.8 8.6 8.4c-2-2.2-4.9-3.3-8.6-3.3' +
+  's-6.6 1.1-8.6 3.3z" fill="#7a4a2b"/>' +
+  '<path d="M20 26c6 0 10 4 11.5 12l1.5 15H7l1.5-15C10 30 14 26 20 26z" fill="#e0468c"/>' +
+  '<circle cx="52" cy="15" r="8.6" fill="#d9a06a"/>' +
+  '<path d="M43.4 14a8.6 8.6 0 0 1 17.2 0c-2.4-2.4-5.2-3.5-8.6-3.5s-6.2 1.1-8.6 3.5z" ' +
+  'fill="#2f2a24"/>' +
+  '<path d="M52 26c5.5 0 9 3 9.5 9l.5 6h-4l-1 12h-10l-1-12h-4l.5-6c.5-6 4-9 9.5-9z" ' +
   'fill="#3987e5"/>' +
   '</svg>';
 
@@ -146,20 +140,19 @@ var ART_FAMILY =
   '<path d="M76 38c4.2 0 6.8 2.8 6.8 7.6V52H69.2v-6.4c0-4.8 2.6-7.6 6.8-7.6z" fill="#e8558f"/>' +
   '</svg>';
 
-/* The internet as a network, not as a device: a wired globe with nodes
-   on it. A laptop is a thing you use to reach the internet, which is a
-   different idea and dates badly besides. */
+/* The internet: a globe with signal arcs coming off it. Not a laptop —
+   that is a thing you use to reach the internet, a different idea that
+   also dates badly. And not a globe ringed with dots, which was the
+   first attempt: dots on curved paths around a centre read as electrons
+   around a nucleus, so it looked like an atom. The arcs say "connected"
+   without any orbiting parts to misread. */
 var ART_INTERNET =
-  '<svg viewBox="0 0 56 56" role="img" aria-label="אינטרנט">' +
-  '<g fill="none" stroke="#3987e5" stroke-width="3">' +
-  '<circle cx="28" cy="28" r="21"/><path d="M7 28h42"/>' +
-  '<path d="M28 7c6.5 7 6.5 35 0 42M28 7c-6.5 7-6.5 35 0 42"/>' +
-  '<path d="M11.5 16c4.8 3.2 10.3 4.8 16.5 4.8S39.7 19.2 44.5 16"/>' +
-  '<path d="M11.5 40c4.8-3.2 10.3-4.8 16.5-4.8s11.7 1.6 16.5 4.8"/></g>' +
-  '<g fill="#1fa3b5">' +
-  '<circle cx="28" cy="7" r="4.6"/><circle cx="7" cy="28" r="4.6"/>' +
-  '<circle cx="49" cy="28" r="4.6"/><circle cx="28" cy="49" r="4.6"/>' +
-  '<circle cx="28" cy="28" r="4.2"/></g>' +
+  '<svg viewBox="0 0 66 56" role="img" aria-label="אינטרנט">' +
+  '<g fill="none" stroke="#3987e5" stroke-width="3.2" stroke-linecap="round">' +
+  '<circle cx="26" cy="30" r="19"/><path d="M7 30h38"/>' +
+  '<path d="M26 11c6.2 6.5 6.2 31.5 0 38M26 11c-6.2 6.5-6.2 31.5 0 38"/></g>' +
+  '<g fill="none" stroke="#1fa3b5" stroke-width="3.2" stroke-linecap="round">' +
+  '<path d="M50 22a13 13 0 0 1 0 16"/><path d="M56.5 15a22 22 0 0 1 0 30"/></g>' +
   '</svg>';
 
 /* π in colour — drawn rather than relying on an emoji, since there is

@@ -251,7 +251,7 @@
      card, the urgent strip spans the second and third, and the logo takes
      the left column. Keeping the two templates identical is the whole
      point — change one and change the other. */
-  header { display: grid; align-items: center; height: 72px;
+  header { display: grid; align-items: center; height: 92px;
            grid-template-columns: 1fr 1fr 1fr 400px; gap: 18px; }
   .now { grid-column: 1; display: flex; align-items: center; gap: 24px;
          min-width: 0; }
@@ -281,7 +281,7 @@
      at this size that line rendered about five pixels tall, which is
      illegible from anywhere in a corridor and only stole height from the
      tree and the name. Dropping it lets both fill the same slot. */
-  #school img { height: 66px; width: auto; display: block; }
+  #school img { height: 86px; width: auto; display: block; }
 
   /* The logo is dark brown on transparent — near-invisible on the dark
      themes, which are the ones the board actually runs in. Lifting it

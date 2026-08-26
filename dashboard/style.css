@@ -174,6 +174,16 @@
   :root[data-theme="colorful"] #date { color: #c8d4ff; }
   :root[data-theme="colorful"] #hebdate,
   :root[data-theme="colorful"] #school { color: #98a6e4; }
+  /* The urgent strip needs the same treatment, and for the same reason:
+     this theme's ink tokens are tuned for its WHITE CARDS, so --ink-strong
+     is nearly black — fine inside a card, unreadable against the deep
+     indigo the header sits on. The clock and dates were already corrected
+     for this; the strip was missed, leaving black text on a dark maroon. */
+  :root[data-theme="colorful"] #urgenttext { color: #ffffff; }
+  :root[data-theme="colorful"] #urgent .count { color: #f6a9a2; }
+  :root[data-theme="colorful"] #urgent .tag {
+    color: #ff7a6e; border-color: #ff7a6e;
+  }
   /* A solid accent band across the top of each card. This is what makes
      the theme read as colourful from down a corridor: a pale wash alone
      looks washed out at distance, however saturated the hue is up close.

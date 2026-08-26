@@ -448,8 +448,11 @@ function fitUrgent(el) {
   const over = slide.scrollWidth - el.clientWidth;
   if (over <= 4) return 8000;                    /* fits — hold it still */
   slide.style.setProperty("--ushift", `${over}px`);
-  /* pace by distance, so a very long notice is not read at a sprint */
-  const secs = Math.round(over / 38 + 9);
+  /* Paced by distance so a long notice is not read at a sprint, but at
+     twice the original rate — both terms halved, which keeps the pacing
+     proportional instead of just clipping the total. The floor stops a
+     barely-overflowing message from twitching. */
+  const secs = Math.max(5, Math.round(over / 76 + 4.5));
   slide.style.setProperty("--udur", `${secs}s`);
   slide.classList.add("scrolling");
   return secs * 1000;        /* one full there-and-back before the next */

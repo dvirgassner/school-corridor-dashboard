@@ -10,10 +10,15 @@
 <div id="stage">
   <div id="drift">
     <header>
-      <div id="clock">--:--</div>
-      <div class="dates">
-        <div id="date"></div>
-        <div id="hebdate"></div>
+      <!-- clock and dates travel together: they occupy the first grade
+           column of the grid below, which is what lets the urgent strip
+           start exactly where the second card does -->
+      <div class="now">
+        <div id="clock">--:--</div>
+        <div class="dates">
+          <div id="date"></div>
+          <div id="hebdate"></div>
+        </div>
       </div>
       <!-- No hazard symbol here on purpose: this strip carries ordinary
            school notices, and a warning triangle reads as an emergency to

@@ -314,13 +314,25 @@ fi
 crontab "$CRON_TMP"
 rm -f "$CRON_TMP"
 
-# Nightly reboot clears any slow leak. Root crontab, so it can reboot.
+# No nightly reboot, by choice.
+#
+# There used to be a 03:00 reboot here as insurance against slow leaks. It
+# was removed because the board is rebooted deliberately when it needs it,
+# and an unattended reboot has a real cost on this hardware: it happens at
+# 03:00 with the TV in standby, which is exactly the condition that can
+# bring the Pi up with no HDMI output at all (see the video= setting
+# above). Insurance that can itself blank the screen for a whole school
+# day is not insurance.
+#
+# Any leftover entry from an earlier provisioning run is cleared, so
+# re-running this script actually removes the old job rather than leaving
+# it behind.
 sudo bash -c '
   T="$(mktemp)"
   crontab -l 2>/dev/null | grep -v "corridor-board" > "$T" || true
-  echo "0 3 * * * /sbin/reboot # corridor-board" >> "$T"
   crontab "$T"; rm -f "$T"
 '
+echo "    nightly reboot: not installed (removed if it was there)"
 
 echo
 echo "==> Done."

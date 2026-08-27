@@ -142,12 +142,24 @@ NTP-synced system clock (timezone `Asia/Jerusalem`) keeps it correct
 without any code, and it keeps working when the network is down —
 which is exactly when you do not want the board to get confused.
 
-## Why a nightly reboot?
+## Why is there no nightly reboot?
 
-Not because anything is known to leak. It is a cheap insurance policy
-against the class of slow failures that are hard to reproduce and easy
-to prevent: a browser that has been rendering the same page for three
-months is not a well-tested configuration.
+There was one, at 03:00, as insurance against the class of slow failures
+that are hard to reproduce and easy to prevent — a browser rendering the
+same page for three months is not a well-tested configuration.
+
+It was removed once the cost became clear. A wlroots compositor builds
+its output list from the HDMI connectors the kernel reports as
+*connected*, and a TV in standby can drop that line. Boot the Pi with no
+connected output and it invents a headless one, after which Chromium
+renders the board into nothing: blank screen, healthy Pi, nothing in any
+log. 03:00 is precisely when the TV is in standby, so the insurance
+policy was itself a way to lose a whole school day.
+
+The board is rebooted deliberately now, over SSH, when it needs it —
+which is also why `video=HDMI-A-1:1920x1080@60D` is pinned in
+cmdline.txt. That parameter is what makes a remote reboot dependable at
+the hour you would actually issue one: in the evening, with the TV off.
 
 ## Why can't `setup` erase the sheet?
 

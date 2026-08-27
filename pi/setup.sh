@@ -87,6 +87,39 @@ apt_try grim scrot
 apt_try fonts-noto-color-emoji
 fc-cache -f >/dev/null 2>&1 || true
 
+echo "==> Forcing the HDMI output on, whatever the TV is doing"
+# The failure this prevents is nasty because nothing looks broken.
+#
+# Under the KMS driver, wlroots builds its output list from the HDMI
+# connectors the kernel reports as CONNECTED. A TV in standby can drop the
+# hotplug line, so if the Pi boots while the screen is asleep the kernel
+# reports "disconnected", the compositor invents a headless dummy output,
+# and Chromium spends the day rendering the board into nothing. The TV then
+# shows a blank screen with a perfectly healthy Pi behind it: kiosk running,
+# network fine, no errors in any log. It was diagnosed once from
+# `wlr-randr` printing NOOP-1 "Headless output" instead of HDMI-A-1.
+#
+# That matters here specifically because this board reboots itself at 03:00
+# every night, which is exactly when the TV is in standby.
+#
+# "video=HDMI-A-1:1920x1080@60D" pins the mode; the trailing D forces the
+# output on even with no EDID to read. Idempotent, and left alone if
+# someone has already set a video= of their own.
+CMDLINE=/boot/firmware/cmdline.txt
+[ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
+if [ -f "$CMDLINE" ]; then
+  if grep -q "video=HDMI" "$CMDLINE"; then
+    echo "    already has a video= setting — leaving it alone"
+  else
+    sudo cp "$CMDLINE" "$CMDLINE.bak-corridor"
+    sudo sed -i "s/\$/ video=HDMI-A-1:1920x1080@60D/" "$CMDLINE"
+    echo "    added video=HDMI-A-1:1920x1080@60D (backup: $CMDLINE.bak-corridor)"
+    echo "    takes effect on the next reboot"
+  fi
+else
+  echo "    !! no cmdline.txt found — set the HDMI mode by hand" >&2
+fi
+
 echo "==> Setting the clock (timezone + NTP)"
 # The board's "today" and its current-class highlight follow this clock,
 # so it has to be both correct and self-correcting. Daylight saving is

@@ -341,6 +341,10 @@ function renderGrades() {
 function applyTheme() {
   const theme = (MODEL.settings && MODEL.settings.theme) || "dark";
   document.documentElement.setAttribute("data-theme", theme);
+  /* Remembered so the next load can paint in the right colours straight
+     away — see the inline script in index.html, which reads this before
+     the first paint. */
+  try { localStorage.setItem("dash-theme", theme); } catch (e) {}
 }
 
 /* "day of the day": today's Israeli day, or an international one if

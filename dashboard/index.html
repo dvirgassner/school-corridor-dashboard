@@ -5,6 +5,25 @@
 <title>לוח מסדרון</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="style.css">
+<!-- The theme lives in the sheet, so it cannot be known until the CSVs
+     arrive a second or two from now. Without this the board paints in the
+     default dark theme first and visibly switches once the data lands —
+     which looks like a fault every single time the screen reloads.
+
+     So the last theme seen is remembered and re-applied HERE, inline in
+     the head, because this is the only place that runs before the first
+     paint: app.js is at the end of the body and by then the wrong colours
+     are already on screen. app.js still sets the real theme when the
+     sheet is read, so a theme CHANGE still takes one reload to settle —
+     but the everyday case, reloading with the theme unchanged, no longer
+     flashes at all. Wrapped in try/catch because a browser with storage
+     disabled must still show a board. -->
+<script>
+  try {
+    var t = localStorage.getItem("dash-theme");
+    if (t) document.documentElement.setAttribute("data-theme", t);
+  } catch (e) { /* no storage → the default theme, as before */ }
+</script>
 </head>
 <body>
 <div id="stage">

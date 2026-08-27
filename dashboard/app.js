@@ -201,15 +201,23 @@ function markUpdates(model, todayKey) {
 /* ?upd previews the badge without waiting for a real edit */
 const UPD_PREVIEW = new URLSearchParams(location.search).has("upd");
 
-/* Show the whole day, or drop each class as it finishes? config.js holds
-   the answer; ?allday=1 / ?allday=0 overrides it for a side-by-side look
-   without editing anything. */
-const HIDE_PASSED = (function () {
-  const q = new URLSearchParams(location.search).get("allday");
-  if (q === "1") return false;
-  if (q === "0") return true;
+/* Show the whole day, or drop each class as it finishes?
+   Three sources, most specific first:
+     1. ?allday=1 / ?allday=0 — for looking at both without changing
+        anything, which is how the two were compared
+     2. the הגדרות tab — the principal's choice, and the one that matters
+     3. config.hidePassedClasses — this deployment's default
+   Read on every tick rather than once at load, because the sheet is
+   re-read every minute and the principal must not have to reboot a
+   corridor screen to change her mind. */
+const ALLDAY_OVERRIDE = new URLSearchParams(location.search).get("allday");
+function hidePassed() {
+  if (ALLDAY_OVERRIDE === "1") return false;
+  if (ALLDAY_OVERRIDE === "0") return true;
+  const fromSheet = MODEL && MODEL.settings && MODEL.settings.lessons;
+  if (fromSheet) return fromSheet === "upcoming";
   return CFG.hidePassedClasses !== false;
-})();
+}
 
 /* ---- icons -------------------------------------------------------
    Every icon in the board's own chrome is drawn, never an emoji.
@@ -620,17 +628,12 @@ function tick() {
   setSchoolName(CFG.schoolName);
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
+  const hide = hidePassed();
   document.querySelectorAll(".period").forEach((p) => {
     const s = minutes(p.dataset.start), e = minutes(p.dataset.end);
-    p.classList.toggle("now",  nowMin >= s && nowMin < e);
-    /* "done" is what hides a class. Whether a finished class disappears
-       is a policy choice, not a fact about the class — see
-       hidePassedClasses in config.js. With hiding off nothing is ever
-       marked done, so the pane keeps the whole day and everything
-       downstream (paging, the end-of-day line) follows from that without
-       needing to know which mode it is in. */
-    p.classList.toggle("done", HIDE_PASSED && nowMin >= e);
+    p.classList.toggle("now", nowMin >= s && nowMin < e);
   });
+
   document.querySelectorAll(".periods").forEach((c) => {
     const rows = [...c.querySelectorAll(".period")];
     if (!rows.length) {                    /* no classes at all today */
@@ -638,23 +641,33 @@ function tick() {
       c.removeAttribute("data-endtime");
       return;
     }
-    /* The bell is approximate and a lesson often runs over, so the FINAL
-       class of the day stays put for a grace period after its end time
-       rather than vanishing on the stroke. Earlier classes are unaffected
-       — they still make way for the next one immediately. */
     let lastEnd = -1, lastEndText = "";
     rows.forEach((p) => {
       const e = minutes(p.dataset.end);
       if (e > lastEnd) { lastEnd = e; lastEndText = p.dataset.end; }
     });
-    if (nowMin < lastEnd + (CFG.endOfDayGraceMinutes || 0)) {
-      rows.forEach((p) => {
-        if (minutes(p.dataset.end) === lastEnd) p.classList.remove("done");
-      });
-    }
+
+    /* The bell is approximate and a lesson often runs over, so the day is
+       not "over" until the last class has finished PLUS a grace period.
+       This is measured from the clock rather than from "are any rows still
+       showing", which is what lets it work in both modes: when the whole
+       day stays on screen no row ever disappears, so counting visible rows
+       would mean the end-of-day line could never appear. */
+    const dayOver = nowMin >= lastEnd + (CFG.endOfDayGraceMinutes || 0);
+
+    rows.forEach((p) => {
+      const e = minutes(p.dataset.end);
+      /* Once the day is over every row goes, in BOTH modes, so the pane
+         hands over to the end-of-day line rather than leaving a full
+         timetable up with nothing highlighted. Before that, a class is
+         hidden only if this mode hides classes at all — and never the
+         last one of the day, which is what the grace period protects. */
+      p.classList.toggle("done",
+        dayOver || (hide && nowMin >= e && e !== lastEnd));
+    });
+
     c.dataset.endtime = lastEndText;       /* read by the CSS message */
-    const left = c.querySelectorAll(".period:not(.done)").length;
-    c.classList.toggle("empty", left === 0);
+    c.classList.toggle("empty", dayOver);
   });
   markAgendaDone(nowMin);
   layoutPages();   /* row visibility changed → recompute pages */

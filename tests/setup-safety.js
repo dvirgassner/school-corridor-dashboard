@@ -126,7 +126,10 @@ function populatedSheet() {
 
   const settings = ss.addSheet('הגדרות');
   settings.getRange(1, 1, 1, 2).setValues([['הגדרה', 'ערך']]);
-  settings.getRange(2, 1, 1, 2).setValues([['ערכת נושא', 'בהירה']]);
+  settings.getRange(2, 1, 2, 2).setValues([
+    ['ערכת נושא', 'בהירה'],
+    ['אופן הצגת שיעורים', 'הצג רק משיעור נוכחי ואילך']
+  ]);
 
   return ss;
 }
@@ -186,7 +189,8 @@ const MUTATORS = [
    the requested behaviour. */
 const MAY_WRITE = new Set([
   'writeHeader_', 'writeDayColumn_', 'seedIfEmpty_',
-  'resolveEventTick_', 'enforceExclusive_', 'convertTimeColumn_'
+  'resolveEventTick_', 'enforceExclusive_', 'convertTimeColumn_',
+  'ensureSettingRows_'
 ]);
 
 /* Blank out block comments, preserving every offset and newline, so the
@@ -588,6 +592,55 @@ function run(test) {
     });
     assert.deepEqual(writes, ['מערכת A2:A61'],
       'the second run rewrote time columns: ' + writes.join(', '));
+  });
+
+  /* ============ 4c. a setting added after the sheet was built ======== */
+
+  test('a missing setting row is appended, existing choices untouched', () => {
+    const ss = populatedSheet();
+    const set = ss.getSheetByName('הגדרות');
+    /* the shape every existing sheet is in: theme only */
+    set.getRange(3, 1, 1, 2).setValue('');
+    set.getRange(3, 1).setValue('');
+    set.getRange(3, 2).setValue('');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    assert.equal(set.getRange(2, 1).getValue(), 'ערכת נושא');
+    assert.equal(set.getRange(2, 2).getValue(), 'בהירה',
+      'the chosen theme was overwritten');
+    assert.equal(set.getRange(3, 1).getValue(), 'אופן הצגת שיעורים',
+      'the new setting row was not appended');
+    assert.ok(String(set.getRange(3, 2).getValue()).indexOf('הצג') === 0,
+      'the new row has no default value');
+  });
+
+  test('a choice already made for the new setting is never rewritten', () => {
+    const ss = populatedSheet();
+    const set = ss.getSheetByName('הגדרות');
+    const before = set.getRange(3, 2).getValue();
+    set.writes.length = 0;
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    assert.equal(set.getRange(3, 2).getValue(), before);
+    assert.deepEqual(set.writes.map((w) => w.a1), [],
+      'setup wrote to הגדרות when both rows already existed');
+  });
+
+  test('each settings row gets the dropdown for ITS OWN setting', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const set = ss.getSheetByName('הגדרות');
+    const theme = set.getRange(2, 2).getDataValidation();
+    const lesson = set.getRange(3, 2).getDataValidation();
+    assert.ok(theme && lesson, 'a settings row has no dropdown');
+    const themeOpts = theme.getCriteriaValues()[0];
+    const lessonOpts = lesson.getCriteriaValues()[0];
+    assert.ok(themeOpts.indexOf('כהה') >= 0, 'row 2 is not the theme list');
+    assert.ok(lessonOpts.indexOf('הצג את כל השיעורים ביום') >= 0,
+      'row 3 is not the lesson-view list');
+    assert.ok(lessonOpts.indexOf('כהה') < 0,
+      'row 3 got the theme list — the old whole-column rule is back');
   });
 
   /* ============ 5. the structural guard ============ */

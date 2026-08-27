@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.194';
+var SCRIPT_VERSION = '0.195';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -107,6 +107,24 @@ var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 var TYPES = ['רגילה', 'דחופה', 'וידאו'];
 var YESNO = ['כן', 'לא'];
 var THEMES = ['כהה', 'בהירה', 'צבעוני 1', 'צבעוני 2'];
+
+/* How the grade panes treat a lesson that is over. The board reads the
+   chosen text, so these strings are part of the interface — changing one
+   here without changing dashboard/logic.js silently reverts the board to
+   its default. */
+var LESSON_VIEW = ['הצג רק משיעור נוכחי ואילך', 'הצג את כל השיעורים ביום'];
+
+/* Every row the הגדרות tab should contain, in order. Driving the tab
+   from this list rather than from row numbers is what lets a second
+   setting exist at all: the dropdown a row gets is decided by the NAME in
+   column A, so the rows can be reordered, and a new setting can be added
+   to an existing sheet without disturbing the choices already made. */
+var SETTINGS = [
+  { name: 'ערכת נושא', options: THEMES, def: 'כהה',
+    help: 'ערכת נושא: ' + THEMES.join(' / ') },
+  { name: 'אופן הצגת שיעורים', options: LESSON_VIEW, def: LESSON_VIEW[1],
+    help: 'איך מוצגים שיעורים שכבר הסתיימו: ' + LESSON_VIEW.join(' / ') }
+];
 
 /* the אירועים tab's fixed columns, before the per-grade checkboxes */
 var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקום'];
@@ -911,17 +929,34 @@ function rulesMessages_(sh) {
 }
 
 function rulesSettings_(sh) {
-  var rule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(THEMES, true)
-    .setAllowInvalid(false)
-    .setHelpText('ערכת נושא: ' + THEMES.join(' / '))
-    .build();
-  sh.getRange(2, 2, Math.max(2, sh.getMaxRows() - 1)).setDataValidation(rule);
+  var last = Math.max(2, sh.getLastRow());
+  var names = sh.getRange(2, 1, last - 1, 1).getValues();
+
+  /* Clear first, then give each row the list that belongs to ITS setting.
+     The old rule put the theme dropdown down the whole column, which was
+     harmless while there was one setting and wrong the moment there were
+     two. */
+  sh.getRange(2, 2, sh.getMaxRows() - 1).clearDataValidations();
+
+  var applied = 0;
+  names.forEach(function (row, i) {
+    var name = String(row[0]).trim();
+    for (var k = 0; k < SETTINGS.length; k++) {
+      if (SETTINGS[k].name !== name) continue;
+      sh.getRange(2 + i, 2).setDataValidation(
+        SpreadsheetApp.newDataValidation()
+          .requireValueInList(SETTINGS[k].options, true)
+          .setAllowInvalid(false)
+          .setHelpText(SETTINGS[k].help)
+          .build());
+      applied++;
+    }
+  });
 
   /* verify rather than assume: a missing dropdown here is invisible
-     until someone tries to change the theme on a live board */
-  if (!sh.getRange('B2').getDataValidation()) {
-    throw new Error('התפריט הנפתח של ערכת הנושא לא נוצר — ' +
+     until someone tries to change a setting on a live board */
+  if (applied < SETTINGS.length) {
+    throw new Error('לא נוצרו כל התפריטים הנפתחים בגיליון "הגדרות" — ' +
                     'יש לבחור בתפריט "לוח מסדרון" → "תיקון חוקי הגיליון"');
   }
 }
@@ -1138,7 +1173,34 @@ function seedMessages_(sh) {
 }
 
 function seedSettings_(sh) {
-  return seedIfEmpty_(sh, [['ערכת נושא', 'כהה']]);
+  return seedIfEmpty_(sh, SETTINGS.map(function (o) { return [o.name, o.def]; }));
+}
+
+/**
+ * Add any setting row the tab does not have yet, and nothing else.
+ *
+ * seedIfEmpty_ cannot do this: it refuses a tab with anything in it, so
+ * a setting added after the sheet was built would never appear. This
+ * appends only NAMES THAT ARE ABSENT, below whatever is already there,
+ * with the default in the value cell — so a choice the principal has
+ * already made is never read, never compared and never overwritten.
+ */
+function ensureSettingRows_(sh) {
+  var last = Math.max(1, sh.getLastRow());
+  var have = {};
+  if (last > 1) {
+    sh.getRange(2, 1, last - 1, 1).getValues().forEach(function (r) {
+      have[String(r[0]).trim()] = true;
+    });
+  }
+  var missing = SETTINGS.filter(function (o) { return !have[o.name]; })
+                        .map(function (o) { return [o.name, o.def]; });
+  if (!missing.length) return false;
+  if (last + missing.length > sh.getMaxRows()) {
+    sh.insertRowsAfter(sh.getMaxRows(), missing.length);
+  }
+  sh.getRange(last + 1, 1, missing.length, 2).setValues(missing);
+  return true;
 }
 
 /* ---------- styles: applied to every tab, every run ----------
@@ -1264,6 +1326,7 @@ function styleMessages_(sh) {
    changing its shape. */
 function styleSettings_(sh) {
   writeHeader_(sh, ['הגדרה', 'ערך']);
+  ensureSettingRows_(sh);
 
   /* The setting NAMES are structural — the board matches on them. Lock
      the whole column so only the value column is editable. */

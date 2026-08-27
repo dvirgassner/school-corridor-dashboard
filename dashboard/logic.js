@@ -480,6 +480,17 @@
      presentation (currently the colour theme) without touching code. */
   /* "צבעונית" was the name before the two variants existed; it still maps
      to צבעוני 1 so an older sheet keeps working. */
+  /* The two texts the הגדרות tab offers for "אופן הצגת שיעורים". These
+     strings are the interface between the sheet and the board: they must
+     match LESSON_VIEW in sheet-template/setup.gs exactly, or a choice the
+     principal makes is read as "unset" and the board quietly keeps its
+     default. English aliases so a hand-made sheet works too. */
+  var LESSON_VIEWS = {
+    "הצג רק משיעור נוכחי ואילך": "upcoming",
+    "הצג את כל השיעורים ביום": "all",
+    "upcoming": "upcoming", "all": "all"
+  };
+
   var THEMES = {
     "כהה": "dark", "dark": "dark",
     "בהירה": "light", "light": "light",
@@ -488,13 +499,20 @@
   };
 
   function buildSettings(rows) {
-    var out = { theme: "dark" };
+    /* lessons stays null when the sheet does not say, so config.js keeps
+       the last word — an unrecognised value must not silently pick a
+       side, it must fall through to the deployment's own default */
+    var out = { theme: "dark", lessons: null };
     (rows || []).forEach(function (r) {
       var key = pick(r, "setting"), val = pick(r, "value");
       if (!key || !val) return;
       if (/ערכת נושא|theme/i.test(key)) {
         var t = THEMES[val.toLowerCase()] || THEMES[val];
         if (t) out.theme = t;
+      }
+      if (/אופן הצגת שיעורים|lessons/i.test(key)) {
+        var v = LESSON_VIEWS[val] || LESSON_VIEWS[val.toLowerCase()];
+        if (v) out.lessons = v;
       }
     });
     return out;

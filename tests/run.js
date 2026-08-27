@@ -3,6 +3,9 @@
    No framework — Node's built-in assert only, so there is nothing to
    install and nothing to break. */
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
 const L = require("../dashboard/logic.js");
 
 let passed = 0;
@@ -804,15 +807,57 @@ test("buildMessages: a Drive share link becomes playable", () => {
   assert.ok(v.src.indexOf("uc?export=download&id=1AbCdEfGhIjKlMnOp") > 0);
 });
 
+/* ---------- the אופן הצגת שיעורים setting ---------- */
+const SET_FIELDS = ["הגדרה", "ערך"];
+const setRows = (name, val) => [{ "הגדרה": name, "ערך": val }];
+
+test("buildSettings: reads the whole-day option", () => {
+  const s = L.buildSettings(setRows("אופן הצגת שיעורים", "הצג את כל השיעורים ביום"));
+  assert.equal(s.lessons, "all");
+});
+test("buildSettings: reads the upcoming-only option", () => {
+  const s = L.buildSettings(setRows("אופן הצגת שיעורים", "הצג רק משיעור נוכחי ואילך"));
+  assert.equal(s.lessons, "upcoming");
+});
+test("buildSettings: an unset or unknown value stays null, not a guess", () => {
+  assert.equal(L.buildSettings([]).lessons, null);
+  assert.equal(L.buildSettings(setRows("אופן הצגת שיעורים", "")).lessons, null);
+  assert.equal(L.buildSettings(setRows("אופן הצגת שיעורים", "משהו אחר")).lessons, null);
+});
+test("buildSettings: the two settings do not interfere", () => {
+  const s = L.buildSettings([
+    { "הגדרה": "ערכת נושא", "ערך": "בהירה" },
+    { "הגדרה": "אופן הצגת שיעורים", "ערך": "הצג רק משיעור נוכחי ואילך" }
+  ]);
+  assert.equal(s.theme, "light");
+  assert.equal(s.lessons, "upcoming");
+});
+/* The sheet's option texts and the board's lookup table are one
+   interface across two files; if they drift, the principal's choice is
+   silently read as "unset". */
+test("the sheet's option texts match the board's", () => {
+  const setup = fs.readFileSync(
+    path.join(__dirname, "..", "sheet-template", "setup.gs"), "utf8");
+  const m = /var LESSON_VIEW = \[([^\]]*)\]/.exec(setup);
+  assert.ok(m, "LESSON_VIEW not found in setup.gs");
+  const texts = m[1].split(",").map((t) => t.trim().replace(/^'|'$/g, ""));
+  assert.equal(texts.length, 2);
+  texts.forEach((t) => {
+    const got = L.buildSettings(setRows("אופן הצגת שיעורים", t)).lessons;
+    assert.ok(got, `the board does not recognise "${t}" from setup.gs`);
+  });
+  assert.equal(L.buildSettings(setRows("אופן הצגת שיעורים", texts[0])).lessons,
+    "upcoming", "first option should mean upcoming-only");
+  assert.equal(L.buildSettings(setRows("אופן הצגת שיעורים", texts[1])).lessons,
+    "all", "second option should mean the whole day");
+});
+
 /* ---------- days.js actually loads, and every entry is usable ----------
    A syntax check is not enough here: days.js is a list of art constants
    followed by a table that references them, so deleting or reordering one
    constant leaves the file perfectly parseable and throws only when it
    runs. That failure is silent on the board — window.DAYS never gets
    assigned, and the special-day pane simply never appears again. */
-const vm = require("vm");
-const fs = require("fs");
-const path = require("path");
 function loadDays() {
   const ctx = { window: {} };
   vm.runInNewContext(

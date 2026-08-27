@@ -28,7 +28,7 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.189",
+  version: "0.190",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   /* How often to check whether a new build has been published. On a
@@ -43,6 +43,23 @@ window.DASH_CONFIG = {
      "יום הלימודים הסתיים". Applies to the final class only — earlier
      ones still make way for the next as soon as they end. */
   endOfDayGraceMinutes: 5,
+
+  /* Does a class disappear once it is over?
+       true  — the pane empties through the day, so what is left is what
+               is still to come. This was the original behaviour.
+       false — the whole day stays on the board, with the current lesson
+               highlighted and the pane paging through the rest.
+     Trade-off: showing everything means a student can see the shape of
+     the day at any hour, but the current lesson is one row among ten
+     rather than the only thing left, and it may be on another page when
+     they walk past. Hiding makes "what now" unmissable and costs the
+     wider view.
+     Two consequences of `false` worth knowing: every pane pages all day
+     rather than settling down in the afternoon, and "יום הלימודים
+     הסתיים" never appears, since the pane is never empty.
+     Also switchable per-URL for a side-by-side look, without editing
+     anything: ?allday=1 shows the whole day, ?allday=0 hides passed. */
+  hidePassedClasses: false,
   videoIntervalMinutes: 10,  /* minimum gap between video plays       */
   /* A YouTube embed gives no "finished" signal without loading YouTube's
      own API, so this caps how long the overlay can cover the board.

@@ -201,6 +201,16 @@ function markUpdates(model, todayKey) {
 /* ?upd previews the badge without waiting for a real edit */
 const UPD_PREVIEW = new URLSearchParams(location.search).has("upd");
 
+/* Show the whole day, or drop each class as it finishes? config.js holds
+   the answer; ?allday=1 / ?allday=0 overrides it for a side-by-side look
+   without editing anything. */
+const HIDE_PASSED = (function () {
+  const q = new URLSearchParams(location.search).get("allday");
+  if (q === "1") return false;
+  if (q === "0") return true;
+  return CFG.hidePassedClasses !== false;
+})();
+
 /* ---- icons -------------------------------------------------------
    Every icon in the board's own chrome is drawn, never an emoji.
    Emoji depend on a colour-emoji font being installed AND covering that
@@ -613,7 +623,13 @@ function tick() {
   document.querySelectorAll(".period").forEach((p) => {
     const s = minutes(p.dataset.start), e = minutes(p.dataset.end);
     p.classList.toggle("now",  nowMin >= s && nowMin < e);
-    p.classList.toggle("done", nowMin >= e);   /* passed → hidden */
+    /* "done" is what hides a class. Whether a finished class disappears
+       is a policy choice, not a fact about the class — see
+       hidePassedClasses in config.js. With hiding off nothing is ever
+       marked done, so the pane keeps the whole day and everything
+       downstream (paging, the end-of-day line) follows from that without
+       needing to know which mode it is in. */
+    p.classList.toggle("done", HIDE_PASSED && nowMin >= e);
   });
   document.querySelectorAll(".periods").forEach((c) => {
     const rows = [...c.querySelectorAll(".period")];

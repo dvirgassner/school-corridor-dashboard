@@ -613,7 +613,14 @@
      Returns the four CSV URLs, or null if there is no usable fragment
      (bad input falls back to config.js / demo mode rather than fetching
      a malformed URL). */
-  function parseSheetFragment(hash) {
+  /* `extra` carries gids that config.js knows but the kiosk URL does not.
+     A tab added after a board was deployed would otherwise need the URL
+     on the wall to be rewritten — which means restarting the kiosk
+     session in a school one cannot walk into. A gid is useless on its
+     own (it names a tab inside a document it cannot identify), so it is
+     safe in the public repository in a way the document id is not, and
+     the id stays where it has always been: on the Pi. */
+  function parseSheetFragment(hash, extra) {
     if (!hash) return null;
     var p;
     try { p = new URLSearchParams(String(hash).replace(/^#/, "")); }
@@ -666,6 +673,10 @@
     };
     if (gids.length >= 5) out.settings = url(gids[4]);
     if (gids.length >= 6) out.closures = url(gids[5]);
+    /* A gid in the URL always wins; config only fills a gap. */
+    if (!out.closures && extra && /^\d+$/.test(String(extra.closures || ""))) {
+      out.closures = url(String(extra.closures));
+    }
     return out;
   }
 

@@ -19,7 +19,8 @@ const CFG = window.DASH_CONFIG;
      3. neither → demo mode with the bundled sample data
    So opening the public GitHub Pages URL shows the demo board, while
    the Pi's kiosk URL shows the school's real data. */
-const FRAGMENT_SHEETS = parseSheetFragment(location.hash);
+const FRAGMENT_SHEETS = parseSheetFragment(location.hash,
+                                           { closures: CFG.closuresGid });
 if (location.hash.length > 1 && !FRAGMENT_SHEETS) {
   console.error("unusable sheet fragment; falling back to config/demo:",
                 location.hash);

@@ -577,6 +577,31 @@ test("parseSheetFragment: a 6th gid becomes the closures tab", () => {
   const f5 = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`);
   assert.ok(f5 && f5.settings && !f5.closures);
 });
+test("parseSheetFragment: config can supply a gid the kiosk URL lacks", () => {
+  /* The board on the wall was deployed before the closures tab existed,
+     and its URL cannot be changed without restarting the kiosk session in
+     a school nobody can visit today. So config.js may name the tab, and
+     the document id keeps coming from the fragment. */
+  const f5 = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`,
+                                  { closures: "304029529" });
+  assert.ok(f5.closures && /gid=304029529/.test(f5.closures),
+    "config gid was not used to build the closures URL");
+  assert.ok(f5.closures.indexOf(TOKEN) >= 0,
+    "the closures URL must be built from the fragment's own sheet");
+
+  /* A gid in the URL always wins over the one in config. */
+  const f6 = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4,5`,
+                                  { closures: "304029529" });
+  assert.ok(/gid=5/.test(f6.closures), "the URL's own 6th gid should win");
+
+  /* Junk in config must not reach a fetched URL. */
+  ["abc", "1;2", "", null, undefined].forEach((bad) => {
+    const r = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`, { closures: bad });
+    assert.ok(!r.closures, "a non-numeric config gid must be ignored: " + bad);
+  });
+  /* and no config at all is still fine */
+  assert.ok(!L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`).closures);
+});
 test("parseSheetFragment: non-numeric gid → null", () => {
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,abc,3`), null);
 });

@@ -28,7 +28,7 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.196",
+  version: "0.197",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   /* How often to check whether a new build has been published. On a
@@ -65,6 +65,14 @@ window.DASH_CONFIG = {
      own API, so this caps how long the overlay can cover the board.
      Set it a little above your longest clip. */
   youtubeMaxMinutes: 6,
+  /* The gid of the ימים ללא לימודים tab. It lives here rather than in the
+     kiosk URL because the URL is baked into the running kiosk on the wall,
+     and changing it would mean restarting the session in a school nobody
+     can walk into today. A gid names a tab inside a document it cannot
+     identify, so it reveals nothing on its own — the document id stays on
+     the Pi, as it always has. A 6th gid in the URL overrides this. */
+  closuresGid: "304029529",
+
   schoolName: "תיכון השיטה",
 
   /* Wall-clock timezone for the board. Daylight saving is applied

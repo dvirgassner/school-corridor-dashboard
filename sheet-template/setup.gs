@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.195';
+var SCRIPT_VERSION = '0.196';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -84,6 +84,7 @@ var LIMITS = {
   examRoom: 12,
   eventTitle: 22,
   eventLocation: 12,
+  closureReason: 24,
   messageNormal: 90,
   /* Was 75, when the urgent strip truncated anything too wide for it and
      the cap was the only thing preventing a half-shown notice. The strip
@@ -134,8 +135,19 @@ var EVENT_FIXED = ['תאריך', 'כותרת', 'התחלה', 'סיום', 'מקו
    automatically the moment a sixth event is typed in. */
 var EVENT_MIN_ROWS = 5;
 
+/* ---------- ימים ללא לימודים ----------
+   Closures the ministry's calendar cannot know about: a school trip, an
+   activity off site, a strike. Deliberately the SAME tick-box shape as
+   אירועים, so the principal learns the pattern once and uses it twice.
+
+   'עד תאריך' is optional — blank means the closure lasts a single day,
+   which is the common case and should not cost a second date entry. */
+var CLOSURE_TAB = 'ימים ללא לימודים';
+var CLOSURE_FIXED = ['מתאריך', 'עד תאריך', 'סיבה'];
+
 /* tabs whose validation onEdit knows how to restore after a paste */
-var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות', 'הגדרות'];
+var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות', 'הגדרות',
+                 CLOSURE_TAB];
 
 /* The link header spells out what belongs in it, because "קישור" alone
    invites any URL. The board matches this column by its leading word,
@@ -197,6 +209,7 @@ function tabs_() {
     { name: 'מבחנים',  seed: seedExams_,    style: styleExams_ },
     { name: 'אירועים', seed: seedEvents_,   style: styleEvents_ },
     { name: 'הודעות',  seed: seedMessages_, style: styleMessages_ },
+    { name: CLOSURE_TAB, seed: seedClosures_, style: styleClosures_ },
     { name: 'הגדרות',  seed: seedSettings_, style: styleSettings_ }
   ];
 }
@@ -208,6 +221,7 @@ function applyRules_(sh, name) {
   if (name === 'אירועים') return rulesEvents_(sh);
   if (name === 'הודעות') return rulesMessages_(sh);
   if (name === 'הגדרות') return rulesSettings_(sh);
+  if (name === CLOSURE_TAB) return rulesClosures_(sh);
 }
 
 /**
@@ -297,7 +311,7 @@ function onEdit(e) {
        will paste no matter what the documentation says. */
     if (pasted) applyRules_(sh, name);
 
-    if (name === 'אירועים') {
+    if (name === 'אירועים' || name === CLOSURE_TAB) {
       ensureEventBoxes_(sh);        /* a new row gets its tick boxes */
       if (pasted) {
         /* a bulk edit has no single click to honour, so fall back to a
@@ -464,8 +478,12 @@ function eventColumns_(sh) {
     if (String(headers[i]).trim() === 'כולם') { allCol = i + 1; break; }
   }
   if (!allCol) return null;
-  var firstGrade = EVENT_FIXED.length + 1;
-  if (allCol <= firstGrade) return null;
+  /* The grade boxes always sit immediately before כולם, so their start
+     is derived from IT rather than from any one tab's fixed columns.
+     That is what lets these helpers serve both אירועים (5 fixed columns)
+     and ימים ללא לימודים (3) without either knowing about the other. */
+  var firstGrade = allCol - GRADES.length;
+  if (firstGrade < 2) return null;
   return {
     allCol: allCol,
     firstGrade: firstGrade,
@@ -979,48 +997,7 @@ function rulesEvents_(sh) {
   timeRule_(sh, 4);
   lenRule_(sh, 5, LIMITS.eventLocation, 'מקום');
 
-  var tickCount = GRADES.length + 1;
-  var firstGradeCol = EVENT_FIXED.length + 1;
-  ensureEventBoxes_(sh);
-
-  /* Conditional formatting is evaluated by the browser, so it reacts the
-     INSTANT a box is ticked — unlike onEdit, which is a server-side
-     trigger and lands a moment later. Painting exactly the redundant
-     grade boxes red gives immediate feedback about what is about to be
-     cleared, and it keeps working even with no script in the project. */
-  var lastCol = firstGradeCol + tickCount - 1;
-  var a1All = colLetter_(lastCol);
-  var a1First = colLetter_(firstGradeCol);
-  var a1LastGrade = colLetter_(lastCol - 1);
-  var marker = '$' + a1All + '2=TRUE';
-  var conflict = 'AND(' + marker + ', COUNTIF($' + a1First + '2:$' +
-                 a1LastGrade + '2, TRUE)>0)';
-
-  /* Two rules, so whichever box is about to be cleared is the one that
-     turns red: tick a grade and כולם goes red (it is what clears); tick
-     כולם and the grade boxes go red. */
-  var onAll = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=' + conflict)
-    .setBackground('#f4c7c3')
-    .setRanges([sh.getRange(2, lastCol, 200)])
-    .build();
-  var onGrades = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=AND(' + conflict + ', ' + a1First + '2=TRUE)')
-    .setBackground('#f4c7c3')
-    .setRanges([sh.getRange(2, firstGradeCol, 200, tickCount - 1)])
-    .build();
-
-  var rules = sh.getConditionalFormatRules().filter(function (r) {
-    /* drop our previous copies so re-running does not stack rules */
-    var c = r.getBooleanCondition();
-    return !c || String(c.getCriteriaValues()).indexOf(marker) < 0;
-  });
-  rules.push(onAll, onGrades);
-  sh.setConditionalFormatRules(rules);
-
-  if (!sh.getRange(2, firstGradeCol).getDataValidation()) {
-    throw new Error('לא נוצרו תיבות סימון בגיליון "אירועים".');
-  }
+  exclusiveTickRules_(sh);
 }
 
 /**
@@ -1072,10 +1049,15 @@ function ensureEventBoxes_(sh) {
 function lastEventRow_(sh) {
   var last = sh.getLastRow();
   if (last < 2) return 1;
-  var vals = sh.getRange(2, 1, last - 1, 2).getValues();   /* date, title */
+  /* Scan whatever the tab's fixed columns are, not a hardcoded two: the
+     closures tab keeps its reason in column 3, and a row holding only
+     that must still count as used. */
+  var cols = eventColumns_(sh);
+  var width = cols ? cols.firstGrade - 1 : 2;
+  var vals = sh.getRange(2, 1, last - 1, width).getValues();
   for (var i = vals.length - 1; i >= 0; i--) {
-    if (String(vals[i][0]).trim() !== '' || String(vals[i][1]).trim() !== '') {
-      return i + 2;
+    for (var c = 0; c < width; c++) {
+      if (String(vals[i][c]).trim() !== '') return i + 2;
     }
   }
   return 1;
@@ -1343,4 +1325,126 @@ function styleSettings_(sh) {
     '  בהירה — רקע לבן, למסדרון מואר\n' +
     '  צבעוני 1 — רקע כהה וכרטיסים צבעוניים בולטים\n  צבעוני 2 — רקע בהיר וגוון עדין לכל שכבה\n\n' +
     'המבנה, הגדלים והגופנים זהים בכל הערכות — רק הצבעים מתחלפים.');
+}
+
+/* ==================================================================
+   ימים ללא לימודים — closures the ministry's calendar cannot know about
+   ================================================================== */
+
+/**
+ * Example rows, written only into a genuinely empty tab.
+ *
+ * Both examples are deliberately dated in the PAST. A seeded row dated
+ * today would take effect the instant it was written: the כולם example
+ * would blank the entire board, so the principal's first sight of the
+ * feature would be an empty screen she never asked for. Past dates teach
+ * the shape and change nothing on the wall.
+ */
+function seedClosures_(sh) {
+  var from = new Date(); from.setDate(from.getDate() - 14);
+  var to = new Date();   to.setDate(to.getDate() - 12);
+  var trip = [from, to, 'טיול שנתי'];
+  var strike = [from, '', 'שביתה'];
+  GRADES.forEach(function (g, gi) {
+    trip.push(gi === 2 ? true : '');    /* ט׳ alone — a per-grade closure */
+    strike.push('');                    /* whole school, via כולם below */
+  });
+  trip.push('');
+  strike.push(true);
+  return seedIfEmpty_(sh, [trip, strike]);
+}
+
+function styleClosures_(sh) {
+  var TICKS = GRADES.concat(['כולם']);
+  writeHeader_(sh, CLOSURE_FIXED.concat(TICKS));
+
+  var firstGradeCol = CLOSURE_FIXED.length + 1;
+  sh.setColumnWidth(1, 120);
+  sh.setColumnWidth(2, 120);
+  sh.setColumnWidth(3, 300);
+  sh.setColumnWidths(firstGradeCol, TICKS.length, 60);
+
+  sh.getRange('A1').setNote(
+    'ימים שבהם אין לימודים מסיבה בית-ספרית — טיול שנתי, פעילות מחוץ\n' +
+    'לבית הספר, שביתה וכדומה.\n\n' +
+    'חופשות משרד החינוך כבר מוגדרות בלוח עצמו ואין צורך להזין אותן כאן.\n\n' +
+    'שורות הדוגמה מתוארכות לעבר ואינן משפיעות על הלוח — אפשר למחוק אותן.\n\n' +
+    NO_PII_NOTE);
+  sh.getRange('B1').setNote(
+    'אפשר להשאיר ריק — סגירה של יום אחד בלבד.\n' +
+    'לטיול או לאירוע רב-יומי: התאריך האחרון שבו אין לימודים.');
+  sh.getRange('C1').setNote(
+    'הטקסט שיוצג על הלוח, למשל "טיול שנתי".\n' +
+    'עד ' + LIMITS.closureReason + ' תווים.');
+  sh.getRange(1, firstGradeCol, 1, GRADES.length).setNote(
+    'לסמן ✓ בכל שכבה שאין לה לימודים.\n' +
+    'הלוח יסתיר את מערכת השעות של אותן שכבות בלבד, ויציג במקומה את הסיבה.');
+  sh.getRange(1, firstGradeCol + GRADES.length).setNote(
+    'אין לימודים בכל בית הספר — לסמן ✓ כאן במקום לסמן כל שכבה בנפרד.\n' +
+    'הלוח יציג מסך אחד עם הסיבה, בלי מערכת שעות ובלי הודעות.');
+}
+
+function rulesClosures_(sh) {
+  dateRule_(sh, 1);
+  dateRule_(sh, 2);
+  dateFlags_(sh, 1, 3);          /* flag a reason typed with no date */
+  lenRule_(sh, 3, LIMITS.closureReason, 'סיבה');
+  exclusiveTickRules_(sh);
+}
+
+/**
+ * Tick boxes on the grade columns, plus the conditional formatting that
+ * warns when כולם and an individual grade are ticked on the same row.
+ *
+ * Shared by אירועים and ימים ללא לימודים. Every column position comes
+ * from eventColumns_ rather than from either tab's own constants, so the
+ * two tabs can carry different fixed columns and still behave identically
+ * — and a third tab in the same shape would need no changes here at all.
+ */
+function exclusiveTickRules_(sh) {
+  var cols = eventColumns_(sh);
+  if (!cols) {
+    throw new Error('לא נמצאה עמודת "כולם" בגיליון "' + sh.getName() + '".');
+  }
+  ensureEventBoxes_(sh);
+  var firstGradeCol = cols.firstGrade;
+  var lastCol = cols.allCol;
+
+  /* Conditional formatting is evaluated by the browser, so it reacts the
+     INSTANT a box is ticked — unlike onEdit, which is a server-side
+     trigger and lands a moment later. Painting exactly the redundant
+     grade boxes red gives immediate feedback about what is about to be
+     cleared, and it keeps working even with no script in the project. */
+  var a1All = colLetter_(lastCol);
+  var a1First = colLetter_(firstGradeCol);
+  var a1LastGrade = colLetter_(lastCol - 1);
+  var marker = '$' + a1All + '2=TRUE';
+  var conflict = 'AND(' + marker + ', COUNTIF($' + a1First + '2:$' +
+                 a1LastGrade + '2, TRUE)>0)';
+
+  /* Two rules, so whichever box is about to be cleared is the one that
+     turns red: tick a grade and כולם goes red (it is what clears); tick
+     כולם and the grade boxes go red. */
+  var onAll = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=' + conflict)
+    .setBackground('#f4c7c3')
+    .setRanges([sh.getRange(2, lastCol, 200)])
+    .build();
+  var onGrades = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND(' + conflict + ', ' + a1First + '2=TRUE)')
+    .setBackground('#f4c7c3')
+    .setRanges([sh.getRange(2, firstGradeCol, 200, cols.gradeCount)])
+    .build();
+
+  var rules = sh.getConditionalFormatRules().filter(function (r) {
+    /* drop our previous copies so re-running does not stack rules */
+    var c = r.getBooleanCondition();
+    return !c || String(c.getCriteriaValues()).indexOf(marker) < 0;
+  });
+  rules.push(onAll, onGrades);
+  sh.setConditionalFormatRules(rules);
+
+  if (!sh.getRange(2, firstGradeCol).getDataValidation()) {
+    throw new Error('לא נוצרו תיבות סימון בגיליון "' + sh.getName() + '".');
+  }
 }

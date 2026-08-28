@@ -18,12 +18,9 @@ window.VACATIONS = [
   { from: "2027-04-13", to: "2027-04-28", title: "פסח" },
   { from: "2027-05-12", to: "2027-05-12", title: "יום העצמאות" },
   { from: "2027-06-10", to: "2027-06-11", title: "שבועות" },
-  /* Summer. The feed's own summer record is malformed (see MAX_DAYS in
-     tools/fetch-vacations.js), so this one is maintained by hand and is
-     deliberately CONSERVATIVE: it starts on 1 July, when every grade is
-     certainly out. High-school grades finish around 20 June, so late
-     June may also be a holiday — widen this if the school wants that.
-     Erring this way keeps the board running during school, which is the
-     safer mistake. */
-  { from: "2027-07-01", to: "2027-08-31", title: "חופשת הקיץ" }
+  /* Summer. The feed's own summer record is malformed — a 369-day range
+     that would blank the board for a year — so it is rejected there and
+     rebuilt here. 20 June is the high-school end of year; elementary
+     schools run to 1 July. */
+  { from: "2027-06-20", to: "2027-08-31", title: "חופשת הקיץ" }
 ];

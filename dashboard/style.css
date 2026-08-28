@@ -597,3 +597,16 @@
   #vacationnote { font-size: 104px; font-weight: 700; line-height: 1.15;
                   color: var(--ink-strong); text-align: center; }
   #vacationsub  { font-size: 44px; color: var(--muted); text-align: center; }
+
+  /* -- one grade out on its own (trip, outing) ------------------------
+     The card stays in the grid, named, carrying the reason instead of a
+     timetable. Removing it would leave a hole in the layout and tell a
+     passing pupil nothing about why their row vanished.
+
+     It deliberately does NOT reuse .periods.empty: that pseudo-element
+     says "יום הלימודים הסתיים", which would be a lie at 09:00 on the
+     morning of a school trip. */
+  .periods.closedpane { display: flex; align-items: center;
+                        justify-content: center; }
+  .closedmsg { font-size: 30px; font-weight: 600; line-height: 1.25;
+               text-align: center; padding: 0 14px; color: var(--ink-2); }

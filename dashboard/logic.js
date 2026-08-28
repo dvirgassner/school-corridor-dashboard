@@ -195,7 +195,8 @@
     sound:    ["סאונד", "קול", "Sound"],
     from:     ["מתאריך", "From"],
     until:    ["עד תאריך", "Until"],
-    active:   ["פעיל", "Active"]
+    active:   ["פעיל", "Active"],
+    reason:   ["סיבה", "Reason"]
   };
 
   /* Sheet text is written by school staff, so it can contain anything:
@@ -476,6 +477,62 @@
     return null;
   }
 
+  /* ---------- ימים ללא לימודים ----------
+     Closures the ministry's calendar cannot know about: a school trip, an
+     activity off site, a strike. The principal types them into the sheet,
+     with the same grade/כולם tick boxes the events tab uses.
+
+     Deliberately NOT merged into vacations.js: that file is regenerated
+     from the ministry feed every week, so anything typed there would be
+     silently overwritten. The two sources stay apart and are consulted
+     separately.
+
+     A blank "עד תאריך" means a single day — the common case, which should
+     not cost the principal a second date entry. */
+  function buildClosures(rows, grades) {
+    grades = grades || [];
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var from = parseSheetDate(pick(r, "from"));
+      var reason = pick(r, "reason");
+      /* Both are required. A row with a reason and no date is a half-typed
+         entry, and guessing a date for it could blank the board on a day
+         nobody chose. */
+      if (!from || !reason) return;
+      var to = parseSheetDate(pick(r, "until")) || from;
+      if (to < from) to = from;          /* dates entered backwards */
+      var ticked = grades.filter(function (g) { return isChecked(r[g]); });
+      /* Ticking every grade one by one means the same thing as כולם. */
+      var all = ALL_LABELS.some(function (k) { return isChecked(r[k]); }) ||
+                (grades.length > 0 && ticked.length === grades.length);
+      out.push({
+        from: from,
+        to: to,
+        reason: reason,
+        all: all,
+        grades: all ? [] : ticked
+      });
+    });
+    return out;
+  }
+
+  /* The closure in force on a date. A whole-school closure wins outright
+     over any per-grade one, because the board it produces replaces the
+     entire screen rather than a single card.
+
+     Pass a grade to ask "is THIS grade out today"; omit it to ask only
+     about the whole school. */
+  function closureFor(d, list, grade) {
+    var k = dateKey(d), i, c, perGrade = null;
+    for (i = 0; i < (list || []).length; i++) {
+      c = list[i];
+      if (!c || k < c.from || k > c.to) continue;
+      if (c.all) return c;
+      if (grade && !perGrade && c.grades.indexOf(grade) >= 0) perGrade = c;
+    }
+    return perGrade;
+  }
+
   /* ---------- status / error indicator ----------
      The board is unattended, so a fault has to be visible on the screen
      itself: the principal reads this line and reports it. Only one
@@ -586,9 +643,11 @@
     } else {
       if (!/^[A-Za-z0-9_-]+$/.test(token)) return null;
     }
-    /* 4 gids = the original four tabs; an optional 5th is the settings
-       tab (theme). Older kiosk URLs with 4 keep working. */
-    if (gids.length !== 4 && gids.length !== 5) return null;
+    /* 4 gids = the original four tabs; a 5th is the settings tab (theme),
+       a 6th is ימים ללא לימודים. Older kiosk URLs with 4 or 5 keep
+       working, and a board given fewer gids simply does without those
+       features rather than refusing to start. */
+    if (gids.length < 4 || gids.length > 6) return null;
     for (var i = 0; i < gids.length; i++) {
       if (!/^\d+$/.test(gids[i])) return null;
     }
@@ -605,7 +664,8 @@
       events:   url(gids[2]),
       messages: url(gids[3])
     };
-    if (gids.length === 5) out.settings = url(gids[4]);
+    if (gids.length >= 5) out.settings = url(gids[4]);
+    if (gids.length >= 6) out.closures = url(gids[5]);
     return out;
   }
 
@@ -623,6 +683,8 @@
     hebrewKey: hebrewKey,
     dayOfTheDay: dayOfTheDay,
     vacationOn: vacationOn,
+    buildClosures: buildClosures,
+    closureFor: closureFor,
     buildSettings: buildSettings,
     parseSheetFragment: parseSheetFragment,
     clean: clean,

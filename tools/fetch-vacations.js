@@ -78,7 +78,11 @@ async function main() {
   /* The school year the feed describes ends in the year of its last
      entry (Shavuot, in June). Deriving the summer year from that keeps
      this file correct after next year's refresh instead of quietly
-     ageing into the past. */
+     ageing into the past.
+
+     Summer starts on 20 June because this is a HIGH school; elementary
+     schools run to 1 July. Change the date here if the board is ever
+     reused for a younger school. */
   const summerYear = Number(list[list.length - 1].to.slice(0, 4));
 
   const rows = list.map((v) =>
@@ -98,14 +102,11 @@ async function main() {
    ================================================================== */
 window.VACATIONS = [
 ${rows},
-  /* Summer. The feed's own summer record is malformed (see MAX_DAYS in
-     tools/fetch-vacations.js), so this one is maintained by hand and is
-     deliberately CONSERVATIVE: it starts on 1 July, when every grade is
-     certainly out. High-school grades finish around 20 June, so late
-     June may also be a holiday — widen this if the school wants that.
-     Erring this way keeps the board running during school, which is the
-     safer mistake. */
-  { from: "${summerYear}-07-01", to: "${summerYear}-08-31", title: "חופשת הקיץ" }
+  /* Summer. The feed's own summer record is malformed — a 369-day range
+     that would blank the board for a year — so it is rejected there and
+     rebuilt here. 20 June is the high-school end of year; elementary
+     schools run to 1 July. */
+  { from: "${summerYear}-06-20", to: "${summerYear}-08-31", title: "חופשת הקיץ" }
 ];
 `;
   fs.writeFileSync(OUT, body, "utf8");

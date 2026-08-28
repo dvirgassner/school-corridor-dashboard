@@ -124,6 +124,26 @@ function populatedSheet() {
     ['ההסעה יוצאת ב-14:00', 'דחופה', '', '']
   ]);
 
+  /* Closures the ministry calendar cannot know about. Present here as a
+     POPULATED tab, because the pinned-write test only proves setup() does
+     not touch real content if the fixture actually holds some — a tab
+     missing from the fixture gets created and seeded, which is a
+     different code path and a much weaker check. */
+  const closures = ss.addSheet('ימים ללא לימודים');
+  closures.getRange(1, 1, 1, 10).setValues([
+    ['מתאריך', 'עד תאריך', 'סיבה'].concat(GRADES).concat(['כולם'])
+  ]);
+  closures.getRange(2, 1, 3, 10).setValues([
+    /* a multi-day closure for one grade */
+    [new Date(2026, 8, 8), new Date(2026, 8, 10), 'טיול שנתי',
+     '', '', true, '', '', '', ''],
+    /* a single-day, whole-school closure: no "to" date at all */
+    [new Date(2026, 9, 15), '', 'שביתה',
+     '', '', '', '', '', '', true],
+    /* a reason with no date — the shape dateFlags_ exists to catch */
+    ['', '', 'פעילות מחוץ לבית הספר', '', '', '', '', '', '', '']
+  ]);
+
   const settings = ss.addSheet('הגדרות');
   settings.getRange(1, 1, 1, 2).setValues([['הגדרה', 'ערך']]);
   settings.getRange(2, 1, 2, 2).setValues([

@@ -562,9 +562,20 @@ test("parseSheetFragment: missing token or gids → null", () => {
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}`), null);
 });
 test("parseSheetFragment: wrong number of gids → null", () => {
-  /* 4 tabs, or 5 with the optional settings tab; anything else is a typo */
+  /* 4 tabs, 5 with the settings tab, 6 with ימים ללא לימודים; anything
+     outside that range is a typo */
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2`), null);
-  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4,5`), null);
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4,5,6`), null);
+});
+test("parseSheetFragment: a 6th gid becomes the closures tab", () => {
+  const f6 = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4,5`);
+  assert.ok(f6 && f6.closures, "the 6th gid was not read");
+  assert.ok(/gid=5/.test(f6.closures), "the closures URL used the wrong gid");
+  /* older kiosk URLs must keep working, without a closures URL */
+  const f4 = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3`);
+  assert.ok(f4 && !f4.closures, "a 4-gid URL should carry no closures tab");
+  const f5 = L.parseSheetFragment(`#t=${TOKEN}&g=0,1,2,3,4`);
+  assert.ok(f5 && f5.settings && !f5.closures);
 });
 test("parseSheetFragment: non-numeric gid → null", () => {
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=0,1,abc,3`), null);
@@ -982,6 +993,90 @@ test("the three days that used to show a pane to a closed school are covered", (
    ["2026-12-10", "יום זכויות האדם, during Hanukkah"],
    ["2027-04-23", "יום הספר, during Pesach"]]
     .forEach(([k, why]) => assert.ok(L.vacationOn(D(k), v), k + " — " + why));
+});
+
+/* ---------- ימים ללא לימודים (the sheet's own closures) ----------
+   The ministry feed cannot know about a trip, an outing or a strike, so
+   the principal types those into the sheet. The board must treat them
+   exactly as carefully as the published calendar — and must fail SAFE:
+   a half-typed or unreadable row leaves the timetable on screen rather
+   than blanking a working board. */
+const GR = ["ז׳", "ח׳", "ט׳", "י׳"];
+
+test("buildClosures: a whole-school closure via כולם", () => {
+  const c = L.buildClosures([
+    { "מתאריך": "2026-11-10", "עד תאריך": "", "סיבה": "שביתה", "כולם": "TRUE" }
+  ], GR);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].all, true);
+  assert.equal(c[0].reason, "שביתה");
+  /* a blank end date means a single day */
+  assert.equal(c[0].from, "2026-11-10");
+  assert.equal(c[0].to, "2026-11-10");
+});
+
+test("buildClosures: a multi-day, single-grade closure", () => {
+  const c = L.buildClosures([
+    { "מתאריך": "10/11/2026", "עד תאריך": "12/11/2026",
+      "סיבה": "טיול שנתי", "ט׳": "TRUE" }
+  ], GR);
+  assert.equal(c[0].all, false);
+  assert.deepEqual(c[0].grades, ["ט׳"]);
+  assert.equal(c[0].to, "2026-11-12");
+});
+
+test("buildClosures: ticking every grade means the whole school", () => {
+  const row = { "מתאריך": "2026-11-10", "סיבה": "יום מעשים טובים" };
+  GR.forEach((g) => { row[g] = "TRUE"; });
+  assert.equal(L.buildClosures([row], GR)[0].all, true);
+});
+
+test("buildClosures: a row missing its date or reason is ignored", () => {
+  assert.equal(L.buildClosures([
+    { "מתאריך": "", "סיבה": "טיול שנתי", "כולם": "TRUE" },
+    { "מתאריך": "2026-11-10", "סיבה": "", "כולם": "TRUE" }
+  ], GR).length, 0, "a half-typed row must never blank the board");
+});
+
+test("buildClosures: dates entered backwards do not vanish", () => {
+  const c = L.buildClosures([
+    { "מתאריך": "2026-11-12", "עד תאריך": "2026-11-10",
+      "סיבה": "טיול", "כולם": "TRUE" }
+  ], GR);
+  assert.equal(c[0].to, "2026-11-12", "should collapse to the single day");
+});
+
+test("closureFor: whole-school beats per-grade on the same day", () => {
+  const c = L.buildClosures([
+    { "מתאריך": "2026-11-10", "סיבה": "טיול שנתי", "ט׳": "TRUE" },
+    { "מתאריך": "2026-11-10", "סיבה": "שביתה", "כולם": "TRUE" }
+  ], GR);
+  const d = new Date("2026-11-10T12:00:00");
+  assert.equal(L.closureFor(d, c).reason, "שביתה");
+  assert.equal(L.closureFor(d, c, "ז׳").reason, "שביתה",
+    "a grade with no closure of its own is still shut by the school-wide one");
+});
+
+test("closureFor: a per-grade closure touches only that grade", () => {
+  const c = L.buildClosures([
+    { "מתאריך": "2026-11-10", "עד תאריך": "2026-11-12",
+      "סיבה": "טיול שנתי", "ט׳": "TRUE" }
+  ], GR);
+  const d = new Date("2026-11-11T12:00:00");
+  assert.equal(L.closureFor(d, c), null, "not a whole-school closure");
+  assert.equal(L.closureFor(d, c, "ט׳").reason, "טיול שנתי");
+  assert.equal(L.closureFor(d, c, "ח׳"), null, "another grade must be unaffected");
+});
+
+test("closureFor: outside the range, and with no data", () => {
+  const c = L.buildClosures([
+    { "מתאריך": "2026-11-10", "עד תאריך": "2026-11-12",
+      "סיבה": "טיול", "ט׳": "TRUE" }
+  ], GR);
+  assert.equal(L.closureFor(new Date("2026-11-09T12:00:00"), c, "ט׳"), null);
+  assert.equal(L.closureFor(new Date("2026-11-13T12:00:00"), c, "ט׳"), null);
+  assert.equal(L.closureFor(new Date("2026-11-11T12:00:00"), [], "ט׳"), null);
+  assert.equal(L.closureFor(new Date("2026-11-11T12:00:00"), null, "ט׳"), null);
 });
 
 /* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */

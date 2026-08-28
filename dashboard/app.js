@@ -81,7 +81,12 @@ function buildModel(csv, today) {
                         parseCsv(csv.events).rows, today, schedule.grades),
     messages: buildMessages(parseCsv(csv.messages).rows, today),
     /* settings tab is optional — absent means defaults */
-    settings: buildSettings(csv.settings ? parseCsv(csv.settings).rows : [])
+    settings: buildSettings(csv.settings ? parseCsv(csv.settings).rows : []),
+    /* likewise the closures tab: a board whose URL predates it simply
+       has no school-specific closures, and still shows every ministry
+       vacation from vacations.js */
+    closures: buildClosures(
+      csv.closures ? parseCsv(csv.closures).rows : [], schedule.grades)
   };
 }
 
@@ -141,7 +146,17 @@ async function loadData() {
       try { settings = await fetchCsv(SHEETS.settings); }
       catch (e) { console.error("settings tab unreadable, using defaults:", e); }
     }
-    MODEL = buildModel({ schedule, exams, events, messages, settings }, today);
+    /* The closures tab is optional in the same way, and its failure mode
+       is deliberately the safe one: unreadable means "no closure", so the
+       board keeps showing the timetable. The opposite default would blank
+       a working board because of a transient fetch error. */
+    let closures = "";
+    if (SHEETS.closures) {
+      try { closures = await fetchCsv(SHEETS.closures); }
+      catch (e) { console.error("closures tab unreadable, ignoring:", e); }
+    }
+    MODEL = buildModel(
+      { schedule, exams, events, messages, settings, closures }, today);
     markUpdates(MODEL, today);
     FETCHED_AT = Date.now();
     SHEETS_OK = true;
@@ -318,6 +333,17 @@ function renderGrades() {
     if (gi < 6) {
       card.style.gridColumn = (gi % 3) + 1;
       card.style.gridRow = Math.floor(gi / 3) + 1;
+    }
+    /* This grade alone is out — a trip, an outing. The card stays on the
+       board, named, carrying the reason: removing it would leave a hole
+       in the grid and tell a passing pupil nothing about why. */
+    const shut = closureFor(NOW(), MODEL.closures || [], name);
+    if (shut) {
+      card.innerHTML = `
+      <h2><span class="chip"></span>כיתה ${esc(name)}</h2>
+      <div class="periods closedpane"><div class="closedmsg">${esc(shut.reason)}</div></div>`;
+      grid.insertBefore(card, $("leftcol"));
+      return;
     }
     const rows = periods
       .filter((p) => p.subjects[name])
@@ -633,13 +659,22 @@ function setSchoolName(name) {
    it to one DOM write per change instead of one per second. */
 let VACATION_KEY = null;
 function applyVacation() {
-  const vac = vacationOn(NOW(), window.VACATIONS || []);
-  const key = vac ? vac.from + "|" + vac.title : "";
+  const now = NOW();
+  /* Two independent reasons the school can be shut, checked in order of
+     authority: the ministry's published calendar, then whatever the
+     principal typed into the sheet. A whole-school closure produces the
+     same screen as a vacation — from the corridor there is no difference
+     between "פסח" and "שביתה", and inventing one would only be noise. */
+  const vac = vacationOn(now, window.VACATIONS || []);
+  const shut = MODEL && MODEL.closures
+    ? closureFor(now, MODEL.closures) : null;
+  const label = vac ? vac.title : (shut && shut.all ? shut.reason : null);
+  const key = label || "";
   if (key === VACATION_KEY) return;
   VACATION_KEY = key;
-  document.body.classList.toggle("vacation", !!vac);
+  document.body.classList.toggle("vacation", !!label);
   const el = $("vacationnote");
-  if (el) el.textContent = vac ? vac.title : "";
+  if (el) el.textContent = label || "";
 }
 
 function tick() {
@@ -666,7 +701,10 @@ function tick() {
     p.classList.toggle("now", nowMin >= s && nowMin < e);
   });
 
-  document.querySelectorAll(".periods").forEach((c) => {
+  /* ":not(.closedpane)" matters: a closed grade's pane holds no .period
+     rows, so without it the loop below would call it an empty day and
+     paint "יום הלימודים הסתיים" over the closure reason. */
+  document.querySelectorAll(".periods:not(.closedpane)").forEach((c) => {
     const rows = [...c.querySelectorAll(".period")];
     if (!rows.length) {                    /* no classes at all today */
       c.classList.add("empty");

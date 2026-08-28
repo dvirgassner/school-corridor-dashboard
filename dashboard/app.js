@@ -41,6 +41,13 @@ const $ = (id) => document.getElementById(id);
    demo mode it defaults to 08:10 so a visitor sees a full school day. */
 const TIME_OVERRIDE = new URLSearchParams(location.search).get("time") ||
                       (DEMO ? "08:10" : null);
+/* ?palette=v2 previews a proposed colour set. Preview only: the board on
+   the wall never carries this parameter, so shipping the values is safe. */
+const PALETTE = new URLSearchParams(location.search).get("palette");
+if (PALETTE && /^[a-z0-9]{1,8}$/.test(PALETTE)) {
+  document.documentElement.setAttribute("data-palette", PALETTE);
+}
+
 /* ?date=YYYY-MM-DD previews another calendar day (day-of-the-day strip,
    which weekday's timetable shows). Preview only. */
 const DATE_OVERRIDE = new URLSearchParams(location.search).get("date");

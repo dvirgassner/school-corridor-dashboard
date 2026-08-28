@@ -127,6 +127,10 @@
     --border:      rgba(23,23,58,0.14);
     --chipink:     #ffffff;
     --nowmix:      26%;
+    /* How much accent goes into the white card. Measured: at 12% the six
+       panes differ by an OKLab ΔE of only 1.7 at the closest pair, which
+       is why ח and י"א read as the same colour across a corridor. */
+    --wash: 12%;
     /* same order, stepped for white cards */
     --g1: #2f9e00;  /* green  — ז    */
     --g2: #1f6feb;  /* blue   — ח    */
@@ -138,8 +142,36 @@
     --critical: #d92d20;
     --warning:  #a35a00;
   }
+
+  /* PREVIEW ONLY — reached with ?palette=v2, never by the board on the
+     wall, whose URL carries no such parameter. It exists so a colour
+     change can be judged at real size on the real TV before anyone
+     commits to it. Delete this block once the decision is made, either
+     by adopting the values above or by dropping them.
+
+     Worst pane pair goes 1.7 → 8.1 (OKLab ΔE ×100), which clears the
+     target of 8 rather than merely improving on a bad number. Body text
+     stays at 8.0:1.
+
+     Three things had to move together, which is why the obvious fix (a
+     new hue for י"א) does nothing on its own — at a 12% wash NO choice
+     of six colours separates, because every pane is within a whisker of
+     white:
+
+       • the wash, 12% → 40%, which does most of the work;
+       • two hues out of the crowded cool end;
+       • the PAGE, lightened, because deepening the panes walked the blue
+         and violet cards straight into the old blue-grey background —
+         they came within ΔE 4.4 of it, worse than the fault being fixed.
+         The cards now clear the page by 9.7. */
+  :root[data-theme="colorful2"][data-palette="v2"] {
+    --wash: 40%;
+    --page: #d8dcea;
+    --g5: #5b21b6;  /* י"א — true violet, away from ח's blue */
+    --g6: #00786a;  /* י"ב — teal-green, away from blue      */
+  }
   :root[data-theme="colorful2"] .card:not(#exams):not(#dayofday) {
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    background: color-mix(in srgb, var(--accent) var(--wash, 12%), var(--surface));
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   }
   /* On this theme the cards are white with a coloured wash, so a red-tinted

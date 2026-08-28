@@ -170,6 +170,34 @@
     --g5: #5b21b6;  /* י"א — true violet, away from ח's blue */
     --g6: #00786a;  /* י"ב — teal-green, away from blue      */
   }
+
+  /* PREVIEW ONLY — paler alternatives, after v2 was judged too strong.
+     The same two hues throughout; only the wash and the page move.
+
+     The trade is monotonic and there is no clever way round it: paler
+     panes are closer to each other. Separation at the closest pair —
+
+        v2  40%   8.1   clears the target of 8
+        v3  28%   5.6
+        v4  24%   4.7
+
+     Everything below 8 leans on the fact that colour is not the only
+     cue: each card is titled "כיתה …" in 26px type, so the wash is
+     reinforcement rather than the identity itself. The pair that was
+     reported unreadable, ח against י"א, goes from 1.7 to 5.6 or 4.7 —
+     both comfortably past the point where they read as two colours. */
+  :root[data-theme="colorful2"][data-palette="v3"] {
+    --wash: 28%;
+    --page: #e0e3ef;
+    --g5: #5b21b6;
+    --g6: #00786a;
+  }
+  :root[data-theme="colorful2"][data-palette="v4"] {
+    --wash: 24%;
+    --page: #e8eaf3;
+    --g5: #5b21b6;
+    --g6: #00786a;
+  }
   :root[data-theme="colorful2"] .card:not(#exams):not(#dayofday) {
     background: color-mix(in srgb, var(--accent) var(--wash, 12%), var(--surface));
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);

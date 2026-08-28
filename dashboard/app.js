@@ -848,6 +848,11 @@ addEventListener("resize", fit);
 refresh();
 setInterval(refresh, CFG.refreshSeconds * 1000);
 setInterval(tick, 5000);
+
+/* The last line to run. index.html's boot watchdog looks for this: if the
+   page is up but this was never set, something failed on the way here and
+   the board reloads itself rather than standing white on a wall. */
+window.__boardBooted = true;
 setInterval(advancePages, 8000);
 setInterval(maybePlayVideo, 60000);
 setInterval(checkForNewVersion, CFG.updateCheckMinutes * 60000);

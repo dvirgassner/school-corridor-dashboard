@@ -24,6 +24,44 @@
     if (t) document.documentElement.setAttribute("data-theme", t);
   } catch (e) { /* no storage → the default theme, as before */ }
 </script>
+<!-- Boot watchdog. A corridor board has nobody to press reload, so a page
+     that comes up wrong stays wrong until someone drives to the school.
+     That happened: a failed fetch for style.css was answered with the HTML
+     shell, leaving a white screen with no stylesheet and no script — and
+     because app.js never ran, the update check that would have reloaded it
+     never ran either. The page could not heal itself by design.
+
+     So this checks, from the head, that the board actually came up: that
+     the stylesheet applied (its custom properties resolve) and that app.js
+     reached its last line. If not, reload. Backs off after a few tries so
+     a genuinely offline board is not reloading every few seconds all night,
+     but never gives up entirely — the network usually does come back. -->
+<script>
+  (function () {
+    var KEY = "dash-boot-tries";
+    function tries() {
+      try { return +(sessionStorage.getItem(KEY) || 0); } catch (e) { return 0; }
+    }
+    function check() {
+      var styled = !!getComputedStyle(document.documentElement)
+                     .getPropertyValue("--page").trim();
+      var booted = window.__boardBooted === true;
+      if (styled && booted) {
+        try { sessionStorage.removeItem(KEY); } catch (e) {}
+        return;
+      }
+      var n = tries() + 1;
+      try { sessionStorage.setItem(KEY, n); } catch (e) {}
+      console.error("board did not come up (styled=" + styled +
+                    " booted=" + booted + ") — reload " + n);
+      location.reload();
+    }
+    /* later each time: 20s, 40s, 60s, then every 2 minutes */
+    var n = tries();
+    var wait = n < 3 ? 20000 + n * 20000 : 120000;
+    addEventListener("load", function () { setTimeout(check, wait); });
+  })();
+</script>
 </head>
 <body>
 <div id="stage">

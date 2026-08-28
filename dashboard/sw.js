@@ -19,7 +19,7 @@
    straight through: their freshness is the app's business, and it
    already falls back to localStorage when they fail.
    ================================================================== */
-const CACHE = "corridor-board-v1";
+const CACHE = "corridor-board-v2";
 
 const CORE = [
   "./",
@@ -69,7 +69,18 @@ self.addEventListener("fetch", (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(req, { ignoreSearch: true })
-        .then((hit) => hit || caches.match("./index.html")))
+      .catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => {
+        if (hit) return hit;
+        /* Fall back to the shell ONLY for a page navigation. This used to
+           return index.html for ANY uncached miss, which meant a fetch that
+           failed for style.css or app.js was answered with HTML. The browser
+           then had a page with no stylesheet and no script: a white screen
+           that never recovered, because app.js never ran and so neither did
+           the update check that would have reloaded it. Letting the asset
+           fail honestly is far better — the boot watchdog in index.html
+           notices and reloads. */
+        if (req.mode === "navigate") return caches.match("./index.html");
+        return Response.error();
+      }))
   );
 });

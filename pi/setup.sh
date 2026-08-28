@@ -4,6 +4,7 @@
 # Usage:
 #   DASH_URL="https://user.github.io/repo/dashboard/" \
 #   [HEALTHCHECK_URL="https://hc-ping.com/xxxx"] \
+#   [TV_HEALTHCHECK_URL="https://hc-ping.com/yyyy"] \
 #   bash pi/setup.sh
 #
 # Idempotent: safe to run again after changing the URL.
@@ -12,6 +13,7 @@ set -euo pipefail
 
 DASH_URL="${DASH_URL:-}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
+TV_HEALTHCHECK_URL="${TV_HEALTHCHECK_URL:-}"
 if [ -z "$DASH_URL" ]; then
   cat >&2 <<'USAGE'
 Set DASH_URL first. It must include the sheet fragment, which is what
@@ -105,6 +107,13 @@ echo "==> Forcing the HDMI output on, whatever the TV is doing"
 # "video=HDMI-A-1:1920x1080@60D" pins the mode; the trailing D forces the
 # output on even with no EDID to read. Idempotent, and left alone if
 # someone has already set a video= of their own.
+#
+# !! This setting BREAKS HDMI-CEC. A forced connector skips the driver's
+# detect() path, which is where the CEC physical address is read from the
+# EDID; without it every CEC command fails with ENONET and the TV on/off
+# cron jobs below do nothing at all — silently, since they discard their
+# output. cec-fix.sh, installed further down, un-forces the connector once
+# the system is up and gets CEC back. Do not remove one without the other.
 CMDLINE=/boot/firmware/cmdline.txt
 [ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
 if [ -f "$CMDLINE" ]; then
@@ -142,6 +151,7 @@ cat > "$HOME/.dashboard-env" <<EOF
 # edit the URL here and reboot.
 export DASH_URL="$DASH_URL"
 export HEALTHCHECK_URL="$HEALTHCHECK_URL"
+export TV_HEALTHCHECK_URL="$TV_HEALTHCHECK_URL"
 EOF
 chmod 600 "$HOME/.dashboard-env"    # token — keep it to this user
 
@@ -296,7 +306,14 @@ else
   echo "    no compositor config found — use Ctrl+Alt+F2 (text console)"
 fi
 
-echo "==> Installing cron jobs (screen schedule, heartbeat, nightly reboot)"
+echo "==> Repairing HDMI-CEC (undoes what the forced video= mode costs)"
+if [ -x "$(dirname "$0")/cec-fix.sh" ]; then
+  sudo "$(dirname "$0")/cec-fix.sh" || echo "    !! cec-fix.sh failed — the TV schedule will not work" >&2
+else
+  echo "    !! pi/cec-fix.sh not found; the TV on/off schedule will not work" >&2
+fi
+
+echo "==> Installing cron jobs (screen schedule, heartbeat, TV probe)"
 CRON_TMP="$(mktemp)"
 crontab -l 2>/dev/null | grep -v "corridor-board" > "$CRON_TMP" || true
 cat >> "$CRON_TMP" <<EOF
@@ -310,6 +327,14 @@ cat >> "$CRON_TMP" <<EOF
 EOF
 if [ -n "$HEALTHCHECK_URL" ]; then
   echo "*/10 * * * * curl -fsS -m 10 --retry 3 \"$HEALTHCHECK_URL\" >/dev/null 2>&1 # corridor-board" >> "$CRON_TMP"
+fi
+# The TV gets its OWN check, so "the Pi died" and "the TV died" are
+# different alerts rather than one ambiguous one. Only the connector can
+# be read without CEC, and the connector cannot tell standby from on —
+# see pi/tv-probe.sh.
+if [ -n "$TV_HEALTHCHECK_URL" ]; then
+  install -m 0755 "$(dirname "$0")/tv-probe.sh" "$HOME/tv-probe.sh"
+  echo "*/10 * * * * $HOME/tv-probe.sh # corridor-board" >> "$CRON_TMP"
 fi
 crontab "$CRON_TMP"
 rm -f "$CRON_TMP"

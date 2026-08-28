@@ -58,6 +58,22 @@ As a backup, set the TV's **own On/Off timers** to the same hours
 (General → System Manager → Time → On/Off Timer). If CEC ever fails, the
 TV still follows the schedule on its own.
 
+**Do set those timers.** CEC is fragile here: pinning the HDMI mode (which
+the Pi does so it boots with a picture) disables CEC outright unless
+`pi/cec-fix.sh` is installed, and the failure is silent because the cron
+jobs discard their output. The TV's own timer is the one mechanism that
+does not depend on the Pi at all.
+
+Anynet+ (HDMI-CEC) must be ON for any of this: General → External Device
+Manager → Anynet+ (HDMI-CEC).
+
+To check CEC is alive from the Pi:
+
+```bash
+cec-ctl -d /dev/cec0 | grep -i "Physical Address"   # f.f.f.f means broken
+echo "pow 0" | cec-client -s -d 1 | grep "power status"
+```
+
 ## Burn-in: what the board already does
 
 The S95B is a QD-OLED, and a static dashboard is the worst-case content

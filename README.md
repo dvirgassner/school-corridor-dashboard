@@ -66,11 +66,43 @@ Useful URL parameters:
 | `dashboard/config.js` | display settings; contains **no** sheet URLs by design |
 | `dashboard/logic.js` | pure functions (dates, gematria, parsing) — unit-tested |
 | `dashboard/days.js` | the "day of the day" calendar (Israeli + international) |
+| `dashboard/vacations.js` | **generated** — school-closure dates from the Ministry of Education |
 | `dashboard/app.js` | everything touching the DOM, network, and clock |
 | [`sheet-template/`](sheet-template/) | Apps Script that builds the Google Sheet, plus setup steps |
 | [`pi/`](pi/) | Raspberry Pi provisioning scripts and walk-through |
-| [`tests/`](tests/) | `node tests/run.js` — 111 tests, no dependencies |
+| [`tools/`](tools/) | `fetch-vacations.js` — rebuilds `vacations.js` from the ministry feed |
+| `.github/workflows/` | weekly job that re-runs that tool and commits any change |
+| [`tests/`](tests/) | `node tests/run.js` — 188 tests, no dependencies |
 | [`docs/`](docs/) | design spec, decisions, admin guide, TV settings, exercises |
+
+## School holidays
+
+The board goes quiet on days the school is shut: header, clock and one
+line naming the vacation, nothing else. Those dates are **generated**
+into `dashboard/vacations.js` from the Ministry of Education's published
+feed, refreshed weekly by a GitHub Action:
+
+```bash
+node tools/fetch-vacations.js        # or let the Action do it
+```
+
+The board cannot read that feed directly — it sends no CORS headers — so
+the dates ship as a plain script from the board's own origin.
+
+Two traps the tool handles, both of which would put a wrong board on a
+wall:
+
+- the feed contains one malformed 369-day "summer" record, which taken
+  literally blanks the board for a year. Ranges over 100 days are
+  rejected and summer is rebuilt from the school year instead.
+- vacations are **ranges**. An earlier version marked single Hebrew dates
+  and so covered only the first day of each break — 37 days uncovered,
+  and the whole Hanukkah break missed, because Kislev 25 falls the day
+  before the ministry's break starts. A test now checks every day of
+  every published range.
+
+Closures the ministry cannot know about — a trip, a strike — go in the
+sheet's `ימים ללא לימודים` tab instead, per grade or for everyone.
 
 ## Running the tests
 

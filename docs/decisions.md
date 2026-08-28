@@ -199,3 +199,87 @@ was caught, most by several tests at once.
 No destructive rebuild was kept, not even a hidden one. Starting a tab
 over means deleting it by hand and re-running `setup`, which cannot
 happen by accident.
+
+## Why the HDMI mode is forced, and why that needs undoing afterwards
+
+The Pi pins its HDMI mode in `cmdline.txt`:
+
+    video=HDMI-A-1:1920x1080@60D
+
+Without it, a reboot while the TV is asleep comes up headless — wlroots
+reports a NOOP output and Chromium sizes itself to nothing, leaving a
+board that is blank until someone drives to the school.
+
+The cost was invisible for weeks. Forcing a connector skips the driver's
+`detect()` path, and `detect()` is where HDMI-CEC reads its physical
+address out of the EDID. So the fix for the blank screen disabled the TV
+on/off schedule: physical address `f.f.f.f`, every transmit failing with
+`ENONET`, and the cron jobs discarding their output so nothing ever said
+so. The TV was only going dark because of its own idle timer.
+
+The vc4 driver refuses a manually supplied address, so re-detecting is
+the only route back. `pi/cec-fix.sh` therefore boots forced and
+un-forces 60 seconds later, keeping both properties.
+
+Un-forcing is safe with the TV asleep because **a set in standby still
+asserts hotplug and still answers EDID** — measured, not assumed. The
+same measurement is why the TV monitor has to speak CEC: `/sys` reports
+`connected` with a full EDID whether the screen is showing the board or
+fast asleep, so it can never answer "is the TV on".
+
+The general lesson: a workaround that forces a subsystem's state can
+disable a second subsystem that reads the same state honestly. Both
+scripts carry a comment pointing at the other.
+
+## Why vacation dates are generated, not fetched
+
+The board goes quiet on days the school is shut, from the Ministry of
+Education's published calendar. It cannot read that feed directly — the
+ministry sends no CORS headers — so `tools/fetch-vacations.js` fetches it
+in CI and commits `dashboard/vacations.js`, which the board loads from
+its own origin. A weekly Action keeps it current, so nobody has to
+remember in August.
+
+Two things the tool must not take at face value:
+
+- The feed contains a malformed `חופשת קיץ` record spanning 369 days.
+  Believed literally it marks every school day as a vacation and blanks
+  the board for a year, so ranges over 100 days are rejected and summer
+  is rebuilt from the school year (20 June for a high school).
+- Vacations are **ranges**. The first implementation marked single Hebrew
+  dates, which covered only the opening day of each break: 37 days
+  uncovered, and Hanukkah missed entirely because Kislev 25 falls the day
+  before the ministry's break begins. A test now walks every day of every
+  published range.
+
+Closures the ministry cannot know about — a trip, an outing, a strike —
+live in the sheet instead, in `ימים ללא לימודים`, per grade or for
+everyone. Those are deliberately kept out of `vacations.js`, which is
+overwritten wholesale every week.
+
+A whole-school closure from the sheet does **not** produce the quiet
+screen. It speaks through the grade cards, because "טיול שנתי" is more
+use to a passing pupil than a generic headline.
+
+## Why a tab id sits in `config.js`
+
+`dashboard/config.js` names the gid of the closures tab. That looks like
+a violation of "the sheet's address lives only on the Pi", and it is
+worth being precise about why it is not.
+
+The document id identifies the sheet and must stay off a public
+repository. A **gid** names a tab *inside* a document it cannot identify;
+on its own it opens nothing. So the two are not equally sensitive.
+
+The reason it is there at all: the board's gids travel in the URL
+fragment, which is baked into the kiosk process running on the wall.
+Adding a tab would have meant rewriting that URL and restarting the
+session — a black screen in a building nobody can reach that day. A gid
+in `config.js` avoids the restart entirely. A sixth gid in the URL still
+overrides it, so a fresh deployment can do it the ordinary way.
+
+Worth revisiting: the `gviz` endpoint addresses tabs **by name** and does
+send CORS headers, returning byte-identical data. That would remove gids
+from the URL altogether. The trade is that a gid survives a tab being
+renamed and a name does not — and the sheet is edited by someone who may
+well rename a tab.

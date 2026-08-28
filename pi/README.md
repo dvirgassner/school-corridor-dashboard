@@ -84,15 +84,48 @@ the heartbeat ping, and a 03:00 nightly reboot.
 
 ## 4. Remote access (so you never have to drive to the school)
 
+Try Tailscale first — it is by far the least work:
+
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up --ssh
 ```
 
-Sign in with the link it prints. Tailscale makes an **outbound**
-connection, so it works from behind the school's firewall and NAT with
-no help from the school's IT department and no open ports. After this
-you can `ssh board` from anywhere on your own tailnet.
+It makes an **outbound** connection, so it normally works from behind a
+school firewall and NAT with no open ports and no help from IT.
+
+### If the network blocks it
+
+Some school filters terminate TLS by SNI, which kills Tailscale *and*
+Cloudflare Tunnel — both fail with `tls: handshake failure` while
+ordinary browsing works. That is what happened on the deployment this
+repo describes.
+
+**SSH on port 443 still passes**, because SSH sends no SNI for a filter
+to match. So the fallback is a reverse-SSH tunnel to any cheap VPS:
+
+```bash
+sudo pi/relay-setup.sh              # autossh + board-relay.service
+sudo pi/relay-verify.sh             # installs sshd if absent, checks the path out
+```
+
+`relay-setup.sh` prints the Pi's public key. Put it on the VPS in the
+`relay` user's `authorized_keys` with `restrict,port-forwarding`, give
+the VPS an sshd listening on 443, and point a DNS A record at it. The Pi
+then dials in every 30 seconds until it succeeds, and you reach it with:
+
+```bash
+ssh -o ProxyCommand="ssh -i ~/.ssh/<vps-key> -W %h:%p -p 443 <vpsuser>@<vps>" \
+    -i ~/.ssh/<pi-key> -p 2222 <piuser>@localhost
+```
+
+Two hops, each needing its **own** key — a bare `ssh -J relay@…` fails,
+because the `relay` account holds only the Pi's key and is restricted to
+port forwarding.
+
+Expect school DNS to take several minutes to see a brand-new record. If
+the tunnel does not appear at once, check `ss -lnt | grep 2222` on the
+VPS before suspecting the Pi.
 
 ## 5. Reboot and test the things that matter
 
@@ -113,6 +146,53 @@ Then check, in this order:
    the board within a minute.
 5. **Leave it running overnight** and confirm the CEC schedule turns the
    TV off and on.
+
+## The TV schedule, and the CEC trap
+
+`setup.sh` installs cron jobs that switch the TV on at 07:00 and to
+standby in the afternoon, over HDMI-CEC. It also pins the HDMI mode with
+`video=HDMI-A-1:1920x1080@60D`, so the Pi boots with a picture even when
+the TV is asleep.
+
+**Those two things fight each other.** A forced connector skips the
+driver's `detect()`, which is where CEC reads its physical address from
+the EDID. Without it:
+
+```
+Physical Address : f.f.f.f
+cec-client       : ioctl CEC_TRANSMIT failed, errno=64 (ENONET)
+```
+
+Every CEC command fails, and because the cron jobs discard their output
+it fails **silently** — on the original board, for weeks, with the TV
+schedule never once working.
+
+`pi/cec-fix.sh` resolves it: boot forced, then un-force 60 s later via
+`board-hdmi-cec.service`, which restores CEC. `setup.sh` runs it for you.
+On an existing board, run it on its own:
+
+```bash
+sudo pi/cec-fix.sh
+cec-ctl -d /dev/cec0 | grep -i "Physical Address"   # want 1.0.0.0
+echo "pow 0" | cec-client -s -d 1 | grep "power status"
+```
+
+Un-forcing is safe with the TV asleep: a set in **standby still asserts
+hotplug and still answers EDID**. If the display genuinely is absent, the
+script puts the force straight back.
+
+### Knowing remotely whether the TV is on
+
+`/sys` cannot tell you. A TV in standby reports `status=connected` with a
+full 256-byte EDID while CEC simultaneously reports `standby`. Only CEC
+knows.
+
+Set `TV_HEALTHCHECK_URL` (a **second** healthchecks.io check, separate
+from the Pi's own heartbeat) and `setup.sh` installs `pi/tv-probe.sh` on
+a 10-minute cron. It fails loudly when the TV is off during school hours
+or the HDMI connector disappears, pings OK when standby is expected, and
+stays silent when it cannot get an answer — so a single flaky CEC reply
+never raises an alert.
 
 ## Everyday maintenance
 

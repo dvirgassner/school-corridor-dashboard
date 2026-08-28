@@ -334,9 +334,11 @@ function renderGrades() {
       card.style.gridColumn = (gi % 3) + 1;
       card.style.gridRow = Math.floor(gi / 3) + 1;
     }
-    /* This grade alone is out — a trip, an outing. The card stays on the
-       board, named, carrying the reason: removing it would leave a hole
-       in the grid and tell a passing pupil nothing about why. */
+    /* This grade is out — a trip, an outing, or a closure covering the
+       whole school, which reaches every card through closureFor. The card
+       stays on the board, named, carrying the reason: removing it would
+       leave a hole in the grid and tell a passing pupil nothing about
+       why their row had vanished. */
     const shut = closureFor(NOW(), MODEL.closures || [], name);
     if (shut) {
       card.innerHTML = `
@@ -659,16 +661,13 @@ function setSchoolName(name) {
    it to one DOM write per change instead of one per second. */
 let VACATION_KEY = null;
 function applyVacation() {
-  const now = NOW();
-  /* Two independent reasons the school can be shut, checked in order of
-     authority: the ministry's published calendar, then whatever the
-     principal typed into the sheet. A whole-school closure produces the
-     same screen as a vacation — from the corridor there is no difference
-     between "פסח" and "שביתה", and inventing one would only be noise. */
-  const vac = vacationOn(now, window.VACATIONS || []);
-  const shut = MODEL && MODEL.closures
-    ? closureFor(now, MODEL.closures) : null;
-  const label = vac ? vac.title : (shut && shut.all ? shut.reason : null);
+  /* ONLY the ministry's calendar produces this screen. A closure the
+     school entered itself — a trip, a strike — always speaks through the
+     grade cards instead, even when it covers every grade: those carry the
+     school's own words, and replacing six specific reasons with one
+     borrowed headline would say less than the sheet already does. */
+  const vac = vacationOn(NOW(), window.VACATIONS || []);
+  const label = vac ? vac.title : null;
   const key = label || "";
   if (key === VACATION_KEY) return;
   VACATION_KEY = key;

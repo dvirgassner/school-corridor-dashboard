@@ -987,7 +987,27 @@ test("ordinary school days are NOT vacations", () => {
       "than one that runs during a holiday"));
 });
 
-test("the three days that used to show a pane to a closed school are covered", () => {
+test("summer 2026 is deliberately NOT covered, but 2027 is, throughout", () => {
+    const v = loadVacations();
+    /* The board went up during the 2026 summer break and is being shown to
+       the principal and to visitors. Blanking it then would have hidden
+       the very thing they were brought to look at, so this one summer is
+       left uncovered ON PURPOSE — it is not an oversight to "fix".
+       It ends by itself: the school year starts on 1 September 2026 and
+       no later summer gets the same exemption. */
+    ["2026-08-28", "2026-08-31"].forEach((k) => assert.equal(
+      L.vacationOn(D(k), v), null,
+      k + " must stay a working board — the preview window"));
+
+    /* Every following summer goes quiet for its whole length. 20 June is
+       the high-school end of year; elementary schools run to 1 July. */
+    ["2027-06-20", "2027-07-15", "2027-08-31"].forEach((k) => assert.ok(
+      L.vacationOn(D(k), v), k + " must be covered by the summer break"));
+    assert.equal(L.vacationOn(D("2027-06-19"), v), null,
+      "the day before the summer break is still a school day");
+  });
+
+  test("the three days that used to show a pane to a closed school are covered", () => {
   const v = loadVacations();
   [["2026-10-01", "יום המוזיקה, during Sukkot"],
    ["2026-12-10", "יום זכויות האדם, during Hanukkah"],
@@ -1077,6 +1097,22 @@ test("closureFor: outside the range, and with no data", () => {
   assert.equal(L.closureFor(new Date("2026-11-13T12:00:00"), c, "ט׳"), null);
   assert.equal(L.closureFor(new Date("2026-11-11T12:00:00"), [], "ט׳"), null);
   assert.equal(L.closureFor(new Date("2026-11-11T12:00:00"), null, "ט׳"), null);
+});
+
+test("a whole-school closure reaches EVERY grade and is not a vacation", () => {
+  /* The two sources produce different screens on purpose. A ministry
+     vacation replaces the board with one quiet line; a closure the school
+     typed itself always speaks through the grade cards, even when it
+     covers all of them — the sheet's own wording ("טיול שנתי", "שביתה")
+     says more than any single borrowed headline could. */
+  const c = L.buildClosures(
+    [{ "מתאריך": "2026-11-10", "סיבה": "שביתה", "כולם": "TRUE" }], GR);
+  const d = new Date("2026-11-10T12:00:00");
+  GR.forEach((g) => assert.equal(
+    L.closureFor(d, c, g).reason, "שביתה",
+    "grade " + g + " should carry the reason on its own card"));
+  assert.equal(L.vacationOn(d, loadVacations()), null,
+    "a school closure must NOT trigger the ministry-vacation screen");
 });
 
 /* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */

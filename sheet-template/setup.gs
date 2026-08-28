@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.196';
+var SCRIPT_VERSION = '0.197';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -107,7 +107,7 @@ var NO_PII_NOTE =
 var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
 var TYPES = ['רגילה', 'דחופה', 'וידאו'];
 var YESNO = ['כן', 'לא'];
-var THEMES = ['כהה', 'בהירה', 'צבעוני 1', 'צבעוני 2'];
+var THEMES = ['כהה', 'בהירה', 'צבעונית 1', 'צבעונית 2'];
 
 /* How the grade panes treat a lesson that is over. The board reads the
    chosen text, so these strings are part of the interface — changing one
@@ -1323,7 +1323,7 @@ function styleSettings_(sh) {
     'ערכת נושא של הלוח — בחירה מהתפריט והלוח מתחלף בתוך דקה:\n' +
     '  כהה — רקע שחור (ברירת המחדל; הידידותית ביותר למסך OLED)\n' +
     '  בהירה — רקע לבן, למסדרון מואר\n' +
-    '  צבעוני 1 — רקע כהה וכרטיסים צבעוניים בולטים\n  צבעוני 2 — רקע בהיר וגוון עדין לכל שכבה\n\n' +
+    '  צבעונית 1 — רקע בהיר וגוון עדין לכל שכבה\n  צבעונית 2 — רקע כהה וכרטיסים צבעוניים בולטים\n\n' +
     'המבנה, הגדלים והגופנים זהים בכל הערכות — רק הצבעים מתחלפים.');
 }
 

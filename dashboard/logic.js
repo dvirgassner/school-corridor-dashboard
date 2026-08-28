@@ -567,11 +567,19 @@
     "upcoming": "upcoming", "all": "all"
   };
 
+  /* The two colourful themes were renamed AND swapped: the pale one is
+     now צבעונית 1 and the saturated one צבעונית 2. Every earlier name is
+     still accepted, because the sheet on the wall holds whichever text
+     was chosen before the change, and setup() must never rewrite what
+     the principal typed. A board that stopped recognising the old text
+     would fall back to the dark theme overnight with no explanation. */
   var THEMES = {
     "כהה": "dark", "dark": "dark",
     "בהירה": "light", "light": "light",
-    "צבעוני 1": "colorful", "colorful": "colorful", "צבעונית": "colorful",
-    "צבעוני 2": "colorful2", "colorful2": "colorful2"
+    "צבעונית 1": "colorful2", "colorful2": "colorful2",
+    "צבעונית 2": "colorful", "colorful": "colorful",
+    /* superseded names, kept working */
+    "צבעוני 1": "colorful", "צבעוני 2": "colorful2", "צבעונית": "colorful"
   };
 
   function buildSettings(rows) {

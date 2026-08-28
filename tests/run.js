@@ -1040,6 +1040,51 @@ test("summer 2026 is deliberately NOT covered, but 2027 is, throughout", () => {
     .forEach(([k, why]) => assert.ok(L.vacationOn(D(k), v), k + " — " + why));
 });
 
+/* ---------- theme names ----------
+   The two colourful themes were renamed and swapped: the pale one became
+   צבעונית 1, the saturated one צבעונית 2. The sheet on the wall still
+   holds whichever text was chosen before that, and setup() deliberately
+   never rewrites what the principal typed — so every superseded name has
+   to keep resolving. If one stopped, the board would fall back to the
+   dark theme overnight and nobody would know why. */
+const themeOf = (v) => L.buildSettings([{ "הגדרה": "ערכת נושא", "ערך": v }]).theme;
+
+test("theme: the new names map to the right palettes", () => {
+  assert.equal(themeOf("צבעונית 1"), "colorful2", "the pale theme");
+  assert.equal(themeOf("צבעונית 2"), "colorful", "the saturated theme");
+});
+
+test("theme: every superseded name still resolves", () => {
+  assert.equal(themeOf("צבעוני 1"), "colorful");
+  assert.equal(themeOf("צבעוני 2"), "colorful2");
+  assert.equal(themeOf("צבעונית"), "colorful");
+  assert.equal(themeOf("כהה"), "dark");
+  assert.equal(themeOf("בהירה"), "light");
+});
+
+test("theme: the names in setup.gs are exactly what the board accepts", () => {
+  /* These two lists are the interface between the sheet and the board. A
+     silent drift between them is invisible until the principal picks the
+     option that no longer resolves. */
+  const gs = fs.readFileSync(
+    path.join(__dirname, "..", "sheet-template", "setup.gs"), "utf8");
+  const m = /var THEMES = \[([^\]]+)\]/.exec(gs);
+  assert.ok(m, "THEMES not found in setup.gs");
+  const offered = m[1].split(",").map((x) => x.trim().replace(/^'|'$/g, ""));
+  /* Checking the result is merely truthy proves nothing: an unrecognised
+     value falls back to "dark", which is a perfectly truthy answer. The
+     drift this test exists to catch would sail straight through. So an
+     offered name must resolve to something OTHER than the fallback —
+     except כהה, which legitimately is it. */
+  offered.forEach((name) => {
+    const t = themeOf(name);
+    if (name === "כהה") { assert.equal(t, "dark"); return; }
+    assert.notEqual(t, "dark",
+      'setup.gs offers "' + name + '" but the board does not recognise it, ' +
+      'so choosing it would silently give the dark theme');
+  });
+});
+
 /* ---------- ימים ללא לימודים (the sheet's own closures) ----------
    The ministry feed cannot know about a trip, an outing or a strike, so
    the principal types those into the sheet. The board must treat them

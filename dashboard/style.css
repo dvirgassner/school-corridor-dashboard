@@ -101,8 +101,8 @@
     --g2: #1f6feb;  /* blue   — ח    */
     --g3: #a86a00;  /* amber  — ט    */
     --g4: #e0468c;  /* pink   — י    */
-    --g5: #6d4aff;  /* violet — י"א  */
-    --g6: #0f8fa0;  /* cyan   — י"ב  */
+    --g5: #5b21b6;  /* violet — י"א, moved clear of ח's blue */
+    --g6: #00786a;  /* teal   — י"ב, was cyan, also too near blue */
     --g7: #e2560f;  /* orange        */
     --critical: #d92d20;
     --warning:  #a35a00;
@@ -117,7 +117,7 @@
        to the eye, so that pane appeared to have no background at all.
        This blue-grey clears the nearest wash (י"א violet) by ΔE 11.9 and
        reads as a frame, which lets the tints carry the colour. */
-    --page:        #bfc5db;
+    --page:        #e8eaf3;
     --surface:     #ffffff;
     --ink:         #17173a;
     --ink-strong:  #08081c;
@@ -127,10 +127,14 @@
     --border:      rgba(23,23,58,0.14);
     --chipink:     #ffffff;
     --nowmix:      26%;
-    /* How much accent goes into the white card. Measured: at 12% the six
-       panes differ by an OKLab ΔE of only 1.7 at the closest pair, which
-       is why ח and י"א read as the same colour across a corridor. */
-    --wash: 12%;
+    /* How much accent goes into the white card. This was 12%, at which
+       the six panes differed by an OKLab ΔE of only 1.7 at the closest
+       pair — ח and י"א read as one colour across a corridor. 24% takes
+       that to 4.7 while keeping the pale look the theme is for.
+
+       The page above had to lighten with it: deepening the panes walked
+       the blue and violet cards toward the old blue-grey background. */
+    --wash: 24%;
     /* same order, stepped for white cards */
     --g1: #2f9e00;  /* green  — ז    */
     --g2: #1f6feb;  /* blue   — ח    */
@@ -143,61 +147,6 @@
     --warning:  #a35a00;
   }
 
-  /* PREVIEW ONLY — reached with ?palette=v2, never by the board on the
-     wall, whose URL carries no such parameter. It exists so a colour
-     change can be judged at real size on the real TV before anyone
-     commits to it. Delete this block once the decision is made, either
-     by adopting the values above or by dropping them.
-
-     Worst pane pair goes 1.7 → 8.1 (OKLab ΔE ×100), which clears the
-     target of 8 rather than merely improving on a bad number. Body text
-     stays at 8.0:1.
-
-     Three things had to move together, which is why the obvious fix (a
-     new hue for י"א) does nothing on its own — at a 12% wash NO choice
-     of six colours separates, because every pane is within a whisker of
-     white:
-
-       • the wash, 12% → 40%, which does most of the work;
-       • two hues out of the crowded cool end;
-       • the PAGE, lightened, because deepening the panes walked the blue
-         and violet cards straight into the old blue-grey background —
-         they came within ΔE 4.4 of it, worse than the fault being fixed.
-         The cards now clear the page by 9.7. */
-  :root[data-theme="colorful2"][data-palette="v2"] {
-    --wash: 40%;
-    --page: #d8dcea;
-    --g5: #5b21b6;  /* י"א — true violet, away from ח's blue */
-    --g6: #00786a;  /* י"ב — teal-green, away from blue      */
-  }
-
-  /* PREVIEW ONLY — paler alternatives, after v2 was judged too strong.
-     The same two hues throughout; only the wash and the page move.
-
-     The trade is monotonic and there is no clever way round it: paler
-     panes are closer to each other. Separation at the closest pair —
-
-        v2  40%   8.1   clears the target of 8
-        v3  28%   5.6
-        v4  24%   4.7
-
-     Everything below 8 leans on the fact that colour is not the only
-     cue: each card is titled "כיתה …" in 26px type, so the wash is
-     reinforcement rather than the identity itself. The pair that was
-     reported unreadable, ח against י"א, goes from 1.7 to 5.6 or 4.7 —
-     both comfortably past the point where they read as two colours. */
-  :root[data-theme="colorful2"][data-palette="v3"] {
-    --wash: 28%;
-    --page: #e0e3ef;
-    --g5: #5b21b6;
-    --g6: #00786a;
-  }
-  :root[data-theme="colorful2"][data-palette="v4"] {
-    --wash: 24%;
-    --page: #e8eaf3;
-    --g5: #5b21b6;
-    --g6: #00786a;
-  }
   :root[data-theme="colorful2"] .card:not(#exams):not(#dayofday) {
     background: color-mix(in srgb, var(--accent) var(--wash, 12%), var(--surface));
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);

@@ -895,6 +895,95 @@ test("the two removed days are gone", () => {
     assert.ok(titles.indexOf(t) < 0, t + " is still listed"));
 });
 
+/* ---------- vacations: the board must be empty when school is shut ----
+   This is a regression guard with real history. The board used to mark
+   vacations by a single Hebrew date, so it covered only the FIRST day of
+   each multi-day break — 37 vacation days went unmarked, and the entire
+   Hanukkah break was missed because Kislev 25 fell the day before the
+   ministry's break began. The per-day coverage test below is the check
+   that would have caught it.
+
+   vacations.js is also loaded rather than merely parsed, for the same
+   reason days.js is: a file that assigns nothing is valid JavaScript,
+   and the failure would be silent on the wall. */
+function loadVacations() {
+  const ctx = { window: {} };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "..", "dashboard", "vacations.js"), "utf8"),
+    ctx, { filename: "vacations.js" });
+  return ctx.window.VACATIONS;
+}
+const D = (k) => new Date(k + "T12:00:00");
+
+test("vacations.js runs and defines window.VACATIONS", () => {
+  const v = loadVacations();
+  assert.ok(Array.isArray(v) && v.length >= 8,
+    "window.VACATIONS was not assigned, or is suspiciously short");
+});
+
+test("every vacation range is well formed and of sane length", () => {
+  loadVacations().forEach((v) => {
+    assert.ok(v.title && v.title.trim(), "a range has no title");
+    [v.from, v.to].forEach((k) => assert.ok(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(k || ""),
+      `"${v.title}" has a bad date key: ${k}`));
+    assert.ok(v.to >= v.from, `"${v.title}" ends before it starts`);
+    /* The ministry feed ships one malformed 369-day "summer" record. If it
+       ever reaches this file it would blank the board for a whole year. */
+    const days = Math.round((D(v.to) - D(v.from)) / 864e5) + 1;
+    assert.ok(days <= 100, `"${v.title}" spans ${days} days — the bad feed record?`);
+  });
+});
+
+test("vacationOn is inclusive at both ends and exact at the edges", () => {
+  const v = [{ from: "2027-04-13", to: "2027-04-28", title: "פסח" }];
+  assert.equal(L.vacationOn(D("2027-04-12"), v), null, "the day before must be a school day");
+  assert.equal(L.vacationOn(D("2027-04-13"), v).title, "פסח", "first day must count");
+  assert.equal(L.vacationOn(D("2027-04-28"), v).title, "פסח", "last day must count");
+  assert.equal(L.vacationOn(D("2027-04-29"), v), null, "the day after must be a school day");
+});
+
+test("vacationOn copes with no data at all", () => {
+  assert.equal(L.vacationOn(D("2027-04-13"), []), null);
+  assert.equal(L.vacationOn(D("2027-04-13"), null), null);
+});
+
+test("EVERY day of every ministry vacation is covered", () => {
+  const v = loadVacations();
+  const MOE = [
+    ["ראש השנה", "2026-09-11", "2026-09-13"],
+    ["יום כיפור", "2026-09-20", "2026-09-21"],
+    ["סוכות", "2026-09-22", "2026-10-03"],
+    ["חנוכה", "2026-12-06", "2026-12-12"],
+    ["פורים", "2027-03-23", "2027-03-24"],
+    ["פסח", "2027-04-13", "2027-04-28"],
+    ["יום העצמאות", "2027-05-12", "2027-05-12"],
+    ["שבועות", "2027-06-10", "2027-06-11"]
+  ];
+  const missing = [];
+  MOE.forEach(([name, from, to]) => {
+    for (let d = D(from); d <= D(to); d.setDate(d.getDate() + 1)) {
+      if (!L.vacationOn(d, v)) missing.push(name + " " + d.toISOString().slice(0, 10));
+    }
+  });
+  assert.equal(missing.length, 0, "uncovered vacation days: " + missing.join(", "));
+});
+
+test("ordinary school days are NOT vacations", () => {
+  const v = loadVacations();
+  ["2026-09-01", "2026-11-10", "2027-01-20", "2027-03-02", "2027-05-25"]
+    .forEach((k) => assert.equal(L.vacationOn(D(k), v), null,
+      k + " must be a school day — a board that blanks during term is worse " +
+      "than one that runs during a holiday"));
+});
+
+test("the three days that used to show a pane to a closed school are covered", () => {
+  const v = loadVacations();
+  [["2026-10-01", "יום המוזיקה, during Sukkot"],
+   ["2026-12-10", "יום זכויות האדם, during Hanukkah"],
+   ["2027-04-23", "יום הספר, during Pesach"]]
+    .forEach(([k, why]) => assert.ok(L.vacationOn(D(k), v), k + " — " + why));
+});
+
 /* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */
 require("./setup-safety.js").run(test);
 

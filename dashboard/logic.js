@@ -457,6 +457,25 @@
     return null;
   }
 
+  /* Which vacation, if any, covers this date. The ranges come from the
+     Ministry of Education's feed via tools/fetch-vacations.js and are
+     inclusive at both ends. Comparing YYYY-MM-DD keys as strings is
+     exact here — no timezone arithmetic, no Date objects to drift.
+
+     Returns the entry rather than a bare true, so the board can name the
+     vacation on screen. A screen that simply goes blank is
+     indistinguishable from a broken one, and this board is watched by
+     people who cannot tell the difference and have no way to check. */
+  function vacationOn(d, list) {
+    if (!list || !list.length) return null;
+    var k = dateKey(d), i, v;
+    for (i = 0; i < list.length; i++) {
+      v = list[i];
+      if (v && v.from && v.to && k >= v.from && k <= v.to) return v;
+    }
+    return null;
+  }
+
   /* ---------- status / error indicator ----------
      The board is unattended, so a fault has to be visible on the screen
      itself: the principal reads this line and reports it. Only one
@@ -603,6 +622,7 @@
     statusMessage: statusMessage,
     hebrewKey: hebrewKey,
     dayOfTheDay: dayOfTheDay,
+    vacationOn: vacationOn,
     buildSettings: buildSettings,
     parseSheetFragment: parseSheetFragment,
     clean: clean,

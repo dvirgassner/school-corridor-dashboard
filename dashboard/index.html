@@ -91,6 +91,14 @@
       <div id="school"><img src="vendor/school-logo.png" alt="תיכון השיטה"></div>
     </header>
 
+    <!-- Shown instead of the whole board on days the school is closed.
+         Named, not blank: a corridor screen showing nothing reads as a
+         broken screen, and nobody walking past can tell the difference. -->
+    <section id="vacation">
+      <div id="vacationnote"></div>
+      <div id="vacationsub">אין לימודים</div>
+    </section>
+
     <main id="grid">
       <!-- grade cards injected here -->
       <!-- left column: day-of-the-day strip, then the agenda pane
@@ -134,6 +142,7 @@
      logic → app. -->
 <script src="config.js"></script>
 <script src="days.js"></script>
+<script src="vacations.js"></script>
 <script src="sample-data.js"></script>
 <script src="vendor/papaparse.min.js"></script>
 <script src="logic.js"></script>

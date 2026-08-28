@@ -1,0 +1,45 @@
+# Keeps dashboard/vacations.js in step with the Ministry of Education's
+# published calendar, so nobody has to remember to do it in August.
+#
+# The board cannot read that feed itself: it sends no CORS headers, so a
+# page on GitHub Pages is refused. Refreshing here and committing the
+# result keeps the board a purely static site.
+name: refresh vacations
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"      # Mondays, 03:17 UTC
+  workflow_dispatch:           # and on demand
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fetch the ministry calendar
+        run: node tools/fetch-vacations.js
+
+      # The suite checks that every ministry vacation day is covered and
+      # that no single range is long enough to blank the board for a year.
+      # A bad feed must fail here rather than reach the wall.
+      - name: Test
+        run: node tests/run.js
+
+      - name: Commit if the dates changed
+        run: |
+          if git diff --quiet -- dashboard/vacations.js; then
+            echo "no change"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard/vacations.js
+          git commit -m "board: refresh vacation dates from the ministry feed"
+          git push

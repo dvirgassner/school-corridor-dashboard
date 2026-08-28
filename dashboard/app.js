@@ -615,6 +615,33 @@ function setSchoolName(name) {
   }
 }
 
+/* ---------- school closed ----------
+   On a vacation day the board shows only the header and one line naming
+   the vacation. Everything else is hidden: with the building empty there
+   is nobody to read a schedule, and one still sitting on the wall invites
+   the first person back to trust it.
+
+   It is named rather than simply blanked. A dark screen in a corridor is
+   indistinguishable from a dead one, and the people who walk past cannot
+   tell which it is — the whole status-indicator design exists for that
+   reason, and blanking the board would throw it away.
+
+   This runs on the clock tick, not in render(), because it turns on the
+   DATE changing rather than on new sheet data. A board left running
+   overnight into the first morning of a vacation receives no new model,
+   so a check living in render() would never fire. The cached key keeps
+   it to one DOM write per change instead of one per second. */
+let VACATION_KEY = null;
+function applyVacation() {
+  const vac = vacationOn(NOW(), window.VACATIONS || []);
+  const key = vac ? vac.from + "|" + vac.title : "";
+  if (key === VACATION_KEY) return;
+  VACATION_KEY = key;
+  document.body.classList.toggle("vacation", !!vac);
+  const el = $("vacationnote");
+  if (el) el.textContent = vac ? vac.title : "";
+}
+
 function tick() {
   const now = NOW();
   $("clock").textContent = now.toLocaleTimeString("he-IL",
@@ -630,6 +657,7 @@ function tick() {
      though the image had failed to load. The name now reaches the page
      as that alt text, set once. */
   setSchoolName(CFG.schoolName);
+  applyVacation();
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const hide = hidePassed();

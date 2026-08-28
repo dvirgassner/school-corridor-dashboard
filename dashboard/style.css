@@ -573,3 +573,27 @@
   #video { object-fit: contain; }
   #videowrap.file #video { display: block; }
   #videowrap.yt #ytframe { display: block; }
+
+  /* -- school closed --------------------------------------------------
+     On a vacation day everything describing a school day goes: the grade
+     cards, the agenda, the urgent strip and the footer message. What
+     stays is the board's identity, the clock, and the status box in the
+     corner — so the screen still reads as ALIVE, and a fault that starts
+     during a vacation is still reported rather than hidden behind a
+     blank wall.
+
+     Hidden with display:none rather than emptied, so nothing can flash
+     its stale contents in the moment between the tick that starts the
+     vacation and the next render. ----------------------------------- */
+  #vacation { display: none; }
+  body.vacation #grid,
+  body.vacation #urgent,
+  body.vacation #msg { display: none; }
+  body.vacation #vacation {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+  }
+  #vacationnote { font-size: 104px; font-weight: 700; line-height: 1.15;
+                  color: var(--ink-strong); text-align: center; }
+  #vacationsub  { font-size: 44px; color: var(--muted); text-align: center; }

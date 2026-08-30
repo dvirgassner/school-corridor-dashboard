@@ -319,6 +319,16 @@ crontab -l 2>/dev/null | grep -v "corridor-board" > "$CRON_TMP" || true
 cat >> "$CRON_TMP" <<EOF
 # corridor-board: TV on at 07:00 on school days (Sun-Fri)
 0 7 * * 0-5 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+# corridor-board: Samsung's own Eco "Auto Power Off" idle timer puts the
+# TV back into standby after a few hours with no *remote control* input —
+# and a CEC power-on does not reset it, so the 07:00 wake above does not
+# stop it firing again mid-morning. Found 2026-08-30 when the TV probe
+# caught the set in standby during school hours with CEC otherwise
+# healthy. Re-sending "on 0" hourly defeats the idle timer; it is a no-op
+# when the TV is already on. Each day's last wake stays before that day's
+# standby line below, so the two never fight.
+0 8-16 * * 0-4 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+0 8-14 * * 5 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
 # corridor-board: TV to standby 17:00 Sun-Thu, 15:00 Fri
 0 17 * * 0-4 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
 0 15 * * 5 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board

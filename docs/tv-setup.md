@@ -67,6 +67,35 @@ does not depend on the Pi at all.
 Anynet+ (HDMI-CEC) must be ON for any of this: General → External Device
 Manager → Anynet+ (HDMI-CEC).
 
+### The Auto Power Off trap
+
+This is a **separate setting** from the On/Off Timer above, and it is not
+covered by turning that timer off.
+
+Samsung's Eco Solution puts the TV into standby after it gets no *remote
+control* input for a few hours — regardless of what is on screen, and
+regardless of the On/Off Timer schedule. A CEC power-on does **not** count
+as input and does not reset this timer, so a set woken by the Pi still
+drops itself back into standby mid-morning.
+
+Detected 2026-08-30: the Pi's cron woke the TV at 07:00 as scheduled, and
+the TV probe still found it in standby at 11:10 on a school day (`TV is
+'standby' during school hours (Sun 11:10)`), with CEC itself perfectly
+healthy throughout. The board had likely been going dark most mornings
+since installation — nothing looked wrong until the probe caught it.
+
+Turn it off, with the remote, at the set:
+
+- Older firmware: **General → Eco Solution → Auto Power Off**
+- Newer firmware: **General → Power and Energy Saving → Auto Power Off**
+
+(the menu was renamed between firmware years; check both paths.)
+
+Disabling this is the real fix. Until someone is at the TV to do it, the
+Pi's cron re-sends `on 0` hourly through the school day as a remote-only
+workaround — it defeats the idle timer but does nothing to the setting
+itself.
+
 To check CEC is alive from the Pi:
 
 ```bash

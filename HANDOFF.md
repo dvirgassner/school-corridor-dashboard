@@ -66,6 +66,7 @@ outside the repo. Without it you cannot reach the Pi.
 | **Service worker offline** | Never verified, and must not be tested on the wall Pi. |
 | **`gviz` by name** | Would remove tab gids from the board URL entirely; verified it works and sends CORS. Trade-off: a gid survives a tab rename, a name does not. Argued in `docs/decisions.md`, not acted on. |
 | **Relay VPS has no monitoring of its own** | The 2026-08 IPv4 lockout (see `docs/decisions.md`) was found by a human, not an alert — the Pi/TV healthchecks both depend on the relay already working. No check currently watches the relay itself. |
+| **TV's Auto Power Off still enabled** | Samsung's own idle timer drops the TV to standby a few hours after waking, even after a CEC power-on. Needs disabling in person (see `docs/tv-setup.md`); the hourly CEC wake now masks it. |
 
 ## Conventions worth keeping
 

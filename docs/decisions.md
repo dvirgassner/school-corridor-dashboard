@@ -283,3 +283,81 @@ send CORS headers, returning byte-identical data. That would remove gids
 from the URL altogether. The trade is that a gid survives a tab being
 renamed and a name does not — and the sheet is edited by someone who may
 well rename a tab.
+
+## Why the relay's port-443 drop-in locked out both ports at once
+
+The relay VPS went unreachable for two days. The cause was a systemd
+drop-in this project's own documentation told people to create,
+`/etc/systemd/system/ssh.socket.d/relay-443.conf`:
+
+```ini
+[Socket]
+ListenStream=
+ListenStream=22
+ListenStream=443
+```
+
+The intent was ordinary: reset the stock unit's listeners and open both
+22 and 443. What it actually did was remove IPv4 entirely, on both
+ports, at once.
+
+Ubuntu 24.04's stock `ssh.socket` sets `BindIPv6Only=ipv6-only`, and
+pairs it with two *address-scoped* lines, `ListenStream=0.0.0.0:22` and
+`ListenStream=[::]:22`. `BindIPv6Only` decides what a *bare port number*
+binds to; the address-scoped lines above don't need it because they
+already say which family they mean. An empty `ListenStream=` resets the
+list of listen addresses. It does not reset `BindIPv6Only`, and nothing
+else in the drop-in did either. So the bare `22` and `443` that followed
+inherited `ipv6-only` from the stock unit — and became IPv6-only
+sockets, with no IPv4 listener at all. **A `ListenStream=` reset clears
+its own directive, not its siblings.** Every directive in a systemd
+drop-in is independent unless you touch it yourself.
+
+Two things turned a config mistake into a two-day outage:
+
+- **It was latent.** Writing the drop-in doesn't restart the unit, so
+  the old, correct sockets kept serving for a day — systemd logged
+  "Socket unit configuration has changed while unit has been running"
+  and nothing else happened. The break only landed the next morning,
+  when an unattended `openssh-server` upgrade restarted `ssh.socket` and
+  the new, broken config finally took effect. The upgrade got blamed
+  first, more than once, because it was the thing that had visibly just
+  happened. It was innocent; it just triggered a fuse lit a day earlier.
+- **It was invisible to the obvious check.** `ss -lnt` showed
+  `LISTEN [::]:22` and `LISTEN [::]:443` — a listener on every port
+  anyone would think to check. **`ss` output proves a socket exists, not
+  that it accepts IPv4.** Every IPv4 connection got an instant TCP RST,
+  which reads exactly like "the host is down" or "the IP got
+  reassigned," and was read that way more than once before anyone
+  thought to ask which address family was actually listening.
+
+There was also a false safeguard. The plan had been "keep port 22 open
+so a bad 443 config can never lock us out." That held for exactly as
+long as 22 and 443 stayed on separate configs. Once both ports came from
+the *same* `[Socket]` block in the *same* drop-in, they failed as one
+unit. **Two ports are not redundant if one file controls both.**
+Redundancy requires an independent failure path, not just a second
+port number.
+
+Recovery needed the OpenStack noVNC console, GRUB with
+`console=tty1 init=/bin/bash` appended to the kernel line — the shell is
+otherwise invisible, because the image boots with `console=ttyS0` — then
+`mount -o remount,rw /` and `passwd ubuntu` to create a console login
+that had never existed.
+
+The corrected drop-in adds 443 without resetting anything, so there is
+nothing for it to inherit incorrectly:
+
+```ini
+[Socket]
+ListenStream=0.0.0.0:443
+ListenStream=[::]:443
+```
+
+The lesson isn't "remember `BindIPv6Only`." It's that a directive left
+unset in a drop-in is not neutral — it is inherited from whatever the
+stock unit set, and that inheritance can silently outlive the specific
+lines you meant to change. When overriding a systemd socket unit,
+either leave every original directive alone, or state every directive
+the new config depends on explicitly. Don't reset one thing and assume
+the rest resets with it.

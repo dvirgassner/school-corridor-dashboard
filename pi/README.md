@@ -123,6 +123,23 @@ Two hops, each needing its **own** key — a bare `ssh -J relay@…` fails,
 because the `relay` account holds only the Pi's key and is restricted to
 port forwarding.
 
+On Ubuntu 24.04, "give the VPS an sshd listening on 443" means a systemd
+drop-in, since `ssh.socket` ignores `sshd_config`'s `Port`:
+
+```ini
+# /etc/systemd/system/ssh.socket.d/relay-443.conf
+[Socket]
+ListenStream=0.0.0.0:443
+ListenStream=[::]:443
+```
+
+Add 443 without resetting `ListenStream=` first. **Warning:** an empty
+`ListenStream=` clears the listen-address list but **not**
+`BindIPv6Only`, which the stock unit sets to `ipv6-only` — so bare port
+numbers written after a reset silently become IPv6-only and IPv4 access
+disappears with no error anywhere, `ss -lnt` included. See
+`docs/decisions.md`.
+
 Expect school DNS to take several minutes to see a brand-new record. If
 the tunnel does not appear at once, check `ss -lnt | grep 2222` on the
 VPS before suspecting the Pi.

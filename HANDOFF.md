@@ -65,6 +65,7 @@ outside the repo. Without it you cannot reach the Pi.
 | **Run `setup()`** | Pending, for the renamed theme dropdown. Then re-pick the theme — the cell holds a superseded name, which still works but shows as off-list. |
 | **Service worker offline** | Never verified, and must not be tested on the wall Pi. |
 | **`gviz` by name** | Would remove tab gids from the board URL entirely; verified it works and sends CORS. Trade-off: a gid survives a tab rename, a name does not. Argued in `docs/decisions.md`, not acted on. |
+| **Relay VPS has no monitoring of its own** | The 2026-08 IPv4 lockout (see `docs/decisions.md`) was found by a human, not an alert — the Pi/TV healthchecks both depend on the relay already working. No check currently watches the relay itself. |
 
 ## Conventions worth keeping
 

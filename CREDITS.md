@@ -40,6 +40,23 @@ only if the logo image fails to load).
 The OFL permits bundling and redistribution. Only the Hebrew subset is
 vendored, at 11 KB.
 
+## dashboard/vendor/noto-sans-hebrew.woff2
+
+**Noto Sans Hebrew**, used for all Hebrew body text on the board (subjects,
+dates, messages, the header clock's Hebrew date). Self-hosted because the
+Pi driving the wall display has no Hebrew font installed at all — every
+`font-family` fallback resolved to DejaVu Sans there, so this pins the
+rendering instead of leaving it to whatever the host machine happens to
+have.
+
+- **Source:** <https://fonts.google.com/noto/specimen/Noto+Sans+Hebrew>
+- **Licence:** SIL Open Font License 1.1
+
+The OFL permits bundling and redistribution. Only the Hebrew subset is
+vendored, as a single variable-weight file (the same one
+fonts.googleapis.com itself serves for this subset) covering weights 400,
+600 and 700 used on the board, at 12 KB.
+
 ## dashboard/vendor/papaparse.min.js
 
 CSV parser, used to read the sheet's published feeds.

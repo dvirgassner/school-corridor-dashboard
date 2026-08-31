@@ -229,6 +229,55 @@
                    U+25CC, U+FB1D-FB4F;
   }
 
+  /* Every other Hebrew character on the board — the whole point of the
+     display — was never given a webfont at all, only the generic stack
+     below. On a normal desktop that stack quietly resolves to whatever
+     Hebrew font happens to be installed, so it looked fine in testing.
+     The Pi has none: `fc-match` on it falls through every entry to
+     DejaVu Sans. So the corridor board has been rendering all its
+     Hebrew — subjects, dates, messages, the clock's Hebrew date — in an
+     unintended fallback font, and its look would silently change on any
+     other host with different fonts installed. Self-hosting Noto Sans
+     Hebrew makes rendering deterministic regardless of what the
+     machine driving the screen has installed, for the same
+     works-without-the-school's-network reason as the Gveret Levin face
+     above.
+
+     All three weights below point at the SAME vendored file on purpose,
+     not a mistake: Google now ships Noto Sans Hebrew as a single
+     variable-weight woff2 (confirmed via its `fvar` table, wght axis
+     100-900), and declaring one @font-face per discrete weight against
+     that one resource is exactly how fonts.googleapis.com itself serves
+     it — Chromium and Firefox instantiate the requested weight from the
+     shared file rather than needing a separate static file per weight. */
+  @font-face {
+    font-family: "Noto Sans Hebrew";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("vendor/noto-sans-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+  @font-face {
+    font-family: "Noto Sans Hebrew";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("vendor/noto-sans-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+  @font-face {
+    font-family: "Noto Sans Hebrew";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("vendor/noto-sans-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; background: var(--page); overflow: hidden; }
   body {

@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.197';
+var SCRIPT_VERSION = '0.198';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -555,19 +555,19 @@ function ensureSheet_(ss, name) {
  * above". The two must change together.
  */
 function writeDayColumn_(sh) {
-  var per = PERIODS.length;
-  var col = sh.getRange(2, 1, DAYS.length * per, 1);
+  var layout = scheduleLayout_();
+  var col = sh.getRange(2, 1, layout.total, 1);
 
   try { col.breakApart(); } catch (e) {}   /* no-op when nothing is merged */
 
   var vals = [];
-  DAYS.forEach(function (d) {
-    for (var i = 0; i < per; i++) vals.push([i === 0 ? d : '']);
+  DAYS.forEach(function (d, di) {
+    for (var i = 0; i < layout.counts[di]; i++) vals.push([i === 0 ? d : '']);
   });
   col.setValues(vals);
 
   DAYS.forEach(function (d, di) {
-    sh.getRange(2 + di * per, 1, per, 1).merge();
+    sh.getRange(2 + layout.offsets[di], 1, layout.counts[di], 1).merge();
   });
 
   col.setFontSize(30)
@@ -1075,20 +1075,69 @@ function colLetter_(n) {
 }
 
 /* ---------- the timetable's fixed shape ----------
-   Ten period rows for every day, always. The principal fills in the
+   Eleven period rows — numbered 0 through 10, matching PERIODS' own
+   indices — for every day except Friday. The principal fills in the
    subjects and leaves the rest empty — an empty cell simply means no
    class, so the day ends after the last subject entered. Nothing to add
    or delete, and no day to pick from a dropdown.
+
+   Period 0 (08:15-08:30) is deliberately short: it is attendance and
+   settling-in time before the first taught lesson, not a lesson itself.
+   It still gets its own row rather than being folded into period 1,
+   because the board and the sheet both key everything — colour, the
+   locked columns, the merge blocks — off a period's ROW, and a lesson
+   sharing a row with attendance would have nowhere of its own to be
+   marked late or skipped.
+
+   Friday (יום ו׳) ends after period 4 (11:40): the school day there is
+   shorter, so it never reaches periods 5-10 at all. That is what
+   SHORT_DAYS below encodes, and it is also why nothing in this file may
+   assume "every day has PERIODS.length rows" any more — the three
+   functions that used to make that assumption now go through
+   scheduleLayout_ instead, which is what lets a future change to which
+   days are short (or how short) stay a one-line edit here.
 
    styleSchedule_ needs this geometry as much as seedSchedule_ does: the
    thick day boxes are drawn from it, on a sheet whose contents it never
    reads. */
 var PERIODS = [
-  [1, '08:00', '08:45'], [2, '08:50', '09:35'], [3, '09:50', '10:35'],
-  [4, '10:40', '11:25'], [5, '11:45', '12:30'], [6, '12:35', '13:20'],
-  [7, '13:30', '14:15'], [8, '14:20', '15:05'], [9, '15:15', '16:00'],
-  [10, '16:05', '16:50']
+  [0,  '08:15', '08:30'], [1,  '08:30', '09:00'], [2,  '09:00', '09:45'],
+  [3,  '10:10', '10:55'], [4,  '10:55', '11:40'], [5,  '12:00', '12:45'],
+  [6,  '12:45', '13:30'], [7,  '14:00', '14:45'], [8,  '14:45', '15:30'],
+  [9,  '15:30', '16:15'], [10, '16:15', '17:00']
 ];
+
+/* Days that do not use every row in PERIODS, keyed by the DAYS label so
+   this stays readable and stays data — not a scatter of "if day is ו"
+   checks through the three functions below. A day absent from this map
+   gets the full PERIODS.length, via periodCount_'s fallback. */
+var SHORT_DAYS = { 'ו': 5 };
+
+/** How many of PERIODS the given day actually uses. */
+function periodCount_(day) {
+  return SHORT_DAYS[day] || PERIODS.length;
+}
+
+/**
+ * The מערכת tab's row geometry, computed once from DAYS and
+ * periodCount_ and shared by writeDayColumn_, styleSchedule_ and
+ * seedSchedule_ — so the three agree on exactly where each day's block
+ * starts and ends without three separate copies of the same arithmetic
+ * (which is exactly how a uniform-row assumption would creep back in).
+ *
+ * offsets[i] is the 0-based row offset of day i, relative to row 2 (the
+ * first data row); total is every day's rows added together.
+ */
+function scheduleLayout_() {
+  var counts = DAYS.map(periodCount_);
+  var offsets = [];
+  var total = 0;
+  counts.forEach(function (c) {
+    offsets.push(total);
+    total += c;
+  });
+  return { counts: counts, offsets: offsets, total: total };
+}
 
 function scheduleHeaders_() {
   return ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
@@ -1102,13 +1151,18 @@ function seedSchedule_(sh) {
                   'חינוך גופני', 'מחשבים'];
   var rows = [];
   DAYS.forEach(function (day, di) {
-    /* every day gets all ten rows; only some are filled with a subject */
-    var filled = day === 'ו' ? 4 : (di % 2 === 0 ? 8 : 6);
-    for (var p = 0; p < PERIODS.length; p++) {
+    /* every day gets all of its own rows (periodCount_); only some are
+       filled with a subject. Friday is already short, so nothing thins
+       it further. */
+    var count = periodCount_(day);
+    var filled = day === 'ו' ? count : (di % 2 === 0 ? 9 : 7);
+    for (var p = 0; p < count; p++) {
       var row = [day].concat(PERIODS[p]);
       GRADES.forEach(function (g, gi) {
-        /* upper grades keep going later than the lower ones */
-        var has = p < filled && !(p >= 6 && gi < 2);
+        /* period 0 is attendance, not a taught lesson, so it never gets a
+           subject; beyond that, upper grades keep going later than the
+           lower ones */
+        var has = p > 0 && p < filled && !(p >= 7 && gi < 2);
         row.push(has ? SUBJECTS[(di * 5 + p * 3 + gi * 7) % SUBJECTS.length] : '');
       });
       rows.push(row);
@@ -1193,7 +1247,8 @@ function ensureSettingRows_(sh) {
 function styleSchedule_(sh) {
   var headers = scheduleHeaders_();
   writeHeader_(sh, headers);
-  var rows = DAYS.length * PERIODS.length;
+  var layout = scheduleLayout_();
+  var rows = layout.total;
 
   /* Day and period are structural: the board groups rows by them, and a
      stray edit here silently moves classes to another day. Times stay
@@ -1227,11 +1282,14 @@ function styleSchedule_(sh) {
       .setBackground(GRADE_TINTS[gi % GRADE_TINTS.length]);
   });
 
-  /* A thick box around each day's ten rows. Sixty rows of timetable is
-     one undifferentiated block otherwise, and the day column alone is
-     easy to lose track of when scrolling. */
+  /* A thick box around each day's own rows — eleven for every day except
+     Friday, whose block is five. The height comes from layout.counts
+     rather than a flat PERIODS.length, which is what keeps the boxes
+     right now that the days are not all the same length. Sixty rows of
+     timetable is one undifferentiated block otherwise, and the day
+     column alone is easy to lose track of when scrolling. */
   DAYS.forEach(function (day, di) {
-    sh.getRange(2 + di * PERIODS.length, 1, PERIODS.length, headers.length)
+    sh.getRange(2 + layout.offsets[di], 1, layout.counts[di], headers.length)
       .setBorder(true, true, true, true, null, null,
                  '#555555', SpreadsheetApp.BorderStyle.SOLID_THICK);
   });
@@ -1241,7 +1299,9 @@ function styleSchedule_(sh) {
   sh.setColumnWidths(3, 2, 80);
   sh.setColumnWidths(5, GRADES.length, 130);
   sh.getRange('A1').setNote(
-    'עשר שורות לכל יום, מוכנות מראש.\n\n' +
+    'אחד-עשר שיעורים בימים א׳-ה׳ (מספרים 0 עד 10), מוכנים מראש.\n' +
+    'ביום ו׳ יש חמישה בלבד (מספרים 0 עד 4) — יום הלימודים שם מסתיים\n' +
+    'ב-11:40, ולכן אין טעם בשורות מעבר לכך.\n\n' +
     'ממלאים רק את שמות המקצועות בעמודות השכבות.\n' +
     'תא ריק = אין שיעור. יום הלימודים מסתיים אחרי המקצוע האחרון\n' +
     'שהוזן, וכל מה שאחריו לא יוצג על הלוח.\n\n' +

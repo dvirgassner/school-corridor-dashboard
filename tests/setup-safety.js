@@ -53,11 +53,30 @@ const t = (hhmm) => {
   return (h * 60 + m) / 1440;
 };
 const PERIOD_TIMES = [
-  ['08:00', '08:45'], ['08:50', '09:35'], ['09:50', '10:35'],
-  ['10:40', '11:25'], ['11:45', '12:30'], ['12:35', '13:20'],
-  ['13:30', '14:15'], ['14:20', '15:05'], ['15:15', '16:00'],
-  ['16:05', '16:50']
+  ['08:15', '08:30'], ['08:30', '09:00'], ['09:00', '09:45'],
+  ['10:10', '10:55'], ['10:55', '11:40'], ['12:00', '12:45'],
+  ['12:45', '13:30'], ['14:00', '14:45'], ['14:45', '15:30'],
+  ['15:30', '16:15'], ['16:15', '17:00']
 ].map((pair) => pair.map(t));
+
+/* Friday (ו) ends after period 4 (11:40); every other day runs the full
+   eleven periods (0-10). Mirrors setup.gs's own SHORT_DAYS, kept as a
+   separate literal here on purpose: the fixture must independently model
+   the geometry setup.gs is supposed to produce, not borrow its logic and
+   risk both sides being wrong together. */
+const SHORT_DAYS = { 'ו': 5 };
+const periodCount = (day) => SHORT_DAYS[day] || PERIOD_TIMES.length;
+
+/* Row layout implied by periodCount: offsets are 0-based, relative to
+   row 2 (the first data row). Shared by every test below that needs to
+   know where a day's block starts or ends. */
+function scheduleLayout() {
+  const counts = DAYS.map(periodCount);
+  const offsets = [];
+  let total = 0;
+  counts.forEach((c) => { offsets.push(total); total += c; });
+  return { counts, offsets, total };
+}
 
 /* Deliberately awkward content: quotes, an emoji, an em dash, a comma,
    a subject over the length limit, and a בס"ד-style abbreviation with a
@@ -75,20 +94,25 @@ function populatedSheet() {
   sched.getRange(1, 1, 1, 10).setValues([
     ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
   ]);
+  const layout = scheduleLayout();
   const rows = [];
   DAYS.forEach((day, di) => {
-    PERIOD_TIMES.forEach((times, pi) => {
+    const count = layout.counts[di];
+    for (let pi = 0; pi < count; pi++) {
+      const times = PERIOD_TIMES[pi];
       /* the day letter only on the first row of each block — the shape a
          merged יום column exports, and the shape setup() maintains */
-      const row = [pi === 0 ? day : '', pi + 1, times[0], times[1]];
+      const row = [pi === 0 ? day : '', pi, times[0], times[1]];
       GRADES.forEach((g, gi) => {
         row.push(pi < 7 ? REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length] : '');
       });
       rows.push(row);
-    });
+    }
   });
   sched.getRange(2, 1, rows.length, 10).setValues(rows);
-  DAYS.forEach((d, di) => { sched.getRange(2 + di * 10, 1, 10, 1).merge(); });
+  DAYS.forEach((d, di) => {
+    sched.getRange(2 + layout.offsets[di], 1, layout.counts[di], 1).merge();
+  });
 
   const exams = ss.addSheet('מבחנים');
   exams.getRange(1, 1, 1, 6).setValues([
@@ -316,9 +340,43 @@ function run(test) {
     const { ctx } = loadScript(ss);
     ctx.setup();
     const sched = ss.getSheetByName('מערכת');
+    /* eleven rows per day except Friday (ו), which gets five and ends at
+       row 61: א 2-12, ב 13-23, ג 24-34, ד 35-45, ה 46-56, ו 57-61 */
     assert.deepEqual(sched.merges,
-      ['A2:A11', 'A12:A21', 'A22:A31', 'A32:A41', 'A42:A51', 'A52:A61'],
+      ['A2:A12', 'A13:A23', 'A24:A34', 'A35:A45', 'A46:A56', 'A57:A61'],
       'day blocks not merged as expected: ' + sched.merges.join(', '));
+  });
+
+  /* The specific hazard this fixture's shape exists to catch: setup.gs
+     used to assume every day has PERIODS.length rows, which is false now
+     that Friday ends after period 4. If that uniform-row assumption ever
+     comes back — someone "simplifies" writeDayColumn_/styleSchedule_ back
+     to `DAYS.length * PERIODS.length`, or drops SHORT_DAYS — Friday's
+     block grows to 11 rows and every day's rows this closes must land at
+     boundaries only reachable from PER-DAY counts, not a flat multiple. */
+  test('per-day period counts are respected — Friday is short, the rest are not', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const sched = ss.getSheetByName('מערכת');
+    const layout = scheduleLayout();
+
+    DAYS.forEach((d, di) => {
+      const expectedCount = d === 'ו' ? 5 : 11;
+      assert.equal(layout.counts[di], expectedCount,
+        `test fixture expected ${expectedCount} periods for ${d}, got ` +
+        layout.counts[di]);
+
+      const top = 2 + layout.offsets[di];
+      const bottom = top + layout.counts[di] - 1;
+      const block = `A${top}:A${bottom}`;
+      assert.ok(sched.merges.indexOf(block) >= 0,
+        `day ${d} should have been merged as ${block} — merges were: ` +
+        sched.merges.join(', '));
+    });
+
+    assert.equal(layout.total, 60,
+      'five eleven-period days plus one five-period Friday should total 60 rows');
   });
 
   test('each merged block carries its letter once, blank below', () => {
@@ -326,11 +384,13 @@ function run(test) {
     const { ctx } = loadScript(ss);
     ctx.setup();
     const sched = ss.getSheetByName('מערכת');
+    const layout = scheduleLayout();
     DAYS.forEach((d, di) => {
-      const top = 2 + di * 10;
+      const top = 2 + layout.offsets[di];
+      const count = layout.counts[di];
       assert.equal(sched.getRange(top, 1).getValue(), d,
         `block ${di} should start with ${d}`);
-      for (let r = top + 1; r < top + 10; r++) {
+      for (let r = top + 1; r < top + count; r++) {
         assert.equal(sched.getRange(r, 1).getValue(), '',
           `row ${r} of the ${d} block should be blank`);
       }
@@ -352,8 +412,11 @@ function run(test) {
     const ss = populatedSheet();
     const sched = ss.getSheetByName('מערכת');
     sched.merges.length = 0;
+    const layout = scheduleLayout();
     DAYS.forEach((d, di) => {
-      for (let i = 0; i < 10; i++) sched.getRange(2 + di * 10 + i, 1).setValue(d);
+      for (let i = 0; i < layout.counts[di]; i++) {
+        sched.getRange(2 + layout.offsets[di] + i, 1).setValue(d);
+      }
     });
     const subjectsBefore = sched.getRange(2, 5, 60, 6).getValues();
 

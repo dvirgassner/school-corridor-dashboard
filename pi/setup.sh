@@ -175,6 +175,36 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# Discover the graphical session's WAYLAND_DISPLAY / XDG_RUNTIME_DIR /
+# DISPLAY at runtime instead of assuming the caller's shell already has
+# them. From boot, labwc's autostart runs this script as its own child
+# and those vars are simply there; invoked over ssh (e.g. `board.sh
+# start`) there is no such inheritance — they are absent — and Chromium
+# dies with "Missing X server or $DISPLAY", which kiosk.sh's watchdog
+# then crash-loops forever, five seconds apart.
+#
+# labwc does NOT carry these in its OWN environment: it sets them for the
+# children it spawns after it starts, and /proc/<pid>/environ only ever
+# reports what a process was execve'd with, not values a running process
+# adds for itself afterwards. Xwayland is the child labwc spawns once, at
+# session start, to back DISPLAY; it lives for the whole graphical session
+# independent of whether kiosk.sh/Chromium are crash-looping, so read the
+# real values from it instead of from labwc itself.
+LABWC_PID="$(pgrep -x labwc | head -n1)"
+if [ -n "$LABWC_PID" ]; then
+  XW_PID="$(pgrep -x Xwayland -P "$LABWC_PID" | head -n1)"
+  [ -n "$XW_PID" ] || XW_PID="$(pgrep -x Xwayland | head -n1)"  # reparented fallback
+  if [ -n "$XW_PID" ] && [ -r "/proc/$XW_PID/environ" ]; then
+    for VAR in WAYLAND_DISPLAY XDG_RUNTIME_DIR DISPLAY; do
+      VAL="$(tr '\0' '\n' <"/proc/$XW_PID/environ" | sed -n "s/^$VAR=//p" | head -n1)"
+      [ -n "$VAL" ] && export "$VAR=$VAL"
+    done
+  fi
+fi
+# Fall back sensibly: if the compositor isn't up yet, leave whatever the
+# caller's shell already had rather than clobbering it with nothing — that
+# covers the boot-time case, where the inherited values are correct as-is.
+
 set -a; . "$HOME/.dashboard-env"; set +a
 # never blank or dim the screen (X11 only; harmless elsewhere)
 xset s off -dpms 2>/dev/null || true
@@ -185,7 +215,18 @@ xset s off -dpms 2>/dev/null || true
 # was already pinned at 100% and browning out its power supply. With a
 # non-zero idle it sits at 0.0%. The two-second delay before the pointer
 # vanishes costs nothing: nobody is looking at a corridor board's cursor.
-unclutter -idle 2 &
+#
+# `9>&-` closes this backgrounded child's copy of the lock fd. fd 9 above
+# is inherited by every child unless closed, so if this script (or
+# kiosk.sh, after the exec below) is ever killed by anything other than a
+# clean exit, a backgrounded child that still holds fd 9 open keeps the
+# flock held forever — every later start then wrongly reports "another
+# instance already running". This happened twice on the live board: once
+# from a stale unclutter left running exactly like this, once from an
+# orphaned backoff sleep inside kiosk.sh (fixed there for the same reason).
+unclutter -idle 2 9>&- &
+
+echo $$ >"$HOME/.board.pid"   # record the real PID; board.sh targets it exactly, never via pkill -f
 exec "$HOME/kiosk.sh"
 EOF
 chmod 755 "$HOME/start-board.sh"

@@ -22,7 +22,12 @@ REACH_URL="${DASH_URL%%#*}"
 WAITED=0
 until curl -sfI --max-time 10 "$REACH_URL" >/dev/null 2>&1; do
   echo "$(date '+%F %T') waiting for network (${WAITED}s) ..." >>"$HOME/kiosk.log"
-  sleep 3
+  # `9>&-`: start-board.sh's lock (fd 9) survives the exec that got us
+  # here and is inherited by every child of this process. If kiosk.sh is
+  # ever killed uncleanly while sitting in this sleep, an inherited fd 9
+  # would keep the lock held by the orphaned sleep forever, and every
+  # later start would wrongly say "another instance already running".
+  sleep 3 9>&-
   WAITED=$((WAITED + 3))
   # Give up after 45 seconds. The service worker keeps a copy of the page,
   # so starting without a network usually still shows the board (with
@@ -39,7 +44,11 @@ if [ "${GAVE_UP:-0}" = "1" ]; then
     until curl -sfI --max-time 10 "$REACH_URL" >/dev/null 2>&1; do sleep 5; done
     echo "$(date '+%F %T') network arrived — reloading the board" >>"$HOME/kiosk.log"
     pkill -f "$REACH_URL" 2>/dev/null || pkill chromium 2>/dev/null
-  ) &
+  ) 9>&- &
+  # `9>&-` on this subshell (closing fd 9 before its own `sleep 5` loop
+  # forks): it can outlive kiosk.sh for as long as the network takes to
+  # come back, so it must never be able to hold the lock by itself — same
+  # reasoning as the sleep above.
 fi
 
 # Chromium's own crash/restore bubbles would sit on top of the board
@@ -89,5 +98,8 @@ while true; do
   [ "$FAIL" -ge 6 ] && WAIT=120
   echo "$(date '+%F %T') chromium exited code=$CODE after ${RAN}s" \
        "(consecutive fast exits: $FAIL) — restarting in ${WAIT}s" >>"$LOG"
-  sleep "$WAIT"
+  # `9>&-`: this is the exact leak observed today — a backoff sleep that
+  # outlived a kiosk.sh killed uncleanly, orphaned, still holding fd 9,
+  # so every subsequent `board.sh start` wrongly refused to start.
+  sleep "$WAIT" 9>&-
 done

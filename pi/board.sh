@@ -14,12 +14,31 @@
 set -u
 CMD="${1:-status}"
 
-loop_pids() { pgrep -f "kiosk.sh" || true; }
+# Why not "pgrep/pkill -f kiosk.sh": -f matches the FULL command line of
+# EVERY process on the box, including ones that merely mention the string
+# "kiosk.sh" without being it — an ssh command running diagnostics against
+# this very file, for instance. That killed a maintaining engineer's own
+# remote shell mid-restart. start-board.sh records the loop's real PID
+# before it execs into kiosk.sh; trust that PID instead, and confirm it
+# still IS the kiosk loop (not an unrelated process that has since reused
+# the same number) before ever acting on it.
+loop_pids() {
+  local pid
+  [ -f "$HOME/.board.pid" ] || return 0
+  pid="$(cat "$HOME/.board.pid" 2>/dev/null)"
+  case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+  [ -r "/proc/$pid/cmdline" ] || return 0
+  tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -qxF "$HOME/kiosk.sh" && echo "$pid"
+}
 
 case "$CMD" in
   stop)
     # order matters: stop the watchdog BEFORE the browser it guards
-    pkill -f "kiosk.sh" 2>/dev/null || true
+    PID="$(loop_pids)"
+    if [ -n "$PID" ]; then
+      kill "$PID" 2>/dev/null || true
+      rm -f "$HOME/.board.pid"
+    fi
     sleep 1
     pkill chromium 2>/dev/null || pkill chromium-browser 2>/dev/null || true
     echo "board stopped — the desktop is yours."

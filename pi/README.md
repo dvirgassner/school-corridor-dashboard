@@ -265,6 +265,23 @@ kiosk loop, replacing itself, so it never appears in the process list.
 Re-running `pi/setup.sh` registers exactly one autostart entry and deletes
 any duplicate it finds.
 
+## Never run a second Chromium on the Pi
+
+Launching `chromium` manually over SSH competes for the kiosk's single
+profile directory. Both instances then corrupt each other's state, and when
+the manual one exits, both crash at once — live board down. The second
+crash is often preceded by a **gnome-keyring password dialog on the TV
+screen** — an unanswerable modal that freezes the display. Recovery comes
+only when the watchdog restarts it 4–5 seconds later, but this is
+self-inflicted downtime on a school wall display.
+
+**Always use a separate profile.** Keep checks short and rare on a 1GB Pi
+that already runs in swap. Prefer `--headless` for content inspection:
+
+```bash
+chromium --user-data-dir=/tmp/check --headless --screenshot --dump-dom <url>
+```
+
 ## If something breaks
 
 The Pi holds no irreplaceable state. Keep a **second SD card flashed

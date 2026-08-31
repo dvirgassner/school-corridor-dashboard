@@ -47,6 +47,13 @@ outside the repo. Without it you cannot reach the Pi.
    ministry feed also ships one malformed 369-day record that would blank
    the board for a year if believed.
 
+4. **A second Chromium on the kiosk's shared profile crashes both.** Manual
+   SSH launch for debugging competes with the autostarted instance for one
+   profile directory, corrupting both. Exit of the manual one kills both
+   instances together — live board down. The crash is often silent but may
+   trigger a gnome-keyring modal on the TV (unanswerable without a
+   keyboard) before watchdog recovery ~5 seconds later. Fix: `--user-data-dir=/tmp/check --headless`.
+
 ## Standing rules
 
 - **Never risk the Pi's network connection.** Losing it costs the data

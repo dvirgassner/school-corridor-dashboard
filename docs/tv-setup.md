@@ -50,13 +50,14 @@ The Pi drives this over HDMI-CEC (see `pi/cron` entries installed by
 | When | What |
 |---|---|
 | Sun–Fri 07:00 | TV on |
-| Sun–Thu 17:00 | TV to standby |
-| Fri 15:00 | TV to standby |
+| Sun–Thu 18:00 | TV to standby |
+| Fri 14:00 | TV to standby |
 | Saturday | stays off |
 
 As a backup, set the TV's **own On/Off timers** to the same hours
-(General → System Manager → Time → On/Off Timer). If CEC ever fails, the
-TV still follows the schedule on its own.
+(General → System Manager → Time → On/Off Timer): on 07:00 Sun-Fri, off
+18:00 Sun-Thu, off 14:00 Fri. If CEC ever fails, the TV still follows the
+schedule on its own.
 
 **Do set those timers.** CEC is fragile here: pinning the HDMI mode (which
 the Pi does so it boots with a picture) disables CEC outright unless

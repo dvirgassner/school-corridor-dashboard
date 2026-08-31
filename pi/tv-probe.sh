@@ -43,8 +43,8 @@ MIN=$(( (1${HHMM%??} - 100) * 60 + 1${HHMM#??} - 100 ))
 # Must match the on/standby cron jobs in setup.sh.
 EXPECT=off
 case "$DOW" in
-  0|1|2|3|4) [ "$MIN" -ge 420 ] && [ "$MIN" -lt 1020 ] && EXPECT=on ;;  # Sun-Thu 07:00-17:00
-  5)         [ "$MIN" -ge 420 ] && [ "$MIN" -lt  900 ] && EXPECT=on ;;  # Fri     07:00-15:00
+  0|1|2|3|4) [ "$MIN" -ge 420 ] && [ "$MIN" -lt 1080 ] && EXPECT=on ;;  # Sun-Thu 07:00-18:00
+  5)         [ "$MIN" -ge 420 ] && [ "$MIN" -lt  840 ] && EXPECT=on ;;  # Fri     07:00-14:00
 esac
 
 STATUS=$(cat "$CONN/status" 2>/dev/null)

@@ -1081,13 +1081,11 @@ function colLetter_(n) {
    class, so the day ends after the last subject entered. Nothing to add
    or delete, and no day to pick from a dropdown.
 
-   Period 0 (08:15-08:30) is deliberately short: it is attendance and
-   settling-in time before the first taught lesson, not a lesson itself.
-   It still gets its own row rather than being folded into period 1,
-   because the board and the sheet both key everything — colour, the
-   locked columns, the merge blocks — off a period's ROW, and a lesson
-   sharing a row with attendance would have nowhere of its own to be
-   marked late or skipped.
+   Period 0 (08:15-08:30) is deliberately short, but it is a real taught
+   lesson like every other period — not an attendance slot. It gets its
+   own row for the same reason every period does: the board and the
+   sheet both key everything — colour, the locked columns, the merge
+   blocks — off a period's ROW.
 
    Friday (יום ו׳) ends after period 4 (11:40): the school day there is
    shorter, so it never reaches periods 5-10 at all. That is what
@@ -1159,10 +1157,8 @@ function seedSchedule_(sh) {
     for (var p = 0; p < count; p++) {
       var row = [day].concat(PERIODS[p]);
       GRADES.forEach(function (g, gi) {
-        /* period 0 is attendance, not a taught lesson, so it never gets a
-           subject; beyond that, upper grades keep going later than the
-           lower ones */
-        var has = p > 0 && p < filled && !(p >= 7 && gi < 2);
+        /* upper grades keep going later than the lower ones */
+        var has = p < filled && !(p >= 7 && gi < 2);
         row.push(has ? SUBJECTS[(di * 5 + p * 3 + gi * 7) % SUBJECTS.length] : '');
       });
       rows.push(row);

@@ -368,11 +368,11 @@ cat >> "$CRON_TMP" <<EOF
 # healthy. Re-sending "on 0" hourly defeats the idle timer; it is a no-op
 # when the TV is already on. Each day's last wake stays before that day's
 # standby line below, so the two never fight.
-0 8-16 * * 0-4 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
-0 8-14 * * 5 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
-# corridor-board: TV to standby 17:00 Sun-Thu, 15:00 Fri
-0 17 * * 0-4 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
-0 15 * * 5 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+0 8-17 * * 0-4 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+0 8-13 * * 5 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+# corridor-board: TV to standby 18:00 Sun-Thu, 14:00 Fri
+0 18 * * 0-4 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+0 14 * * 5 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
 # corridor-board: TV stays off all Saturday
 0 7 * * 6 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
 EOF

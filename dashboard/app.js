@@ -61,8 +61,14 @@ function NOW() {
 let MODEL = null;        /* { grades, byDay, agenda, messages }      */
 let FETCHED_AT = null;   /* ms timestamp of last successful read     */
 let RENDERED_KEY = "";   /* model fingerprint, to avoid re-rendering */
-let SHEETS_OK = null;    /* last data fetch succeeded?               */
+let SHEETS_OK = null;    /* true / false / null "not sure yet"       */
 let PAGEHOST_OK = null;  /* can we still reach where we were served? */
+/* How many refresh cycles in a row have failed outright. The indicator
+   waits for SHEETS_FAIL_LIMIT of them before calling the sheet
+   disconnected, so a single blip out of eleven requests a minute does
+   not put a red banner on a corridor wall. */
+let SHEETS_FAILS = 0;
+const SHEETS_FAIL_LIMIT = 3;
 
 /* ================================================================
    DATA
@@ -135,13 +141,104 @@ function sampleCsv(today) {
   };
 }
 
-async function fetchCsv(url) {
+/* The tabs by the names the principal uses for them. These strings are
+   not decoration: they are what the indicator's tooltip and the console
+   say when a read fails, and "which of the eleven?" is the question a
+   corridor board otherwise cannot answer from the wall. */
+const TAB_NAMES = {
+  schedule: "מערכת", exams: "מבחנים", events: "אירועים",
+  messages: "הודעות", settings: "הגדרות", closures: "ימים ללא לימודים"
+};
+
+/* Read one CSV, with ONE retry.
+
+   Eleven requests a minute, every minute, on school Wi-Fi shared with
+   the whole building: a single failed read is an ordinary event, not a
+   fault. Trying again a fraction of a second later costs nothing and
+   removes most of them.
+
+   The delay is jittered so the six grade tabs, which are fetched
+   together, do not all retry in the same instant — a synchronised retry
+   burst is how a small hiccup becomes a big one. */
+const RETRY_MS = 400;
+
+async function fetchCsv(url, name) {
   /* cache-bust: Chromium on the Pi will happily serve a stale CSV for
-     hours otherwise */
-  const bust = (url.indexOf("?") >= 0 ? "&" : "?") + "_=" + Date.now();
-  const res = await fetch(url + bust, { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  return res.text();
+     hours otherwise. Recomputed per attempt, so the retry is a genuinely
+     new request rather than a second look at the same cached failure. */
+  const attempt = async () => {
+    const bust = (url.indexOf("?") >= 0 ? "&" : "?") + "_=" + Date.now();
+    const res = await fetch(url + bust, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${name || url}`);
+    return res.text();
+  };
+  try {
+    return await attempt();
+  } catch (first) {
+    await new Promise((r) => setTimeout(r, RETRY_MS + Math.random() * RETRY_MS));
+    return attempt();
+  }
+}
+
+/* ---- per-tab last-good copies -----------------------------------
+   The same idea the six grade tabs already had, applied to the flat
+   tabs too: losing ONE tab for one cycle must not cost the board the
+   whole model.
+
+   Before this, מבחנים, אירועים and הודעות were fetched in a strict
+   Promise.all — one HTTP error on any of them threw, the catch below
+   declared the sheet disconnected, and `if (MODEL) return` left the
+   previous render on screen. The board therefore showed correct data
+   under a "מנותק מגוגל שיטס" banner, which is precisely the complaint
+   that started this. Keeping the last good CSV per tab means a lost tab
+   freezes that one tab and nothing else.
+
+   Persisted, so a restart during an outage still has them. */
+const CSV_CACHE_KEY = "dash-csv";
+let LAST_CSV = null;
+
+function csvCache() {
+  if (!LAST_CSV) {
+    try {
+      const c = JSON.parse(localStorage.getItem(CSV_CACHE_KEY) || "null");
+      LAST_CSV = (c && typeof c === "object") ? c : {};
+    } catch (e) { LAST_CSV = {}; }   /* corrupt or unavailable — start empty */
+  }
+  return LAST_CSV;
+}
+
+function keepCsv(name, text) {
+  csvCache()[name] = text;
+  try {
+    localStorage.setItem(CSV_CACHE_KEY, JSON.stringify(LAST_CSV));
+  } catch (e) { /* quota / private mode — the cache is a bonus */ }
+}
+
+/* What this refresh cycle could not read. Reset at the top of every
+   loadData() and reported through the indicator's tooltip. */
+let FAILED_TABS = [];     /* nothing to show for these at all       */
+let DEGRADED_TABS = [];   /* showing the last good copy instead     */
+
+/* Read a tab, falling back to its last good copy.
+   Throws only when the tab has never been read successfully — at which
+   point there is genuinely nothing to draw and the cycle has to fail. */
+async function fetchTab(name, url) {
+  const label = TAB_NAMES[name] || name;
+  try {
+    const text = await fetchCsv(url, label);
+    keepCsv(name, text);
+    return text;
+  } catch (e) {
+    const last = csvCache()[name];
+    if (typeof last === "string") {
+      console.error(`tab "${label}" unreadable, showing the last good copy:`, e);
+      DEGRADED_TABS.push(label);
+      return last;
+    }
+    console.error(`tab "${label}" unreadable and never cached:`, e);
+    FAILED_TABS.push(label);
+    throw e;
+  }
 }
 
 /* ---- the six per-grade schedule tabs ----------------------------
@@ -166,14 +263,25 @@ function readSchedCache(n) {
   return null;
 }
 
+function gradeTabName(i) {
+  const labels = CFG.gradeLabels || [];
+  return "מערכת " + (labels[i] || (i + 1));
+}
+
 async function fetchSchedules(urls) {
   if (!LAST_SCHEDULE) {
     LAST_SCHEDULE = readSchedCache(urls.length) || urls.map(() => "");
   }
-  const got = await Promise.all(urls.map((u, i) => fetchCsv(u).catch((e) => {
-    console.error(`grade tab ${i + 1} unreadable, keeping the last good copy:`, e);
-    return null;
-  })));
+  const got = await Promise.all(urls.map((u, i) =>
+    fetchCsv(u, gradeTabName(i)).catch((e) => {
+      console.error(
+        `tab "${gradeTabName(i)}" unreadable, keeping the last good copy:`, e);
+      /* A grade tab that has no earlier copy is a real hole in the board
+         — that card falls back to its config label with an empty day —
+         so it is named as failed, not merely degraded. */
+      (LAST_SCHEDULE[i] ? DEGRADED_TABS : FAILED_TABS).push(gradeTabName(i));
+      return null;
+    })));
   let anyOk = false;
   const merged = got.map((text, i) => {
     if (text === null) return LAST_SCHEDULE[i] || "";
@@ -196,20 +304,34 @@ async function loadData() {
     FETCHED_AT = Date.now();
     return;
   }
+  FAILED_TABS = [];
+  DEGRADED_TABS = [];
   try {
     const perGrade = !!(SHEETS.schedules && SHEETS.schedules.length);
-    const [schedules, schedule, exams, events, messages] = await Promise.all([
-      perGrade ? fetchSchedules(SHEETS.schedules) : null,
-      perGrade ? null : fetchCsv(SHEETS.schedule),
-      fetchCsv(SHEETS.exams),
-      fetchCsv(SHEETS.events),
-      fetchCsv(SHEETS.messages)
+    /* Settle all of them, rather than Promise.all's reject-on-first.
+       Two reasons, both learned from this failing on a wall:
+         · every failing tab gets named, not just whichever lost the race
+           — one report instead of one per cycle until they are fixed;
+         · nothing is still in flight when the cycle ends, so a late
+           failure can no longer file itself against the NEXT cycle and
+           accuse a tab that is perfectly healthy. */
+    const settle = (p) => Promise.resolve(p).then(
+      (v) => ({ v: v }), (e) => ({ e: e }));
+    const got = await Promise.all([
+      perGrade ? settle(fetchSchedules(SHEETS.schedules)) : { v: null },
+      perGrade ? { v: null } : settle(fetchTab("schedule", SHEETS.schedule)),
+      settle(fetchTab("exams", SHEETS.exams)),
+      settle(fetchTab("events", SHEETS.events)),
+      settle(fetchTab("messages", SHEETS.messages))
     ]);
+    const broke = got.filter((r) => r.e);
+    if (broke.length) throw broke[0].e;
+    const [schedules, schedule, exams, events, messages] = got.map((r) => r.v);
     /* the settings tab is optional and must never break the board:
        if it is missing or unreachable, defaults apply */
     let settings = "";
     if (SHEETS.settings) {
-      try { settings = await fetchCsv(SHEETS.settings); }
+      try { settings = await fetchTab("settings", SHEETS.settings); }
       catch (e) { console.error("settings tab unreadable, using defaults:", e); }
     }
     /* The closures tab is optional in the same way, and its failure mode
@@ -218,7 +340,7 @@ async function loadData() {
        a working board because of a transient fetch error. */
     let closures = "";
     if (SHEETS.closures) {
-      try { closures = await fetchCsv(SHEETS.closures); }
+      try { closures = await fetchTab("closures", SHEETS.closures); }
       catch (e) { console.error("closures tab unreadable, ignoring:", e); }
     }
     MODEL = buildModel(
@@ -226,6 +348,10 @@ async function loadData() {
       today);
     markUpdates(MODEL, today);
     FETCHED_AT = Date.now();
+    /* A cycle that produced a model is a working connection, even if a
+       tab or two came from the last good copy. Those are named in the
+       tooltip instead — see renderStatus(). */
+    SHEETS_FAILS = 0;
     SHEETS_OK = true;
     try {
       localStorage.setItem(CACHE_KEY,
@@ -233,7 +359,10 @@ async function loadData() {
     } catch (e) { /* private mode / quota — cache is a bonus, not a need */ }
   } catch (err) {
     console.error("fetch failed, falling back to cache:", err);
-    SHEETS_OK = false;
+    /* One bad cycle is not a disconnection. The board only says so after
+       SHEETS_FAIL_LIMIT cycles in a row have failed — see sheetsFlag(). */
+    SHEETS_FAILS++;
+    SHEETS_OK = sheetsFlag(SHEETS_FAILS, SHEETS_FAIL_LIMIT);
     if (MODEL) return;                     /* keep what we already show */
     try {
       const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
@@ -722,6 +851,20 @@ function renderStatus() {
   }
   el.classList.toggle("on", !!msg);
   el.innerHTML = msg ? ICON_WARN + esc(msg) : "";
+  /* Which tabs are unhappy, for whoever looks at this board next. It is
+     a title, not visible text: the wall is read from ten metres and the
+     message itself has to stay short — but the answer to "which of the
+     eleven?" is now IN the page rather than only in a console that
+     scrolls away before anyone gets to it.
+
+     Put on the עודכן stamp as well as the indicator, because a tab that
+     is merely frozen on its last good copy shows NO indicator at all —
+     and that is exactly the state worth being able to look up. */
+  const note = DEMO ? "" : sheetsFailureNote(FAILED_TABS, DEGRADED_TABS);
+  [el, $("stamp")].forEach((n) => {
+    if (!n) return;
+    if (note) n.title = note; else n.removeAttribute("title");
+  });
 }
 
 function stamp() {

@@ -877,8 +877,13 @@
      internet" explains both other failures, so it wins.
 
      `pageHost` is whether the machine can still reach the site the board
-     was served from (GitHub Pages); `sheets` is whether the last data
-     fetch succeeded. Either can fail alone. */
+     was served from (GitHub Pages); `sheets` is whether the sheet is
+     readable. Either can fail alone.
+
+     Each of the three is a THREE-state value: true, false, or null for
+     "not known yet / not sure". Only an explicit `false` puts a message
+     on the wall, which is what lets sheetsFlag() below hold its tongue
+     while a fault is still only a suspicion. */
   function statusMessage(s) {
     s = s || {};
     if (s.online === false) return "אין אינטרנט";
@@ -886,6 +891,51 @@
     if (s.sheets === false) return "מנותק מגוגל שיטס";
     if (s.pageHost === false) return "מנותק מגיטהאב";
     return null;
+  }
+
+  /* Is the sheet connection broken, or did one read just miss?
+
+     The board now reads ELEVEN tabs a minute — six per-grade מערכת tabs
+     plus מבחנים, אירועים, הודעות, הגדרות and ימים ללא לימודים. At that
+     rate a single failed request is routine, and an indicator that
+     announces "מנותק מגוגל שיטס" every time one blips is an indicator
+     the school stops believing. It has to mean a PERSISTENT fault.
+
+     So a failure is only reported after `limit` consecutive failing
+     refresh cycles — three, i.e. about three minutes at the default
+     refreshSeconds. Below that the answer is null, "not sure", which
+     statusMessage() renders as no message at all.
+
+     Nothing is hidden by the wait: the עודכן stamp turns amber on its
+     own once the data is staleMinutes old, so a real outage is visible
+     within ten minutes even if this said nothing, and within three if
+     it is genuine. */
+  function sheetsFlag(fails, limit) {
+    if (!fails) return true;
+    return fails >= (limit || 3) ? false : null;
+  }
+
+  /* What the indicator's tooltip and the console say about WHICH tabs
+     are unhappy.
+
+     "מנותק מגוגל שיטס" on a wall in a school nobody can walk into is not
+     a diagnosis — the last incident cost a remote debugging session to
+     learn which of eleven requests was failing. Naming the tab turns the
+     same indicator into an answer.
+
+     Two different states, deliberately worded apart:
+       · `failed`   — could not be read AND there is no earlier copy, so
+                      something on screen is genuinely missing;
+       · `degraded` — could not be read but the last good copy is being
+                      shown, so the board is fine and only that one tab
+                      is frozen. */
+  function sheetsFailureNote(failed, degraded) {
+    var parts = [];
+    if (failed && failed.length) parts.push("לא נקראו: " + failed.join(", "));
+    if (degraded && degraded.length) {
+      parts.push("מהעותק האחרון: " + degraded.join(", "));
+    }
+    return parts.join(" · ");
   }
 
   /* ---------- settings tab ----------
@@ -1040,22 +1090,49 @@
          #d=<doc>&g=<sched>,<exams>,<events>,<messages>,<settings>
                  &s=<ז>,<ח>,<ט>,<י>,<יא>,<יב>
 
-       Which gives three properties worth the extra key:
+       Which gives two properties worth the extra key:
          · an OLD url (no s=) parses exactly as before — no schedules,
            the single legacy schedule tab, byte-identical behaviour;
-         · the NEW url works on the OLD code too, because g= still
-           carries the legacy מערכת gid at position 0 and s= is a key it
-           has never heard of and ignores;
-         · the repoint is therefore a pure URL change, and reversible.
+         · s= is a key the old parser has never heard of, so the new URL
+           is at least ACCEPTED by it rather than rejected into demo
+           mode, which is what a widened g= would have caused.
+
+       WHAT IT DOES NOT GIVE, learned the hard way: the new URL does not
+       WORK on the old code. That was the claim here, and it rested on
+       g= position 0 still naming a readable single-grade מערכת tab. The
+       six-tab migration replaced that tab, and its gid now answers HTTP
+       400 — verified from the board itself. Old code given the new URL
+       therefore fetches a dead tab on every cycle, which is exactly the
+       "מנותק מגוגל שיטס" the wall showed during the repoint, with the
+       last good timetable still rendered underneath it.
+
+       The lesson kept here rather than in a commit message: g= position
+       0 is now a TOMBSTONE. Anything that falls back to it — a
+       malformed s=, a rolled-back build, a stale cached app.js — fails
+       every cycle, so that path must fail LOUDLY and by name, which is
+       what fetchTab()/sheetsFailureNote() in app.js now do.
 
        A MALFORMED s= IS IGNORED rather than rejected. Returning null
        here would send the board to demo mode, and inventing a school
        day is worse than showing the legacy tab: the operator can see
        that the board did not migrate, and every real safeguard — the
-       stamp, the version, the status line — keeps working. */
+       stamp, the version, the status line — keeps working.
+
+       Ignored, but no longer SILENT: since g= position 0 is a tombstone,
+       "ignored s=" and "board permanently disconnected" are now the same
+       event, and it must be findable in the console rather than inferred
+       from eleven passing requests and one failing one. */
     var s = (p.get("s") || "").split(",").map(function (v) {
       return v.trim();
     }).filter(Boolean);
+    if (s.length && !(s.length === 6 &&
+        s.every(function (v) { return /^\d+$/.test(v); }))) {
+      if (typeof console !== "undefined" && console.error) {
+        console.error("kiosk URL: s= is not six numeric gids (" + s.length +
+          " given) — ignoring it and falling back to the legacy מערכת tab, " +
+          "which no longer exists. Fix s= in the kiosk URL.");
+      }
+    }
     if (s.length === 6 && s.every(function (v) { return /^\d+$/.test(v); })) {
       out.schedules = s.map(url);
     }
@@ -1237,6 +1314,8 @@
 
   var api = {
     statusMessage: statusMessage,
+    sheetsFlag: sheetsFlag,
+    sheetsFailureNote: sheetsFailureNote,
     hebrewKey: hebrewKey,
     dayOfTheDay: dayOfTheDay,
     vacationOn: vacationOn,

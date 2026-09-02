@@ -854,6 +854,189 @@ test("statusMessage: both hosts unreachable reads as no internet", () => {
     "אין אינטרנט");
 });
 
+/* Capture console.error while fn() runs, so a test that deliberately
+   provokes a warning asserts on it instead of printing it into the
+   suite's output. Returns the lines. */
+function captureErrors(fn) {
+  const lines = [];
+  const real = console.error;
+  console.error = (...a) => lines.push(a.join(" "));
+  try { fn(); } finally { console.error = real; }
+  return lines;
+}
+
+/* ---------- how long a fault must last before the wall hears about it ----
+   The board reads ELEVEN tabs a minute. One failed request out of eleven
+   is routine, and the previous behaviour — flag it instantly — is what
+   put "מנותק מגוגל שיטס" over a board that was showing correct data. */
+test("sheetsFlag: a clean cycle is connected", () => {
+  assert.equal(L.sheetsFlag(0), true);
+  assert.equal(L.sheetsFlag(0, 3), true);
+});
+test("sheetsFlag: ONE failed cycle is not a disconnection", () => {
+  /* null, not false: statusMessage() shows nothing for null */
+  assert.equal(L.sheetsFlag(1, 3), null);
+  assert.equal(L.statusMessage({ online: true, pageHost: true,
+                                 sheets: L.sheetsFlag(1, 3) }), null);
+});
+test("sheetsFlag: two failed cycles are still not enough", () => {
+  assert.equal(L.sheetsFlag(2, 3), null);
+});
+test("sheetsFlag: the limit-th consecutive failure IS a disconnection", () => {
+  assert.equal(L.sheetsFlag(3, 3), false);
+  assert.equal(L.statusMessage({ online: true, pageHost: true,
+                                 sheets: L.sheetsFlag(3, 3) }),
+    "מנותק מגוגל שיטס");
+});
+test("sheetsFlag: it stays false once past the limit", () => {
+  assert.equal(L.sheetsFlag(4, 3), false);
+  assert.equal(L.sheetsFlag(99, 3), false);
+});
+test("sheetsFlag: defaults to three cycles when no limit is given", () => {
+  assert.equal(L.sheetsFlag(2), null);
+  assert.equal(L.sheetsFlag(3), false);
+});
+test("sheetsFlag: a custom limit of 1 restores the old instant behaviour", () => {
+  assert.equal(L.sheetsFlag(1, 1), false);
+});
+test("sheetsFlag: an unsure sheet never turns pageHost into 'no internet'", () => {
+  /* "אין אינטרנט" requires BOTH to be known-bad; a suspicion must not
+     upgrade a GitHub outage into a claim about the whole network */
+  assert.equal(L.statusMessage({ online: true, pageHost: false,
+                                 sheets: L.sheetsFlag(1, 3) }),
+    "מנותק מגיטהאב");
+});
+
+/* ---------- which tab failed ----------
+   "מנותק מגוגל שיטס" on a wall is not a diagnosis. These strings are
+   what the indicator's title and the עודכן stamp's title carry, so the
+   next person can tell which of the eleven reads is failing without
+   instrumenting the browser on the wall. */
+test("sheetsFailureNote: nothing wrong → empty, so no tooltip is set", () => {
+  assert.equal(L.sheetsFailureNote([], []), "");
+  assert.equal(L.sheetsFailureNote(), "");
+  assert.equal(L.sheetsFailureNote(null, null), "");
+});
+test("sheetsFailureNote: names the tabs that could not be read at all", () => {
+  assert.equal(L.sheetsFailureNote(["מבחנים"], []), "לא נקראו: מבחנים");
+});
+test("sheetsFailureNote: names tabs served from the last good copy apart", () => {
+  /* a frozen tab is NOT a failure — the board is fine and only that one
+     tab is old — so it must not read like one */
+  assert.equal(L.sheetsFailureNote([], ["מערכת ז׳", "הודעות"]),
+    "מהעותק האחרון: מערכת ז׳, הודעות");
+});
+test("sheetsFailureNote: both kinds at once, failures first", () => {
+  assert.equal(L.sheetsFailureNote(["מערכת"], ["אירועים"]),
+    "לא נקראו: מערכת · מהעותק האחרון: אירועים");
+});
+
+/* ---------- app.js's data layer ----------
+   loadData() needs a browser, so what is pinned here is the SHAPE of it:
+   the four properties that, between them, made "מנותק מגוגל שיטס" appear
+   over a board that was displaying correct data. Each of these fails
+   this test if reverted. The live evidence is in the commit message. */
+const APP_SRC = fs.readFileSync(
+  path.join(__dirname, "..", "dashboard", "app.js"), "utf8");
+/* comments stripped: these tests are about the code, and every one of
+   these terms also appears in the prose explaining it */
+const APP_CODE = APP_SRC.replace(/\/\*[\s\S]*?\*\//g, "")
+                        .replace(/^\s*\/\/.*$/gm, "");
+
+test("app: no path sets SHEETS_OK = false directly", () => {
+  /* An assignment straight to false is the old all-or-nothing flag: one
+     failed read out of eleven a minute, and the wall says disconnected.
+     It has to come from sheetsFlag(), which counts cycles. */
+  assert.equal(/SHEETS_OK\s*=\s*false/.test(APP_CODE), false,
+    "SHEETS_OK is being set false without going through sheetsFlag()");
+  assert.ok(/SHEETS_OK\s*=\s*sheetsFlag\(/.test(APP_CODE),
+    "the failure path no longer routes through sheetsFlag()");
+});
+
+test("app: a failed cycle counts, a good cycle clears the count", () => {
+  assert.ok(/SHEETS_FAILS\+\+/.test(APP_CODE),
+    "nothing increments the consecutive-failure count");
+  assert.ok(/SHEETS_FAILS\s*=\s*0/.test(APP_CODE),
+    "a successful cycle never resets the count, so failures accumulate " +
+    "forever and the board eventually flags a fault it recovered from");
+});
+
+test("app: every sheet tab is read through the forgiving fetchTab()", () => {
+  /* מבחנים, אירועים and הודעות used to be raw fetchCsv() inside a strict
+     Promise.all: one HTTP error threw, the catch declared the sheet
+     disconnected, and the previous render stayed on screen. */
+  ["exams", "events", "messages", "settings", "closures", "schedule"]
+    .forEach((tab) => {
+      assert.ok(new RegExp(`fetchTab\\("${tab}"`).test(APP_CODE),
+        `${tab} is not read through fetchTab()`);
+      assert.equal(new RegExp(`fetchCsv\\(SHEETS\\.${tab}\\b`).test(APP_CODE),
+        false, `${tab} still bypasses the last-good copy`);
+    });
+});
+
+test("app: the tab reads settle, so one failure cannot mask the others", () => {
+  /* Promise.all rejects on the first failure and leaves the rest in
+     flight — so only one tab ever got named, and a late failure filed
+     itself against the NEXT cycle, accusing a healthy tab. */
+  assert.ok(/const settle = /.test(APP_CODE),
+    "the tab reads are back to reject-on-first");
+  assert.ok(/broke\.length/.test(APP_CODE),
+    "nothing checks the settled results for failures");
+});
+
+test("app: a failed read is retried once before it counts as a failure", () => {
+  assert.ok(/RETRY_MS/.test(APP_CODE), "fetchCsv no longer retries");
+  assert.ok(/Math\.random\(\)/.test(APP_CODE),
+    "the retry delay is not jittered, so six grade tabs retry in lockstep");
+});
+
+test("app: the failing tabs are named, in the page and not only the console", () => {
+  assert.ok(/sheetsFailureNote\(FAILED_TABS, DEGRADED_TABS\)/.test(APP_CODE),
+    "renderStatus no longer publishes which tab failed");
+  assert.ok(/TAB_NAMES/.test(APP_CODE), "the tabs have no human names");
+});
+
+/* ---------- the tombstone: g= position 0 no longer names a live tab ----
+   The six-tab migration replaced the single all-grades מערכת tab, and
+   its gid now answers HTTP 400. Anything that falls back to it fails on
+   every cycle, so the fallback has to be reachable ONLY when there is
+   genuinely no s= — never as the silent result of a typo. */
+test("parseSheetFragment: a valid s= means the legacy tab is never used", () => {
+  const s = L.parseSheetFragment(
+    "#d=1AbC_dEf-123&g=0,11,22,33,44&s=1,2,3,4,5,6");
+  assert.equal(s.schedules.length, 6);
+  s.schedules.forEach((u, i) => assert.ok(u.includes(`gid=${i + 1}`)));
+});
+test("parseSheetFragment: a malformed s= is ignored but SAYS so", () => {
+  let s;
+  /* five gids where six are required — the typo that would otherwise
+     drop the board onto the dead legacy tab in total silence */
+  const errs = captureErrors(() => {
+    s = L.parseSheetFragment("#d=1AbC_dEf-123&g=0,11,22,33,44&s=1,2,3,4,5");
+  });
+  assert.equal(s.schedules, undefined, "a bad s= must not be half-honoured");
+  assert.equal(errs.length, 1, "a bad s= must be reported, not swallowed");
+  assert.ok(/s=/.test(errs[0]) && /5/.test(errs[0]),
+    "the message must say what was wrong with s=");
+});
+test("parseSheetFragment: a non-numeric s= is ignored and reported", () => {
+  let s;
+  const errs = captureErrors(() => {
+    s = L.parseSheetFragment("#d=1AbC_dEf-123&g=0,11,22,33,44&s=1,2,3,4,5,../evil");
+  });
+  assert.equal(s.schedules, undefined);
+  assert.equal(errs.length, 1);
+});
+test("parseSheetFragment: NO s= at all is the legacy case and stays quiet", () => {
+  let s;
+  const errs = captureErrors(() => {
+    s = L.parseSheetFragment("#d=1AbC_dEf-123&g=0,11,22,33,44");
+  });
+  assert.equal(s.schedules, undefined);
+  assert.deepEqual(errs, [],
+    "an old URL that never had s= is not a misconfiguration");
+});
+
 /* ---------- document-id (link-shared) sheet URLs ---------- */
 test("parseSheetFragment: #d= builds export URLs for a link-shared sheet", () => {
   const s = L.parseSheetFragment("#d=1AbC_dEf-123&g=0,11,22,33,44");
@@ -2084,13 +2267,24 @@ test("parseSheetFragment: an OLD url still parses, with no schedules", () => {
 test("parseSheetFragment: a malformed s= is IGNORED, never demo mode", () => {
   /* Returning null here would drop the board to bundled sample data — a
      fake school day that looks entirely real. Falling back to the legacy
-     tab shows the school's own data and leaves the fault visible. */
+     tab shows the school's own data and leaves the fault visible.
+
+     That fallback is now a DEAD tab (the six-tab migration replaced it
+     and its gid answers HTTP 400), so "ignored" must never mean
+     "silent": every one of these also has to reach the console. */
   [ "s=20,21,22", "s=20,21,22,23,24,25,26", "s=20,21,22,23,24,abc",
     "s=", "s=,,,,," ].forEach((bad) => {
-    const f = L.parseSheetFragment(`#t=${TOKEN}&g=1,2,3,4,5&${bad}`);
+    let f;
+    const errs = captureErrors(() => {
+      f = L.parseSheetFragment(`#t=${TOKEN}&g=1,2,3,4,5&${bad}`);
+    });
     assert.ok(f, bad + " sent the board to demo mode");
     assert.equal(f.schedules, undefined, bad + " was accepted");
     assert.ok(f.schedule.indexOf("gid=1") > 0, bad + " lost the legacy tab");
+    /* "s=" and "s=,,,,," carry no gids at all — indistinguishable from a
+       URL that never had the key, so they stay quiet on purpose. */
+    const expected = /^s=,*$/.test(bad) ? 0 : 1;
+    assert.equal(errs.length, expected, bad + " logged " + errs.length);
   });
 });
 

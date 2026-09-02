@@ -993,7 +993,7 @@ function advancePages() {
 /* ================================================================
    SCROLLING SUBJECT NAMES
 
-   A streamed subject name — "מעורבים בקהילה (מורה א, מורה ב)" — is longer than
+   A streamed subject name — "מעורבים בקהילה (מורה א, מורה ב)" — is longer
    the column, and truncating it hides exactly the part that says which
    group a pupil belongs in. So names that do not fit move instead:
 

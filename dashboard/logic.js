@@ -260,6 +260,43 @@
   /* the events tab's "applies to every grade" column */
   var ALL_LABELS = ["כולם", "כל השכבות", "all"];
 
+  /* ---------- matching a grade across tabs ----------
+     A grade's name is written by hand in more than one place, and the
+     punctuation does not agree. The real sheet has it both ways: the
+     per-grade timetable tabs title themselves with an ASCII apostrophe
+     ("מערכת שעות לכיתה ז'", U+0027) while the events and closures tabs
+     head their tick-box columns with a Hebrew GERESH ("ז׳", U+05F3) —
+     characters that look identical on screen and are not equal in code.
+
+     Before the six-tab migration this never showed, because the grade
+     list came from the same tab as nothing else. Now it comes from the
+     timetable tabs and is matched against columns in two other tabs, so
+     a bare === would have quietly stopped every event and every closure
+     from finding its grade — a failure with no error and no visible
+     cause beyond chips that stopped appearing.
+
+     So a grade column is matched on the LETTERS, ignoring geresh,
+     gershayim, straight and curly quotes and spaces. That also means the
+     principal can type either form in either tab and be right. */
+  var GRADE_MARKS = /[׳״'"‘’“”\s]/g;
+  function gradeKey(s) {
+    return clean(s).replace(GRADE_MARKS, "");
+  }
+
+  /* This grade's cell in a row, whichever way its column is punctuated.
+     The exact-hit fast path keeps the common case a single lookup. */
+  function gradeCell(row, grade) {
+    if (!row) return undefined;
+    if (row[grade] !== undefined) return row[grade];
+    var want = gradeKey(grade);
+    if (!want) return undefined;
+    for (var k in row) {
+      if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
+      if (gradeKey(k) === want) return row[k];
+    }
+    return undefined;
+  }
+
   /* Schedule: columns are Day, Period, Start, End, then a SUBJECT and a
      ROOM column per grade — so the grade list is whatever the school put
      in the header, minus the room columns that follow each one.
@@ -373,6 +410,212 @@
     return { grades: grades, byDay: byDay };
   }
 
+  /* ==================================================================
+     THE PER-GRADE מערכת TABS  —  the school's real timetable shape.
+
+     buildSchedule() above reads ONE tab holding every grade side by
+     side. That is not how the school keeps its timetable: each grade has
+     its own tab (מערכת ז … מערכת יב), laid out as a week grid rather
+     than a row-per-lesson list. Both parsers stay: the six-tab path is
+     what the board now runs on, and the single-tab one is what an older
+     kiosk URL — including the one on the wall until the repoint — still
+     uses. Removing it would take the live board down the moment this is
+     deployed.
+
+     THE GRID, verified against the published CSV of the real tabs:
+
+       row 1   A1 is a title:  מערכת שעות לכיתה ז'
+       row 2   the six day letters, each over a MERGED pair of columns —
+               so the letter arrives on the FIRST column of its pair and
+               the second column is blank:
+                 D:E = א   F:G = ב   H:I = ג   J:K = ד   L:M = ה   N:O = ו
+       row 3   sub-headers:  B "מ-"  C "עד",  then שיעור / מיקום per pair
+       rows 4+ fourteen blocks of FOUR rows each. The block's first row
+               carries the period number in A and its times in B and C;
+               all four rows can carry a lesson, which is how up to four
+               concurrent classes are expressed. In each day pair the
+               first column is the lesson text and the second is its room.
+
+     Three things about the real data that this parser has to survive,
+     none of them hypothetical — all three are in the fixture:
+
+       · A LESSON WITH NO ROOM.  "חנ""ג בנות (מורה ג)" arrives with an
+         empty מיקום cell, because the class is outdoors. It is a real
+         lesson and must render.
+       · A ROOM WITH NO LESSON.  The mirror case is meaningless, and is
+         dropped rather than rendered as a blank line with a pin.
+       · A SHORT LAST BLOCK.  Sheets trims trailing empty rows from a CSV
+         export, so the final block usually arrives with fewer than four
+         rows — and an all-empty block arrives with four blank ones. The
+         block boundary is therefore taken from column A holding a period
+         number, never from counting rows in fours.
+
+     Blocks are located by content, not by position, so the parser also
+     tolerates a tab whose blank rows were dropped by skipEmptyLines, and
+     a grid with more or fewer than fourteen periods.
+     ================================================================== */
+  var GRADE_TAB_FIRST_ROW = 3;      /* 0-based: sheet row 4      */
+  var GRADE_TAB_FIRST_COL = 3;      /* 0-based: sheet column D   */
+  var GRADE_TAB_DAYS = ["א", "ב", "ג", "ד", "ה", "ו"];
+
+  /* A1 names the grade, and that is where the board's card heading comes
+     from — so the six tabs can be renamed or reordered in the sheet
+     without a code change. The wording is stripped by PREFIX so
+     "מערכת שעות לכיתה" becoming "מערכת שעות לשכבה" does not silently
+     leave the whole sentence as the grade name. */
+  var GRADE_TITLE_PREFIXES = [
+    "מערכת שעות לכיתה", "מערכת שעות לשכבה", "מערכת שעות של",
+    "מערכת שעות", "מערכת לכיתה", "מערכת לשכבה", "מערכת"
+  ];
+
+  function gradeLabelFromTitle(title) {
+    var t = clean(title);
+    if (!t) return "";
+    for (var i = 0; i < GRADE_TITLE_PREFIXES.length; i++) {
+      var pre = GRADE_TITLE_PREFIXES[i];
+      if (t.indexOf(pre) === 0) {
+        t = clean(t.slice(pre.length));
+        break;
+      }
+    }
+    /* A title that is nothing BUT the prefix names no grade. */
+    return t;
+  }
+
+  /* Row 2, read as the merged-cell export it is: a letter on the first
+     column of each pair, a blank on the second. Falls back to the fixed
+     א-ו order by position, so a tab whose day row was deleted still
+     parses instead of yielding an empty week. */
+  function gradeTabDayColumns(row) {
+    row = row || [];
+    var out = [], c, i = 0;
+    for (c = GRADE_TAB_FIRST_COL; c + 1 < Math.max(row.length, GRADE_TAB_FIRST_COL + 12); c += 2) {
+      var letter = txt(row[c]);
+      if (!letter || GRADE_TAB_DAYS.indexOf(letter) < 0) letter = GRADE_TAB_DAYS[i];
+      if (!letter) break;
+      out.push({ day: letter, subjectCol: c, roomCol: c + 1 });
+      i++;
+      if (i >= GRADE_TAB_DAYS.length) break;
+    }
+    return out;
+  }
+
+  /* One grade's tab, as a MATRIX of cells (Papa.parse with header:false)
+     rather than named rows: the header names repeat once per day pair, so
+     there is nothing to key on.
+
+     Returns { label, byDay }, where byDay[dayLetter] is that day's
+     periods in time order:
+
+       { period, start, end, classes: [ { subject, room }, … ] }
+
+     `classes` holds every concurrent class in the period, in sheet order,
+     and is never empty — a period with nothing in it produces no entry at
+     all rather than an empty one. */
+  function parseGradeTab(matrix, fallbackLabel) {
+    var rows = matrix || [];
+    var label = gradeLabelFromTitle((rows[0] || [])[0]) || clean(fallbackLabel);
+    var days = gradeTabDayColumns(rows[1]);
+    var byDay = {};
+    days.forEach(function (d) { byDay[d.day] = []; });
+
+    var open = null;      /* the block being filled, or null before the first */
+    for (var i = GRADE_TAB_FIRST_ROW; i < rows.length; i++) {
+      var row = rows[i] || [];
+      var period = txt(row[0]), start = txt(row[1]), end = txt(row[2]);
+      /* A period number AND two usable times: this row opens a block.
+         Requiring all three means a stray number in column A cannot
+         invent a period with no times for the board to place. */
+      if (/^\d+$/.test(period) && validTime(start) && validTime(end)) {
+        open = { period: period, start: start, end: end, slots: {} };
+      } else if (!open) {
+        continue;         /* rows above the first block: nothing to attach to */
+      }
+      /* every row of the block, its first included, can carry a lesson */
+      for (var k = 0; k < days.length; k++) {
+        var d = days[k];
+        var subject = clean(row[d.subjectCol]);
+        /* A room with no lesson beside it is a leftover, not a class. */
+        if (!subject) continue;
+        var slot = open.slots[d.day];
+        if (!slot) {
+          slot = { period: open.period, start: open.start, end: open.end,
+                   classes: [] };
+          open.slots[d.day] = slot;
+          (byDay[d.day] = byDay[d.day] || []).push(slot);
+        }
+        slot.classes.push({ subject: subject, room: clean(row[d.roomCol]) });
+      }
+    }
+
+    Object.keys(byDay).forEach(function (d) {
+      byDay[d].sort(function (a, b) { return minutes(a.start) - minutes(b.start); });
+    });
+    return { label: label, byDay: byDay };
+  }
+
+  /* Six parsed tabs → the ONE model the board renders, in exactly the
+     shape buildSchedule() returns. That is the point of this function:
+     the data source changed, the model contract did not, so markUpdates,
+     the agenda's grade list, the closures pane and the theme pipeline are
+     all untouched by the migration.
+
+     `labels` supplies a fallback name per position. It matters more than
+     it looks: a grade whose tab could not be read must still occupy its
+     own card in its own accent colour, because dropping it would shift
+     every later grade's colour and leave a hole in the grid — the board
+     would look like a different school rather than like one tab being
+     briefly unreadable. */
+  function mergeGradeSchedules(tabs, labels) {
+    tabs = tabs || [];
+    labels = labels || [];
+    var grades = [], byDay = {}, index = {};
+
+    tabs.forEach(function (tab, i) {
+      var name = (tab && tab.label) || clean(labels[i]) || ("שכבה " + (i + 1));
+      /* Two tabs claiming the same name would collapse into one card and
+         silently hide a grade; keep both, distinguished. */
+      while (grades.indexOf(name) >= 0) name = name + " ";
+      grades.push(name);
+    });
+
+    function slotFor(day, p) {
+      var key = day + "|" + p.start;
+      var slot = index[key];
+      if (slot) return slot;
+      slot = { period: p.period, start: p.start, end: p.end,
+               subjects: {}, rooms: {}, entries: {} };
+      grades.forEach(function (g) {
+        slot.subjects[g] = "";
+        slot.rooms[g] = "";
+        slot.entries[g] = [];
+      });
+      index[key] = slot;
+      (byDay[day] = byDay[day] || []).push(slot);
+      return slot;
+    }
+
+    tabs.forEach(function (tab, i) {
+      if (!tab || !tab.byDay) return;
+      var g = grades[i];
+      Object.keys(tab.byDay).forEach(function (day) {
+        tab.byDay[day].forEach(function (p) {
+          if (!p.classes || !p.classes.length) return;
+          var slot = slotFor(day, p);
+          slot.entries[g] = p.classes.slice();
+          /* the single-value view every earlier part of the board reads */
+          slot.subjects[g] = p.classes[0].subject;
+          slot.rooms[g] = p.classes[0].room;
+        });
+      });
+    });
+
+    Object.keys(byDay).forEach(function (d) {
+      byDay[d].sort(function (a, b) { return minutes(a.start) - minutes(b.start); });
+    });
+    return { grades: grades, byDay: byDay };
+  }
+
   /* Exams + events for today, merged and sorted by start time.
 
      `grades` is the grade list from the schedule tab. Events name their
@@ -404,7 +647,7 @@
       if (parseSheetDate(pick(r, "date")) !== todayKey) return;
       if (!validTime(start) || !validTime(end)) return;
       if (!pick(r, "title")) return;
-      var ticked = grades.filter(function (g) { return isChecked(r[g]); });
+      var ticked = grades.filter(function (g) { return isChecked(gradeCell(r, g)); });
       var listed = pick(r, "grades").split(",").map(clean).filter(Boolean);
       /* a dedicated "כולם" checkbox beats ticking every grade one by one,
          and reads as one chip on the board */
@@ -595,7 +838,7 @@
       if (!from || !reason) return;
       var to = parseSheetDate(pick(r, "until")) || from;
       if (to < from) to = from;          /* dates entered backwards */
-      var ticked = grades.filter(function (g) { return isChecked(r[g]); });
+      var ticked = grades.filter(function (g) { return isChecked(gradeCell(r, g)); });
       /* Ticking every grade one by one means the same thing as כולם. */
       var all = ALL_LABELS.some(function (k) { return isChecked(r[k]); }) ||
                 (grades.length > 0 && ticked.length === grades.length);
@@ -779,7 +1022,208 @@
     if (!out.closures && extra && /^\d+$/.test(String(extra.closures || ""))) {
       out.closures = url(String(extra.closures));
     }
+
+    /* ---- s= : the six per-grade מערכת tabs -------------------------
+       The timetable moved from one tab holding every grade to one tab
+       PER grade, so the schedule needs six gids where it needed one.
+
+       g= IS DELIBERATELY LEFT ALONE. Widening it to eleven entries would
+       change what every position means, and the old parser rejects any
+       list longer than six outright — so the board on the wall, which
+       runs the old code until it is repointed, would drop to DEMO DATA
+       the moment it was given the new URL. A fake timetable that looks
+       real is the worst failure this board has.
+
+       So the six gids arrive in their own key and the new URL is a
+       strict SUPERSET of the old one:
+
+         #d=<doc>&g=<sched>,<exams>,<events>,<messages>,<settings>
+                 &s=<ז>,<ח>,<ט>,<י>,<יא>,<יב>
+
+       Which gives three properties worth the extra key:
+         · an OLD url (no s=) parses exactly as before — no schedules,
+           the single legacy schedule tab, byte-identical behaviour;
+         · the NEW url works on the OLD code too, because g= still
+           carries the legacy מערכת gid at position 0 and s= is a key it
+           has never heard of and ignores;
+         · the repoint is therefore a pure URL change, and reversible.
+
+       A MALFORMED s= IS IGNORED rather than rejected. Returning null
+       here would send the board to demo mode, and inventing a school
+       day is worse than showing the legacy tab: the operator can see
+       that the board did not migrate, and every real safeguard — the
+       stamp, the version, the status line — keeps working. */
+    var s = (p.get("s") || "").split(",").map(function (v) {
+      return v.trim();
+    }).filter(Boolean);
+    if (s.length === 6 && s.every(function (v) { return /^\d+$/.test(v); })) {
+      out.schedules = s.map(url);
+    }
     return out;
+  }
+
+  /* ==================================================================
+     WHAT A GRADE CARD SHOWS, AND HOW IT PAGES
+
+     Three pure decisions, kept out of app.js so they can be tested
+     without a browser. app.js measures the DOM and applies the answers;
+     nothing below knows an element exists.
+
+     A "slot" here is ONE PERIOD with all of its concurrent classes.
+     That is the unit throughout — which is what makes "never split a
+     concurrent group across a page" a property of the data structure
+     rather than a check somebody has to remember to run.
+     ================================================================== */
+
+  /* Which of a card's periods are on screen right now.
+
+     Two display modes, chosen by the principal in the הגדרות tab:
+       "all"       — the whole day stays up, the current period highlighted
+       "upcoming"  — a period disappears as it finishes
+
+     Both end the same way: once the last lesson has been over for
+     `graceMinutes`, everything goes and the pane hands over to
+     "יום הלימודים הסתיים".
+
+     THE ONE SUBTLETY — the retained lesson.
+     In "upcoming" mode the break indicator has a problem: it is drawn
+     BETWEEN two lessons, and the lesson above it is exactly the one that
+     just ended and was therefore just removed. The card would then say
+     nothing at all about being on a break, in the mode the school
+     actually runs. So while — and only while — this card is between two
+     of its own lessons, the period that just finished is kept on the
+     card. Only that one, always the whole concurrent group (a slot has
+     no smaller unit), and rendered as an ordinary finished lesson: it
+     cannot take the "now" highlight, because nothing is "now" in a
+     break.
+
+     Returns the indexes to show, in order. */
+  function visibleSlots(slots, nowMin, opts) {
+    slots = slots || [];
+    opts = opts || {};
+    var hide = opts.hide === true;
+    var grace = opts.graceMinutes || 0;
+    if (!slots.length) return [];
+
+    var lastEnd = -1, i, e;
+    for (i = 0; i < slots.length; i++) {
+      e = minutes(slots[i].end);
+      if (e > lastEnd) lastEnd = e;
+    }
+    /* The bell is an approximation and a lesson often runs over, so the
+       day is not over until the last one has finished plus the grace. */
+    if (nowMin >= lastEnd + grace) return [];
+
+    var all = [];
+    for (i = 0; i < slots.length; i++) all.push(i);
+    if (!hide) return all;
+
+    /* never hide the last lesson of the day early — the grace above is
+       what protects it, and this is the rule that grace belongs to */
+    var keep = all.filter(function (k) {
+      return nowMin < minutes(slots[k].end) || minutes(slots[k].end) === lastEnd;
+    });
+    if (!keep.length) return keep;
+
+    /* Retain, only in a genuine break: nothing running, something
+       finished, and something still to come ON THIS CARD. A card whose
+       remaining lesson list is empty keeps nothing, so a finished lesson
+       can never be the only thing a pupil sees. */
+    var running = all.some(function (k) {
+      return nowMin >= minutes(slots[k].start) && nowMin < minutes(slots[k].end);
+    });
+    var upcoming = keep.some(function (k) {
+      return minutes(slots[k].start) > nowMin;
+    });
+    if (running || !upcoming) return keep;
+
+    var done = all.filter(function (k) { return keep.indexOf(k) < 0; });
+    if (!done.length) return keep;
+    return [done[done.length - 1]].concat(keep);
+  }
+
+  /* The seam the break indicator hangs on, as positions within the
+     VISIBLE list — which is what the card actually holds boxes for.
+
+     Nothing during a lesson (the highlight already answers "what now"),
+     nothing before the first bell, nothing after the last, and nothing
+     unless BOTH neighbours are on the card. */
+  function breakSeam(visible, nowMin) {
+    visible = visible || [];
+    var prev = -1, next = -1, i, s, e;
+    for (i = 0; i < visible.length; i++) {
+      s = minutes(visible[i].start); e = minutes(visible[i].end);
+      if (nowMin >= s && nowMin < e) return null;      /* a lesson is running */
+      if (e <= nowMin) prev = i;
+      else if (next < 0 && s > nowMin) next = i;
+    }
+    if (prev < 0 || next < 0 || next <= prev) return null;
+    return { prev: prev, next: next };
+  }
+
+  /* ---------- paging, by measurement ----------
+     The shipped board divides the pane height by a constant row height,
+     which is exact when every row is 52px and wrong here: a slot holds
+     one, two, three or four concurrent classes and its height varies
+     with that. So app.js measures the real boxes and this packs them.
+
+     `boxes` are the visible slots in order, each { top, height } in
+     layout pixels, measured from the same origin.
+
+     THE ABSOLUTE RULE — a concurrent group is never split across a page
+     — holds STRUCTURALLY: the unit being packed is the whole slot, so
+     there is no code path that can place part of one. It is not enforced
+     by a check because there is nothing to check.
+
+     `avoid` is the index of the slot immediately after the break seam. A
+     page must not START there: the pill is centred on the seam, so the
+     seam would be the pane's top edge and half the pill would be clipped
+     away. Ending the previous page one slot earlier moves the seam
+     inside a page. Only possible when that page keeps a slot of its own;
+     when it cannot, the caller drops the marker instead of drawing it
+     wrong. */
+  function packPages(boxes, availH, avoid) {
+    boxes = boxes || [];
+    if (!boxes.length) return [];
+    if (avoid === undefined || avoid === null) avoid = -1;
+    var tops = boxes.map(function (b) { return b.top; });
+    var bots = boxes.map(function (b) { return b.top + b.height; });
+    var out = [], i = 0;
+    while (i < boxes.length) {
+      var j = i;
+      while (j + 1 < boxes.length && bots[j + 1] - tops[i] <= availH) j++;
+      if (avoid > i + 1 && j === avoid - 1) j = avoid - 2;
+      out.push([i, j]);
+      i = j + 1;
+    }
+    return out;
+  }
+
+  /* Each page as a WINDOW the pane can be snapped to: where it starts and
+     exactly how tall it is.
+
+     The last page is pulled back to the earliest PERIOD boundary that
+     still fits, so it ends flush with the final lesson instead of
+     trailing half a pane of white — the shipped board's "anchor to the
+     final row", snapped to a whole period rather than to a pixel. */
+  function pageWindows(boxes, availH, avoid) {
+    boxes = boxes || [];
+    if (!boxes.length) return [];
+    if (avoid === undefined || avoid === null) avoid = -1;
+    var pages = packPages(boxes, availH, avoid);
+    var tops = boxes.map(function (b) { return b.top; });
+    var bots = boxes.map(function (b) { return b.top + b.height; });
+    var contentBottom = bots[bots.length - 1];
+    return pages.map(function (p, k) {
+      var a = p[0];
+      if (k === pages.length - 1 && k > 0) {
+        while (a > 0 && contentBottom - tops[a - 1] <= availH) a--;
+        if (a === avoid) a++;              /* still never start on the seam */
+      }
+      var bot = (k === pages.length - 1) ? contentBottom : bots[p[1]];
+      return { start: a, end: p[1], top: tops[a],
+               height: Math.round(bot - tops[a]) };
+    });
   }
 
   /* Video pacing: play at most once per interval. A timestamp in the
@@ -804,6 +1248,15 @@
     normalizeVideo: normalizeVideo,
     shouldPlayVideo: shouldPlayVideo,
     buildSchedule: buildSchedule,
+    parseGradeTab: parseGradeTab,
+    mergeGradeSchedules: mergeGradeSchedules,
+    gradeLabelFromTitle: gradeLabelFromTitle,
+    gradeKey: gradeKey,
+    gradeCell: gradeCell,
+    visibleSlots: visibleSlots,
+    breakSeam: breakSeam,
+    packPages: packPages,
+    pageWindows: pageWindows,
     buildAgenda: buildAgenda,
     buildMessages: buildMessages,
     toGematria: toGematria,

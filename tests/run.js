@@ -1461,6 +1461,566 @@ test("a whole-school closure reaches EVERY grade and is not a vacation", () => {
     "a school closure must NOT trigger the ministry-vacation screen");
 });
 
+/* ==================================================================
+   THE PER-GRADE מערכת TABS
+
+   The fixture is a real tab's published CSV shape, anonymised: the same
+   title row, the same merged day letters, the same four-row blocks,
+   the same escaped quotes and commas inside quoted cells. It is
+   deliberately not generated — a generated fixture only tests the
+   generator's idea of the format.
+   ================================================================== */
+function gradeFixture() {
+  const csv = fs.readFileSync(
+    path.join(__dirname, "fixtures", "grade-tab.csv"), "utf8");
+  return Papa.parse(csv.replace(/\r\n/g, "\n"), { header: false }).data;
+}
+const FIX = gradeFixture();
+
+test("grade tab: A1 names the grade, prefix stripped, quotes unescaped", () => {
+  const t = L.parseGradeTab(FIX, "fallback");
+  assert.equal(t.label, 'י"א');
+});
+
+test("grade tab: the label falls back when A1 says nothing useful", () => {
+  assert.equal(L.parseGradeTab([["מערכת שעות"], [], []], "ז׳").label, "ז׳");
+  assert.equal(L.parseGradeTab([[""], [], []], "ז׳").label, "ז׳");
+  assert.equal(L.parseGradeTab([], "ז׳").label, "ז׳");
+  /* a title that is nothing BUT the prefix names no grade, and must not
+     leave the whole sentence sitting in the card heading */
+  assert.equal(L.gradeLabelFromTitle("מערכת שעות לכיתה"), "");
+  assert.equal(L.gradeLabelFromTitle("מערכת שעות לשכבה  ט׳ "), "ט׳");
+});
+
+test("grade tab: one lesson per day on a plain period", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  const first = (d) => t.byDay[d][0];
+  assert.equal(first("א").period, "1");
+  assert.equal(first("א").start, "08:15");
+  assert.equal(first("א").end, "09:00");
+  assert.deepEqual(first("א").classes, [{ subject: "מתמטיקה", room: "יא" }]);
+  /* the merged day letters really did map D:E→א … N:O→ו */
+  assert.equal(first("ב").classes[0].subject, "ערבית");
+  assert.equal(first("ג").classes[0].subject, "היסטוריה");
+  assert.equal(first("ד").classes[0].subject, "עברית");
+  assert.equal(first("ה").classes[0].subject, 'תנ"ך');
+  assert.equal(first("ו").classes[0].subject, "ספרות");
+});
+
+test("grade tab: split periods carry every concurrent class, in sheet order", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  const at = (d, p) => t.byDay[d].find((s) => s.period === p);
+  assert.deepEqual(at("א", "2").classes, [
+    { subject: "מתמטיקה 5 (מורה א)", room: "יא" },
+    { subject: "מתמטיקה 4 (מורה ב)", room: "מרכז למידה" }
+  ]);
+  assert.equal(at("ב", "2").classes.length, 3, "the three-way split");
+  assert.deepEqual(at("ג", "2").classes.map((c) => c.subject),
+    ["ביולוגיה", "כימיה", "פיזיקה", "מדעי המחשב"],
+    "the four-way split, in the order the rows appear");
+  /* the rows of one block belong to one period, not to four */
+  assert.equal(at("ג", "2").start, "09:00");
+  assert.equal(at("ג", "2").end, "09:45");
+});
+
+test("grade tab: a co-teacher line keeps its comma and its brackets", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  const p3 = t.byDay["א"].find((s) => s.period === "3");
+  assert.deepEqual(p3.classes, [
+    { subject: "אנגלית (מורה א, מורה ב)", room: "אנגלית" },
+    { subject: "אנגלית (מורה ד, מורה ה)", room: "יא" }
+  ], "a comma inside a quoted cell must not split the lesson in two");
+});
+
+test("grade tab: a lesson with no room is still a lesson", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  const p3 = t.byDay["ב"].find((s) => s.period === "3");
+  assert.deepEqual(p3.classes, [
+    { subject: 'חנ"ג בנות (מורה ג)', room: "" },
+    { subject: 'חנ"ג בנים (מורה ו)', room: "אולם ספורט" }
+  ], "an outdoor class has no room and must not be dropped");
+});
+
+test("grade tab: a room with no lesson beside it is dropped", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  const p3 = t.byDay["ד"].find((s) => s.period === "3");
+  assert.equal(p3, undefined,
+    "a leftover room cell invented a blank lesson with a pin and no name");
+});
+
+test("grade tab: an entirely empty block produces no period at all", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  ["א", "ב", "ג", "ד", "ה", "ו"].forEach((d) => assert.ok(
+    !t.byDay[d].some((s) => s.period === "4"),
+    "day " + d + " invented an empty period 4"));
+});
+
+test("grade tab: Friday stops early, and the later periods are simply absent", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  assert.deepEqual(t.byDay["ו"].map((s) => s.period), ["1", "2", "5", "6"]);
+  assert.ok(!t.byDay["ו"].some((s) => +s.period > 6),
+    "Friday carries a period it does not run");
+});
+
+test("grade tab: a short final block (Sheets trims trailing rows) still parses", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  const last = t.byDay["א"][t.byDay["א"].length - 1];
+  assert.equal(last.period, "8");
+  assert.deepEqual(last.classes, [{ subject: "חינוך", room: "יא" }]);
+});
+
+test("grade tab: periods come out in time order whatever order they are written", () => {
+  const t = L.parseGradeTab(FIX, "?");
+  Object.keys(t.byDay).forEach((d) => {
+    const mins = t.byDay[d].map((s) => L.minutes(s.start));
+    assert.deepEqual(mins.slice().sort((a, b) => a - b), mins,
+      "day " + d + " is not in time order");
+  });
+});
+
+test("grade tab: rows above the first block are ignored, not attached", () => {
+  /* a stray note typed under the header would otherwise become a lesson
+     belonging to nothing */
+  const m = FIX.map((r) => r.slice());
+  m.splice(3, 0, ["", "", "", "הערה של המזכירות", "", "", "", "", "", "",
+                  "", "", "", "", ""]);
+  const t = L.parseGradeTab(m, "?");
+  assert.ok(!t.byDay["א"].some((s) =>
+    s.classes.some((c) => c.subject === "הערה של המזכירות")),
+    "a row above the first period became a lesson");
+});
+
+test("grade tab: a block with no usable times opens nothing", () => {
+  const m = FIX.map((r) => r.slice());
+  m[3] = m[3].slice();
+  m[3][1] = "";                       /* period 1 loses its start time */
+  const t = L.parseGradeTab(m, "?");
+  assert.ok(!t.byDay["א"].some((s) => s.period === "1"),
+    "a period with no start time was placed on the board anyway");
+  /* and its rows fell to the block above, which is nothing — not to the
+     block below, which would have shifted every lesson by one period */
+  assert.equal(t.byDay["א"][0].period, "2");
+});
+
+test("grade tab: a missing day row falls back to א-ו by position", () => {
+  const m = FIX.map((r) => r.slice());
+  m[1] = new Array(15).fill("");
+  const t = L.parseGradeTab(m, "?");
+  assert.deepEqual(Object.keys(t.byDay).sort(), ["א", "ב", "ג", "ד", "ה", "ו"].sort());
+  assert.equal(t.byDay["ג"][0].classes[0].subject, "היסטוריה");
+});
+
+test("mergeGradeSchedules: six tabs become one model in the shipped shape", () => {
+  const labels = ["ז׳", "ח׳", "ט׳", "י׳", 'י"א', 'י"ב'];
+  const tabs = labels.map(() => L.parseGradeTab(FIX, "?"));
+  const s = L.mergeGradeSchedules(tabs, labels);
+  /* the tabs all name themselves י"א here, so the duplicate guard fires;
+     what matters is that six tabs still yield six distinct grades */
+  assert.equal(s.grades.length, 6);
+  assert.equal(new Set(s.grades).size, 6, "two grades collapsed into one card");
+  const p2 = s.byDay["ג"].find((p) => p.period === "2");
+  assert.equal(p2.entries[s.grades[0]].length, 4);
+  assert.equal(p2.subjects[s.grades[0]], "ביולוגיה");
+  assert.equal(p2.rooms[s.grades[0]], "מעבדה");
+});
+
+test("mergeGradeSchedules: an unreadable tab keeps its card and its colour", () => {
+  const labels = ["ז׳", "ח׳", "ט׳", "י׳", 'י"א', 'י"ב'];
+  /* each tab titles itself, as the real ones do; tab 3 (ט׳) arrives
+     empty, which is what an unreadable fetch looks like after the
+     per-tab fallback has nothing cached either */
+  const titled = (l) => {
+    const m = FIX.map((r) => r.slice());
+    m[0] = m[0].slice();
+    m[0][0] = "מערכת שעות לכיתה " + l;
+    return m;
+  };
+  const tabs = labels.map((l, i) =>
+    i === 2 ? L.parseGradeTab([], l) : L.parseGradeTab(titled(l), l));
+  const s = L.mergeGradeSchedules(tabs, labels);
+  assert.deepEqual(s.grades, labels,
+    "the unreadable grade lost its place, shifting every accent colour after it");
+  Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) => {
+    assert.deepEqual(p.entries["ט׳"], [], "the empty tab invented lessons");
+    labels.forEach((g) => assert.ok(Array.isArray(p.entries[g]),
+      "grade " + g + " has no entries array on " + d + " period " + p.period));
+  }));
+  /* the other five are unaffected */
+  const p2 = s.byDay["ג"].find((p) => p.period === "2");
+  assert.equal(p2.entries['י"ב'].length, 4);
+});
+
+test("mergeGradeSchedules: grades with different days keep their own periods", () => {
+  const other = L.parseGradeTab([
+    ["מערכת שעות לכיתה ח׳"],
+    ["", "", "", "א", "", "ב", "", "ג", "", "ד", "", "ה", "", "ו", ""],
+    ["", "מ-", "עד"],
+    ["1", "07:30", "08:10", "אסיפת בוקר", "ח"]
+  ], "ח׳");
+  const s = L.mergeGradeSchedules([L.parseGradeTab(FIX, "?"), other],
+                                  ["א", "ב"]);
+  const early = s.byDay["א"].find((p) => p.start === "07:30");
+  assert.ok(early, "the second grade's earlier period is missing");
+  assert.deepEqual(early.entries[s.grades[0]], [],
+    "the first grade was given a lesson it does not have");
+  assert.equal(early.entries[s.grades[1]][0].subject, "אסיפת בוקר");
+  assert.equal(s.byDay["א"][0].start, "07:30", "days are not in time order");
+});
+
+/* ==================================================================
+   MATCHING A GRADE ACROSS TABS
+
+   The timetable tabs write ז' with an ASCII apostrophe; the events and
+   closures tabs head their tick columns with a Hebrew geresh, ז׳. They
+   look identical and are not equal.
+   ================================================================== */
+test("gradeCell: a geresh column is found by an apostrophe grade, and back", () => {
+  assert.equal(L.gradeCell({ "ז׳": "TRUE" }, "ז'"), "TRUE");
+  assert.equal(L.gradeCell({ "ז'": "TRUE" }, "ז׳"), "TRUE");
+  assert.equal(L.gradeCell({ 'י"א': "TRUE" }, "י״א"), "TRUE");
+  assert.equal(L.gradeCell({ "ז": "TRUE" }, "ז׳"), "TRUE");
+  assert.equal(L.gradeCell({ "ח׳": "TRUE" }, "ז׳"), undefined,
+    "a different grade must not match");
+  assert.equal(L.gradeCell(null, "ז׳"), undefined);
+});
+
+test("buildAgenda: an event ticked with a geresh reaches an apostrophe grade", () => {
+  const rows = [{ "תאריך": TODAY, "כותרת": "חזרה לטקס",
+                  "התחלה": "10:00", "סיום": "11:00", "מקום": "אולם",
+                  "ז׳": "TRUE", "ח׳": "FALSE" }];
+  const out = L.buildAgenda([], rows, TODAY, ["ז'", "ח'"]);
+  assert.deepEqual(out[0].grades, ["ז'"],
+    "the tick did not reach the grade, so the chip would vanish silently");
+});
+
+test("buildClosures: a closure ticked with a geresh reaches an apostrophe grade", () => {
+  const c = L.buildClosures(
+    [{ "מתאריך": "2026-11-10", "סיבה": "טיול שנתי", "ט׳": "TRUE" }],
+    ["ז'", "ח'", "ט'"]);
+  assert.deepEqual(c[0].grades, ["ט'"]);
+  assert.equal(L.closureFor(new Date("2026-11-10T12:00:00"), c, "ט'").reason,
+    "טיול שנתי");
+});
+
+/* ==================================================================
+   WHAT A CARD SHOWS — display mode, end of day, and the retained lesson
+   ================================================================== */
+const DAY = [
+  { start: "08:15", end: "09:00" },   /* 0 */
+  { start: "09:00", end: "09:45" },   /* 1 */
+  { start: "10:10", end: "10:55" },   /* 2 */
+  { start: "10:55", end: "11:40" },   /* 3 */
+  { start: "12:00", end: "12:45" }    /* 4 */
+];
+const at = (hhmm) => L.minutes(hhmm);
+
+test("visibleSlots: show-all keeps the whole day, all day", () => {
+  [ "08:00", "09:20", "09:50", "12:30" ].forEach((t) => assert.deepEqual(
+    L.visibleSlots(DAY, at(t), { hide: false }), [0, 1, 2, 3, 4],
+    "at " + t));
+});
+
+test("visibleSlots: hide-mode drops each lesson as it finishes", () => {
+  assert.deepEqual(L.visibleSlots(DAY, at("08:00"), { hide: true }),
+    [0, 1, 2, 3, 4]);
+  assert.deepEqual(L.visibleSlots(DAY, at("09:20"), { hide: true }),
+    [1, 2, 3, 4], "the 08:15 lesson is over");
+  assert.deepEqual(L.visibleSlots(DAY, at("11:00"), { hide: true }),
+    [3, 4]);
+});
+
+test("visibleSlots: hide-mode holds the just-finished lesson through a break", () => {
+  /* 09:45-10:10 is a break: nothing running, something finished,
+     something still to come. Without this the break marker has no
+     lesson above it to hang under and hide-mode says nothing at all
+     about being on a break. */
+  assert.deepEqual(L.visibleSlots(DAY, at("09:50"), { hide: true }),
+    [1, 2, 3, 4], "the lesson that just ended was not retained");
+  /* ONLY that one — the 08:15 lesson stays hidden */
+  assert.ok(L.visibleSlots(DAY, at("09:50"), { hide: true }).indexOf(0) < 0);
+});
+
+test("visibleSlots: nothing is retained while a lesson is running", () => {
+  assert.deepEqual(L.visibleSlots(DAY, at("10:30"), { hide: true }),
+    [2, 3, 4], "a finished lesson came back during a lesson");
+});
+
+test("visibleSlots: nothing is retained before the first bell", () => {
+  assert.deepEqual(L.visibleSlots(DAY, at("07:30"), { hide: true }),
+    [0, 1, 2, 3, 4]);
+});
+
+test("visibleSlots: the last lesson is never hidden early", () => {
+  /* 12:45 has passed but the grace has not, so the card must not empty
+     out and claim the day is over while the bell is still ringing */
+  assert.deepEqual(L.visibleSlots(DAY, at("12:47"), { hide: true, graceMinutes: 5 }),
+    [4], "the final lesson vanished inside its own grace period");
+});
+
+test("visibleSlots: after the last lesson plus grace, the card empties", () => {
+  assert.deepEqual(L.visibleSlots(DAY, at("12:50"), { hide: true, graceMinutes: 5 }), []);
+  assert.deepEqual(L.visibleSlots(DAY, at("12:50"), { hide: false, graceMinutes: 5 }), [],
+    "show-all mode must hand over to the end-of-day line too");
+  assert.deepEqual(L.visibleSlots(DAY, at("12:49"), { hide: false, graceMinutes: 5 }),
+    [0, 1, 2, 3, 4], "one minute early is not the end of the day");
+});
+
+test("visibleSlots: a card with nothing left retains nothing", () => {
+  /* the retained lesson must never be the ONLY thing a pupil sees */
+  const one = [{ start: "08:15", end: "09:00" }];
+  assert.deepEqual(L.visibleSlots(one, at("09:03"), { hide: true, graceMinutes: 5 }),
+    [0], "the last lesson is protected by grace, not by retention");
+  assert.deepEqual(L.visibleSlots(one, at("09:03"), { hide: true }), [],
+    "with no grace the day is simply over, and nothing is retained");
+  /* two lessons, both finished, still inside the grace: the survivor is
+     the last one — and it is NOT joined by a retained neighbour */
+  const two = [{ start: "08:15", end: "09:00" }, { start: "09:00", end: "09:45" }];
+  assert.deepEqual(L.visibleSlots(two, at("09:47"), { hide: true, graceMinutes: 5 }),
+    [1], "a finished lesson was retained on a card with nothing to come");
+});
+
+test("visibleSlots: an empty card stays empty", () => {
+  assert.deepEqual(L.visibleSlots([], at("10:00"), { hide: true }), []);
+  assert.deepEqual(L.visibleSlots(null, at("10:00"), {}), []);
+});
+
+/* ---------- the break marker's own state machine ---------- */
+test("breakSeam: draws between the two lessons a break sits in", () => {
+  const seam = L.breakSeam(DAY, at("09:50"));
+  assert.deepEqual(seam, { prev: 1, next: 2 });
+});
+
+test("breakSeam: nothing while a lesson is running", () => {
+  assert.equal(L.breakSeam(DAY, at("10:30")), null);
+  assert.equal(L.breakSeam(DAY, at("08:15")), null, "the very first minute");
+  assert.equal(L.breakSeam(DAY, at("09:44")), null, "the last minute of a lesson");
+});
+
+test("breakSeam: nothing before the first lesson or after the last", () => {
+  assert.equal(L.breakSeam(DAY, at("07:30")), null);
+  assert.equal(L.breakSeam(DAY, at("13:00")), null);
+});
+
+test("breakSeam: nothing unless BOTH neighbours are on the card", () => {
+  /* this is what makes hide-mode's retention load-bearing rather than
+     cosmetic: drop the finished lesson and the marker correctly refuses */
+  const upcomingOnly = DAY.slice(2);
+  assert.equal(L.breakSeam(upcomingOnly, at("09:50")), null);
+  const finishedOnly = DAY.slice(0, 2);
+  assert.equal(L.breakSeam(finishedOnly, at("09:50")), null);
+});
+
+test("breakSeam and visibleSlots agree: hide-mode draws the marker in a break", () => {
+  const shown = L.visibleSlots(DAY, at("09:50"), { hide: true }).map((i) => DAY[i]);
+  const seam = L.breakSeam(shown, at("09:50"));
+  assert.ok(seam, "hide-mode went silent about being on a break");
+  assert.equal(shown[seam.prev].end, "09:45");
+  assert.equal(shown[seam.next].start, "10:10");
+});
+
+/* ==================================================================
+   PAGING — whole periods only, never half a concurrent group
+   ================================================================== */
+/* Boxes as the DOM would measure them: a slot per period, its height a
+   function of how many concurrent classes it holds, --sgap between. */
+const ROW = 26, ROWM = 24.5, SGAP = 10;
+function boxesFor(groups) {
+  let top = 0;
+  return groups.map((n) => {
+    const height = n > 1 ? n * ROWM : ROW;
+    const b = { top, height, lines: n };
+    top += height + SGAP;
+    return b;
+  });
+}
+/* every page boundary must fall between two slots */
+function assertWholeGroups(boxes, pages, where) {
+  const covered = [];
+  pages.forEach(([a, b]) => {
+    assert.ok(Number.isInteger(a) && Number.isInteger(b),
+      where + ": a page boundary is not a slot index");
+    for (let i = a; i <= b; i++) covered.push(i);
+  });
+  assert.deepEqual(covered, boxes.map((_, i) => i),
+    where + ": pages do not tile the slots exactly once");
+}
+
+test("packPages: everything on one page when it fits", () => {
+  const b = boxesFor([1, 1, 1]);
+  assert.deepEqual(L.packPages(b, 1000, -1), [[0, 2]]);
+});
+
+test("packPages: fills greedily and never splits a concurrent group", () => {
+  const groups = [1, 3, 1, 4, 2, 1, 3, 1, 1, 2];
+  const b = boxesFor(groups);
+  const pages = L.packPages(b, 200, -1);
+  assert.ok(pages.length > 1, "this fixture is supposed to overflow");
+  assertWholeGroups(b, pages, "packPages");
+  /* no page is taller than the pane, unless one slot alone is */
+  pages.forEach(([a, z]) => {
+    const h = b[z].top + b[z].height - b[a].top;
+    assert.ok(h <= 200 || a === z,
+      `page ${a}-${z} is ${h}px in a ${200}px pane`);
+  });
+});
+
+test("packPages: a group taller than the pane gets a page to itself, whole", () => {
+  const b = boxesFor([1, 4, 1]);
+  const pages = L.packPages(b, 60, -1);
+  assertWholeGroups(b, pages, "oversized group");
+  const four = pages.find(([a, z]) => a <= 1 && z >= 1);
+  assert.deepEqual(four, [1, 1],
+    "the 4-way group was packed with a neighbour it cannot fit beside");
+});
+
+test("packPages: MUTATION — a row-counting packer really does split groups", () => {
+  /* The guarantee is structural: the unit packed is the whole slot. This
+     proves the test would catch a regression to the arithmetic the board
+     shipped before (perPage = floor(paneH / rowHeight), which counts
+     LINES and knows nothing about which lines belong together). */
+  const groups = [1, 3, 1, 4, 2, 1, 3, 1, 1, 2];
+  const b = boxesFor(groups);
+  const paneH = 200;
+
+  function mutantRowPacker() {
+    const perPage = Math.max(1, Math.floor(paneH / ROW));
+    const lines = [];
+    groups.forEach((n, gi) => { for (let k = 0; k < n; k++) lines.push(gi); });
+    const out = [];
+    for (let i = 0; i < lines.length; i += perPage) {
+      out.push(lines.slice(i, i + perPage));
+    }
+    return out;
+  }
+  const mutant = mutantRowPacker();
+  const split = mutant.some((page, k) => {
+    if (k === mutant.length - 1) return false;
+    return page[page.length - 1] === mutant[k + 1][0];   /* group straddles */
+  });
+  assert.ok(split,
+    "the mutant packer did not split a group, so this fixture proves nothing");
+
+  /* the real packer, same data, same pane */
+  assertWholeGroups(b, L.packPages(b, paneH, -1), "real packer vs mutant");
+});
+
+test("packPages: MUTATION — every pane height from 30 to 400 keeps groups whole", () => {
+  const groups = [1, 3, 1, 4, 2, 1, 3, 1, 1, 2, 4, 1, 2, 3];
+  const b = boxesFor(groups);
+  for (let h = 30; h <= 400; h += 1) {
+    assertWholeGroups(b, L.packPages(b, h, -1), "paneH " + h);
+  }
+});
+
+test("packPages: no page starts on the slot after the break", () => {
+  const groups = [1, 1, 3, 1, 2, 1, 1, 3, 1];
+  const b = boxesFor(groups);
+  for (let h = 60; h <= 300; h += 1) {
+    for (let avoid = 1; avoid < groups.length; avoid++) {
+      const pages = L.packPages(b, h, avoid);
+      assertWholeGroups(b, pages, `avoid ${avoid} at ${h}`);
+      const starts = pages.map((p) => p[0]).slice(1);
+      /* the avoidance is best-effort: it cannot be honoured when the
+         previous page would be left with nothing. What must ALWAYS hold
+         is that the pages still tile whole slots — checked above. */
+      if (starts.indexOf(avoid) >= 0) {
+        assert.ok(avoid <= 1 || pages.some((p) => p[1] === avoid - 1 && p[0] === avoid - 1),
+          `avoid ${avoid} at ${h}: page started on the seam with room to spare`);
+      }
+    }
+  }
+});
+
+test("pageWindows: the last page anchors back to a whole period", () => {
+  const b = boxesFor([1, 1, 1, 1, 1, 1, 1, 1]);
+  const wins = L.pageWindows(b, 110, -1);
+  assert.ok(wins.length > 1);
+  const last = wins[wins.length - 1];
+  /* it starts on a slot's own top edge, never on an arbitrary pixel */
+  assert.ok(b.some((x) => x.top === last.top),
+    "the last page starts mid-period");
+  /* and it ends flush with the final lesson */
+  const bottom = b[b.length - 1].top + b[b.length - 1].height;
+  assert.equal(last.top + last.height, Math.round(bottom));
+});
+
+test("pageWindows: pages tile the content and each is a real slot range", () => {
+  const b = boxesFor([2, 1, 3, 1, 1, 4, 1, 2]);
+  const wins = L.pageWindows(b, 150, -1);
+  wins.forEach((w) => {
+    assert.ok(b.some((x) => x.top === w.top), "a page starts mid-period");
+    assert.ok(w.height > 0);
+    assert.ok(w.start <= w.end);
+  });
+  assert.equal(wins[0].start, 0, "the first page does not start at the top");
+  assert.equal(wins[wins.length - 1].end, b.length - 1,
+    "the last page does not reach the last period");
+});
+
+test("pageWindows: empty input is empty, not a crash", () => {
+  assert.deepEqual(L.pageWindows([], 100, -1), []);
+  assert.deepEqual(L.packPages([], 100, -1), []);
+});
+
+/* ==================================================================
+   THE KIOSK URL — the six-tab fragment, and the old one it replaces
+   ================================================================== */
+test("parseSheetFragment: s= carries the six per-grade schedule tabs", () => {
+  const f = L.parseSheetFragment(
+    `#d=1AbC_dEf-123&g=10,11,12,13,14&s=20,21,22,23,24,25`);
+  assert.equal(f.schedules.length, 6);
+  f.schedules.forEach((u, i) => assert.ok(u.indexOf("gid=" + (20 + i)) > 0,
+    "grade tab " + i + " points at the wrong gid: " + u));
+  assert.ok(f.schedules[0].indexOf("1AbC_dEf-123") > 0);
+});
+
+test("parseSheetFragment: the new URL keeps every old key working", () => {
+  /* This is the whole point of putting the six gids in their own key:
+     the board on the wall runs the OLD code until it is repointed, and
+     that code must still find its four tabs in g= if it is handed the
+     new URL. */
+  const f = L.parseSheetFragment(
+    `#t=${TOKEN}&g=1,2,3,4,5&s=20,21,22,23,24,25`);
+  assert.ok(f.schedule.indexOf("gid=1") > 0, "the legacy schedule gid moved");
+  assert.ok(f.exams.indexOf("gid=2") > 0);
+  assert.ok(f.events.indexOf("gid=3") > 0);
+  assert.ok(f.messages.indexOf("gid=4") > 0);
+  assert.ok(f.settings.indexOf("gid=5") > 0);
+});
+
+test("parseSheetFragment: an OLD url still parses, with no schedules", () => {
+  const f = L.parseSheetFragment(`#t=${TOKEN}&g=1,2,3,4,5`);
+  assert.equal(f.schedules, undefined,
+    "an old kiosk URL must fall back to the single schedule tab");
+  assert.ok(f.schedule.indexOf("gid=1") > 0);
+});
+
+test("parseSheetFragment: a malformed s= is IGNORED, never demo mode", () => {
+  /* Returning null here would drop the board to bundled sample data — a
+     fake school day that looks entirely real. Falling back to the legacy
+     tab shows the school's own data and leaves the fault visible. */
+  [ "s=20,21,22", "s=20,21,22,23,24,25,26", "s=20,21,22,23,24,abc",
+    "s=", "s=,,,,," ].forEach((bad) => {
+    const f = L.parseSheetFragment(`#t=${TOKEN}&g=1,2,3,4,5&${bad}`);
+    assert.ok(f, bad + " sent the board to demo mode");
+    assert.equal(f.schedules, undefined, bad + " was accepted");
+    assert.ok(f.schedule.indexOf("gid=1") > 0, bad + " lost the legacy tab");
+  });
+});
+
+test("parseSheetFragment: s= works with a publish token as well as a doc id", () => {
+  const f = L.parseSheetFragment(`#t=${TOKEN}&g=1,2,3,4&s=20,21,22,23,24,25`);
+  assert.equal(f.schedules.length, 6);
+  f.schedules.forEach((u) => assert.ok(u.indexOf("/d/e/" + TOKEN + "/pub?") > 0,
+    "a token URL was built in the doc-id shape: " + u));
+});
+
+test("parseSheetFragment: s= does not rescue a fragment that is broken anyway", () => {
+  assert.equal(L.parseSheetFragment("#g=1,2,3,4&s=20,21,22,23,24,25"), null,
+    "no token and no doc id must still be null");
+  assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=1,2&s=20,21,22,23,24,25`), null,
+    "too few g= gids must still be null");
+});
 /* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */
 require("./setup-safety.js").run(test);
 

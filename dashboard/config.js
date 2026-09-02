@@ -7,13 +7,22 @@
         The Pi opens the board with the sheet's publish token in the
         fragment, which is stored only on the Pi (~/.dashboard-env):
 
-          https://you.github.io/repo/dashboard/#t=<token>&g=<gid>,<gid>,<gid>,<gid>
-                                            (schedule,exams,events,messages)
+          https://you.github.io/repo/dashboard/#d=<docId>
+            &g=<gid>,<gid>,<gid>,<gid>,<gid>
+               (legacy schedule, exams, events, messages, settings)
+            &s=<gid>,<gid>,<gid>,<gid>,<gid>,<gid>
+               (the six per-grade מערכת tabs: ז ח ט י יא יב)
+
+        `s=` is the timetable the board renders. `g=` is unchanged from
+        before the six-tab migration — including its first entry, the
+        old single-tab schedule gid — which is what makes the new URL
+        work on the OLD code too and the repoint a pure, reversible URL
+        change. A URL with no `s=` falls back to that single tab.
 
         A fragment is never sent to the web server, so the token stays
         between the Pi and Google, and this repository can stay public
         without exposing the school's data. See sheet-template/README.md
-        for how to collect the token and the four gids.
+        for how to collect the token and the gids.
 
      2. `sheets` below — only for a deployment where holding the URLs in
         code is acceptable (e.g. files served from the Pi itself).
@@ -28,7 +37,7 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.202",
+  version: "0.210",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   /* How often to check whether a new build has been published. On a
@@ -72,6 +81,18 @@ window.DASH_CONFIG = {
      identify, so it reveals nothing on its own — the document id stays on
      the Pi, as it always has. A 6th gid in the URL overrides this. */
   closuresGid: "304029529",
+
+  /* The six per-grade מערכת tabs, in the order their gids appear in the
+     kiosk URL's `s=` list. Each tab NAMES ITSELF in its own A1
+     ("מערכת שעות לכיתה ז'"), and that name is what the card heading
+     uses — so this list is only the fallback for a tab that could not
+     be read at all.
+     It exists because a missing label would otherwise drop a card out of
+     the grid, and every grade after it would shift into the next
+     grade's accent colour: one unreadable tab would repaint the whole
+     board. Naming the position keeps the card, the colour and the place
+     even when the data behind it is momentarily gone. */
+  gradeLabels: ["ז׳", "ח׳", "ט׳", "י׳", "י\"א", "י\"ב"],
 
   schoolName: "תיכון השיטה",
 

@@ -19,7 +19,7 @@
    straight through: their freshness is the app's business, and it
    already falls back to localStorage when they fail.
    ================================================================== */
-const CACHE = "corridor-board-v4";
+const CACHE = "corridor-board-v5";
 
 const CORE = [
   "./",
@@ -34,6 +34,12 @@ const CORE = [
   "./vendor/papaparse.min.js",
   "./vendor/gveret-levin-hebrew.woff2",
   "./vendor/noto-sans-hebrew.woff2",
+  /* Assistant is the board's text face; both subsets are core, because
+     the latin one carries the DIGITS — every lesson time on every card. A
+     board that came back from a power cut without it would render its
+     times in whatever the Pi has installed, which is DejaVu Sans. */
+  "./vendor/assistant-hebrew.woff2",
+  "./vendor/assistant-latin.woff2",
   "./vendor/school-logo.png",
   "./vendor/herzl.svg"
 ];

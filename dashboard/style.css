@@ -48,6 +48,19 @@
     --g7: #d95926;  /* orange — only if a 7th grade appears */
     --critical: #d03b3b;
     --warning:  #fab219;
+    /* --time / --room / --pinop: the grade card's SECONDARY INK, one set
+       per theme. The redesign puts a time, a subject and a room on every
+       line, and --muted — chosen for a 24px time on the old one-line-per
+       -period card — measured 2.5-4.3:1 for the smaller time and room on
+       three of the four themes, i.e. under AA. Raising it per theme is
+       what lets light, colorful and צבעונית 1 clear 4.5:1 against their
+       own card grounds while DARK KEEPS EXACTLY THE INK IT SHIPPED:
+       here --time is literally var(--muted), so nothing about this theme
+       changes. --muted itself is untouched everywhere, so the footer
+       stamp, the Hebrew date and the events column are unaffected. */
+    --time: var(--muted);
+    --room: #a5a29a;
+    --pinop: 1;
   }
 
   /* light — for a bright corridor. Note: a mostly-white screen is the
@@ -74,6 +87,14 @@
     --g7: #c24a19;  /* orange        */
     --critical: #c0392b;
     --warning:  #a06800;
+    /* was --muted #6e6d68: 5.05 on the card but 4.03-4.28 on the "now"
+       wash, under AA exactly where the eye goes first. Time and room now
+       share one warm grey, a step darker than the old room ink, so the
+       two lines read as one tier instead of the room looking heavier
+       than the time above it. */
+    --time: #4f4e4a;
+    --room: #4f4e4a;
+    --pinop: 1;
   }
 
   /* colorful — bright and lively: a soft tinted ground, white cards
@@ -106,6 +127,18 @@
     --g7: #e2560f;  /* orange        */
     --critical: #d92d20;
     --warning:  #a35a00;
+    /* The three weakest inks in the whole design were here: rooms
+       measured 2.99-3.79 on the 34%-washed cards and the pin, at 0.85
+       opacity, 2.48-3.01. The room moves to --ink-2 strength and the pin
+       goes to full opacity, so the pin's ratio now equals the room's by
+       construction rather than by hope.
+       --time CANNOT BE DECLARED HERE. This theme is the one that tints
+       the time with the grade accent, and --accent lives on the CARD,
+       not on :root — so a :root custom property referencing it computes
+       to the guaranteed-invalid value and .time silently falls back to
+       --muted. It is declared on the card instead, below. */
+    --room: #3b3b66;
+    --pinop: 1;
   }
   /* צבעוני 2 — the softer original: white cards on a pale ground, each
      washed with a hint of its grade colour. Kept alongside צבעוני 1
@@ -145,6 +178,13 @@
     --g7: #e2560f;  /* orange        */
     --critical: #d92d20;
     --warning:  #a35a00;
+    /* --muted here measured 3.53-3.78 for the time on these washed
+       cards, while the room sat a whole step darker at 6.19-6.62 — a
+       tier of hierarchy in the wrong place, and the "the room is darker
+       than its own time" oddity. One ink for both, fixing both at once. */
+    --time: #3f3f68;
+    --room: #3f3f68;
+    --pinop: 1;
   }
 
   :root[data-theme="colorful2"] .card:not(#exams):not(#dayofday) {
@@ -167,16 +207,20 @@
     background: color-mix(in srgb, var(--accent) 34%, var(--surface));
     border: 2px solid var(--accent);
   }
-  /* the class rows carry colour too, not just the header */
-  :root[data-theme="colorful"] .period .time {
-    color: color-mix(in srgb, var(--accent) 65%, #101033);
+  /* The class rows carry colour too, not just the header — declared on
+     the CARD because that is where --accent is (see the theme block).
+     Pulled from 65% accent to 55%: at 65% the green grade measured 4.34
+     and the pink 4.44, both under AA for text this size. */
+  :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) {
+    --time: color-mix(in srgb, var(--accent) 55%, #101033);
   }
-  :root[data-theme="colorful"] .period.now {
+  :root[data-theme="colorful"] .slot.now {
     background: var(--accent);
     box-shadow: none;
   }
-  :root[data-theme="colorful"] .period.now .subj,
-  :root[data-theme="colorful"] .period.now .time { color: #fff; }
+  :root[data-theme="colorful"] .slot.now .subj,
+  :root[data-theme="colorful"] .slot.now .room,
+  :root[data-theme="colorful"] .slot.now .time { color: #fff; }
 
   /* the header sits directly on the page, so it needs light ink here */
   :root[data-theme="colorful"] #clock { color: #ffffff; }
@@ -197,12 +241,14 @@
      the theme read as colourful from down a corridor: a pale wash alone
      looks washed out at distance, however saturated the hue is up close.
      The negative margins bleed it to the card's edges. */
+  /* the negative margins bleed the band to the card's edges, so they
+     must track .card.grade's padding (10px 16px), not .card's */
   :root[data-theme="colorful"] .card:not(#exams):not(#dayofday) h2 {
     background: var(--accent);
     color: #fff;
-    margin: -14px -18px 10px;
-    padding: 11px 18px;
-    border-radius: 13px 13px 0 0;
+    margin: -10px -16px var(--h2mar, 3px);
+    padding: 7px 16px;
+    border-radius: 12px 12px 0 0;
     border-bottom: none;
   }
   /* the colour chip is redundant once the whole header carries the colour */
@@ -278,10 +324,94 @@
                    U+25CC, U+FB1D-FB4F;
   }
 
+  /* Assistant — the board's text face since the grade-card redesign,
+     chosen in review over Noto Sans Hebrew and Heebo. Vendored exactly
+     as Noto is, and for the same reason: the whole point of this board
+     is that it keeps working when the school's network does not, so a
+     webfont fetched from fonts.gstatic.com at boot would be a dependency
+     nothing else on the page has. Noto stays loaded and stays next in
+     the stack, so a build that somehow cannot load Assistant renders in
+     the previous face rather than in whatever the Pi happens to have.
+
+     TWO SUBSETS, not one. Noto is vendored Hebrew-only, which means the
+     board's DIGITS — every lesson time, the clock, the version stamp —
+     have always fallen through to the generic stack and rendered in
+     DejaVu Sans on the Pi. The redesign puts a 17px time on every line
+     and relies on tabular figures lining up, so the latin subset is
+     vendored too (22 KB) and the numbers are now as deterministic as
+     the Hebrew.
+
+     All three weights point at the SAME file per subset on purpose:
+     Google ships Assistant as one variable woff2 (wght 200-800), and one
+     @font-face per discrete weight against a shared resource is exactly
+     how fonts.googleapis.com serves it. The unicode-range on each is
+     what keeps the two subsets from fighting over the same codepoints. */
+  @font-face {
+    font-family: "Assistant";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("vendor/assistant-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+  @font-face {
+    font-family: "Assistant";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("vendor/assistant-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+  @font-face {
+    font-family: "Assistant";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("vendor/assistant-hebrew.woff2") format("woff2");
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA,
+                   U+25CC, U+FB1D-FB4F;
+  }
+  @font-face {
+    font-family: "Assistant";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("vendor/assistant-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC,
+                   U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+                   U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+                   U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Assistant";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("vendor/assistant-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC,
+                   U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+                   U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+                   U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Assistant";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("vendor/assistant-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC,
+                   U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+                   U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+                   U+2215, U+FEFF, U+FFFD;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; background: var(--page); overflow: hidden; }
   body {
-    font-family: "Noto Sans Hebrew", "Segoe UI", system-ui, sans-serif;
+    font-family: "Assistant", "Noto Sans Hebrew", "Segoe UI", system-ui,
+                 sans-serif;
     color: var(--ink);
   }
 
@@ -293,6 +423,40 @@
     display: flex; flex-direction: column;
     padding: 28px 36px 20px;
     gap: 18px;
+
+    /* ---- grade-card density -------------------------------------
+       Every size the grade card uses is a custom property, so the
+       density that was chosen in review ("Roomy") is one block of
+       numbers rather than values scattered through the file.
+
+         --row   height of a STANDALONE class line
+         --rowm  height of a line INSIDE a concurrent group — tighter
+         --sgap  space BETWEEN period groups. This is the number doing
+                 the real work: MEASURED, 0.42px of white between two
+                 lines inside a group against 11.2-11.9px between the
+                 last line of one period and the first of the next, a
+                 ratio of about 27:1. At 1920px across a 65" screen one
+                 pixel is 0.75mm, so from 2m that is a 0.3mm join (below
+                 what the eye resolves — the lines touch) against a
+                 ~8.5mm channel (about 15 arcmin — unmissable). That
+                 differential IS the concurrency cue: there is no block,
+                 no brace and no "במקביל" caption.
+         --tw    width of the shared time column
+         --rwt   TRACK SIZING for the room column. Deliberately
+                 fit-content() and not a fixed width: with a fixed
+                 track, a row whose room is "חדר ז" reserved exactly as
+                 much width as one whose room is "אולם ספורט", so every
+                 subject on the board was capped at the width of the
+                 longest room the board might ever show. The ceiling is
+                 ~20px above the widest room the school actually
+                 carries, so it stops a pathological name, not a real
+                 one.
+         --fs-h2 the grade heading, matched EXACTLY to the events
+                 heading by request — both 28.5px.               */
+    --row: 26px; --rowm: 24.5px; --sgap: 10px;
+    --fs-subj: 21.5px; --fs-time: 17px; --fs-room: 15.5px;
+    --fs-h2: 28.5px; --h2pad: 3px; --h2mar: 3px;
+    --tw: 110px; --rwt: fit-content(140px);
   }
   /* slow pixel drift (burn-in): ±3px square, 10-minute lap.
      min-height:0 is load-bearing — without it this flex child floors
@@ -319,8 +483,13 @@
      card, the urgent strip spans the second and third, and the logo takes
      the left column. Keeping the two templates identical is the whole
      point — change one and change the other. */
+  /* 340px, not 400px: 15% off the events column, per the redesign
+     review. The freed 60px goes straight to the three grade columns
+     (+20px each, 464.67 -> 484.67px), which is what stops subject names
+     overflowing at this type size. The header and the main grid MUST
+     carry the same template — see the note above. */
   header { display: grid; align-items: center; height: 92px;
-           grid-template-columns: 1fr 1fr 1fr 400px; gap: 18px; }
+           grid-template-columns: 1fr 1fr 1fr 340px; gap: 18px; }
   .now { grid-column: 1; display: flex; align-items: center; gap: 24px;
          min-width: 0; }
   #clock  { font-size: 60px; font-weight: 700; color: var(--ink-strong);
@@ -339,7 +508,8 @@
      instead of going blank. */
   #school { grid-column: 4; justify-self: end; white-space: nowrap;
             display: flex; align-items: center;
-            font-family: "Gveret Levin", "Noto Sans Hebrew", sans-serif;
+            font-family: "Gveret Levin", "Assistant", "Noto Sans Hebrew",
+                         sans-serif;
             font-size: 40px; font-weight: 400; line-height: 1;
             color: var(--ink-2); }
   /* Height-driven so the aspect ratio is the image's own, never squashed
@@ -407,7 +577,7 @@
   main {
     flex: 1; min-height: 0;
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 400px;
+    grid-template-columns: 1fr 1fr 1fr 340px;
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     gap: 18px;
   }
@@ -418,20 +588,37 @@
     padding: 14px 18px 12px;
     display: flex; flex-direction: column;
     min-height: 0; overflow: hidden;
+    /* anchors the break indicator, which is absolutely positioned */
+    position: relative;
   }
+  /* The grade cards run tighter padding than the events pane: every
+     pixel of vertical padding here is a pixel a class line cannot have,
+     and these cards now carry up to four lines per period. */
+  .card.grade { padding: 10px 16px 4px; }
   .card h2 {
-    font-size: 32px; font-weight: 700; color: var(--ink-strong);
-    display: flex; align-items: center; gap: 12px;
-    padding-bottom: 8px; border-bottom: 1px solid var(--hairline);
-    margin-bottom: 6px;
+    font-size: var(--fs-h2, 28.5px); font-weight: 700;
+    color: var(--ink-strong);
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: var(--h2pad, 3px);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--h2mar, 3px);
+    line-height: 1.06; flex: none;
   }
-  .card h2 .chip { width: 15px; height: 30px; border-radius: 4px;
+  .card h2 .chip { width: 11px; height: calc(var(--fs-h2, 28.5px) * 0.88);
+                   border-radius: 3px;
                    background: var(--accent); flex: none; }
 
   /* rows always top-aligned at a fixed pitch — identical rhythm in
      every card whether it is full or half-empty */
+  /* The pane is the page WINDOW: a fixed viewport clipping whatever the
+     wrapper inside it is currently translated to. position:relative
+     anchors the break marker, which is absolutely positioned and so
+     contributes no height — the page packer's measurements never see it
+     — and rides the page translation for free, so a break on a page
+     that is not showing is clipped away with that page. */
   .periods { flex: 1; min-height: 0; overflow: hidden; position: relative; }
-  .pwrap   { display: flex; flex-direction: column;
+  .pwrap   { display: flex; flex-direction: column; gap: var(--sgap, 10px);
+             position: relative;
              transition: transform 0.9s cubic-bezier(.4,0,.2,1);
              will-change: transform; }
   /* card overflows: the wrapper is translated page by page */
@@ -447,27 +634,187 @@
   .periods.empty[data-endtime]::after {
     content: "יום הלימודים הסתיים בשעה " attr(data-endtime);
   }
-  .period  { display: flex; align-items: center; gap: 12px;
-             font-size: 28px; line-height: 1.1; height: 52px; flex: none;
-             padding: 2px 8px; border-radius: 8px; }
-  .period .time { color: var(--muted); font-variant-numeric: tabular-nums;
-                  font-size: 24px; font-weight: 600; width: 142px;
-                  flex: none; }
-  .period .subj { color: var(--ink); font-weight: 600;
-                  white-space: nowrap; overflow: hidden;
-                  text-overflow: ellipsis; }
-  .period.now  { background: color-mix(in srgb, var(--accent) var(--nowmix), transparent);
-                 box-shadow: inset 3px 0 0 var(--accent); }
-  .period.now .subj { color: var(--ink-strong); }
-  .period.done { display: none; }   /* passed classes free up space */
+  /* ================================================================
+     THE CONCURRENT-CLASS GROUP — the point of the card redesign.
+
+     A grade no longer has one lesson per period. It splits: streamed
+     maths, streamed English, four community-service groups in different
+     rooms at the same hour. One PERIOD is one .slot, and a slot is a
+     three-column grid:
+
+         [ shared time column ] [ subject ] [ room ]
+
+     The time cell spans EVERY row of the slot and is vertically centred
+     on the group, so several subjects visibly hang off one clock
+     reading. Measured, at this density: a 3-way slot is 73.50px tall and
+     its time cell is 73.50px; a 2-way slot is 49.00px and its cell is
+     49.00px.
+
+     A slot is the unit of everything downstream — filtering, the break
+     seam, and above all PAGING. Because the packer moves whole slots, a
+     page boundary cannot fall inside a concurrent group: showing 2 of 3
+     simultaneous classes is not something the code can express.
+     ================================================================ */
+  .slot {
+    display: grid;
+    /* col 3 is fit-content(): the room's OWN width, capped — see --rwt */
+    grid-template-columns: var(--tw) minmax(0, 1fr) var(--rwt);
+    /* The row track count is EXPLICIT (--n is written inline per slot).
+       That matters, and it is the one thing here that has to be got
+       right: `grid-row: 1 / -1` resolves -1 against the EXPLICIT grid,
+       so with auto rows only it silently collapses to a single row and
+       the time sits level with the first class instead of spanning the
+       group — which is the whole concurrency cue, gone, with nothing on
+       screen to say so. */
+    grid-template-rows: repeat(var(--n, 1), var(--row));
+    column-gap: 8px;
+    align-items: center;
+    border-radius: 9px;
+    padding: 0 6px;
+    flex: none;
+  }
+  /* NO background on a group, by request: it sits on exactly the same
+     ground as the rest of the pane. Only the PITCH changes — and that,
+     against --sgap between periods, is the cue. */
+  .slot.multi { grid-template-rows: repeat(var(--n, 1), var(--rowm)); }
+
+  .tcell {
+    /* Two independent guarantees that the time really covers the group:
+       the slot declares explicit rows above, AND the span is stated
+       outright from the same --n here, so the cell still spans if the
+       row template is ever dropped or a browser rejects repeat(var()). */
+    grid-column: 1; grid-row: 1 / span var(--n, 1);
+    display: flex; flex-direction: column; justify-content: center;
+    align-items: flex-start;
+    align-self: stretch; min-width: 0;
+  }
+  .slot.multi .tcell { padding-inline-end: 10px; }
+  /* NO dir="ltr" and no unicode-bidi on a time range: the RTL paragraph
+     reorders it and the board displays 08:30–08:15, which is the
+     shipped behaviour and was explicitly kept. */
+  .slot .time { color: var(--time, var(--muted));
+                font-variant-numeric: tabular-nums;
+                font-size: var(--fs-time, 17px); font-weight: 600;
+                line-height: 1.1; white-space: nowrap; }
+
+  /* .subj is the VIEWPORT; the inner <span> is the runner that scrolls.
+     Names that fit are never touched and never move. */
+  .subj { grid-column: 2; min-width: 0;
+          font-size: var(--fs-subj, 21.5px); font-weight: 600;
+          color: var(--ink); line-height: 1.12;
+          overflow: hidden; white-space: nowrap; }
+  .subj > span { display: inline-block; white-space: nowrap; }
+  /* Only overflowing names get the mask, so a name that fits keeps a
+     hard, unfaded start. The scroll overshoots by exactly this many
+     pixels, so the tail of the name is never parked under the fade. The
+     board is RTL, so the overflow edge is physical LEFT. */
+  .subj.scroll {
+    will-change: transform;
+    -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 12px), transparent 100%);
+            mask-image: linear-gradient(to left, #000 calc(100% - 12px), transparent 100%);
+  }
+  .subj.scroll > span { will-change: transform; }
+
+  /* The room is present but subordinate: smaller, lighter, at the card's
+     far edge. Its track is its own content width, so the pin sits 15px
+     from where the subject has to stop and no further —
+       8px column-gap + 7px margin-inline-start (the physical RIGHT edge
+       in RTL, i.e. the side facing the subject)
+     — on every row, by construction rather than by a magic constant.
+     The ellipsis is only a safety net for a room name long enough to hit
+     the fit-content() ceiling. The trade accepted in review: rooms go
+     ragged rather than forming a column, because each slot is its own
+     grid and sizes its own track. */
+  .room { grid-column: 3;
+          display: flex; align-items: center; justify-content: flex-end;
+          gap: 3px; min-width: 0; margin-inline-start: 7px;
+          font-size: var(--fs-room, 15.5px); font-weight: 500;
+          color: var(--room); line-height: 1.2; }
+  .room span { overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; }
+  /* The pin inherits the room's colour and its full strength: --pinop is
+     1 in every theme, so the pin's measured contrast EQUALS the room's
+     by construction. */
+  .room .pin { width: 1.05em; height: 1.05em; flex: none;
+               opacity: var(--pinop, 1); }
+
+  .slot.now  { background: color-mix(in srgb, var(--accent) var(--nowmix), transparent);
+               box-shadow: inset -3px 0 0 var(--accent); }  /* RIGHT edge in RTL */
+  .slot.now .subj { color: var(--ink-strong); }
+  .slot.done { display: none; }   /* passed classes free up space */
+
+  /* ================================================================
+     BREAK INDICATOR  —  ——— [יצאנו להפסקה...] ———
+
+     Between two lessons no row is highlighted, which is exactly when a
+     pupil most needs the board to say something. This is that something:
+     a rule across the pane, a short centred pill, the segments fading
+     outward, in the grade's own accent.
+
+     THE PILL IS SHORT, deliberately. The obvious styling — 15px type
+     with 9px of vertical padding — is 35px of pill on a pitch where the
+     channel between two periods is about 12px, and answering "it touches
+     the lesson above it" with more padding grows the pill into the text
+     it is touching. So the padding went the other way: 14px type,
+     line-height 1 (Assistant's ascent+descent is exactly 1em, so the
+     descender of ק still sits inside the ground), no vertical padding at
+     all, 1px border — 16px total. The breathing room is put OUTSIDE the
+     pill, where it belongs, and is opened at the seam by JS from the
+     pill's own measured height, so the ≥4px clearance holds whatever the
+     type does.
+
+     height:0 and position:absolute: not a flex item, no layout height,
+     invisible to the page packer, and it rides the page translation.
+     ================================================================ */
+  .nowline { position: absolute; inset-inline: 0; top: 0; height: 0;
+             display: flex; align-items: center; gap: 8px;
+             padding-inline: 6px; z-index: 2; pointer-events: none; }
+  /* rule / pill / rule. In an RTL page that DOM order puts one segment
+     physically each side either way, so each is mirrored to fade from
+     strong at the pill to nearly nothing at the pane's outer edge. */
+  .nowline .nlrule { flex: 1; height: 2px; border-radius: 2px; }
+  .nowline .nlrule:first-child {
+    background: linear-gradient(to right,
+      color-mix(in srgb, var(--accent) 62%, transparent),
+      color-mix(in srgb, var(--accent) 6%, transparent));
+  }
+  .nowline .nlrule:last-child {
+    background: linear-gradient(to left,
+      color-mix(in srgb, var(--accent) 62%, transparent),
+      color-mix(in srgb, var(--accent) 6%, transparent));
+  }
+  .nowline .nlpill {
+    flex: none;
+    font-size: 14px; font-weight: 700; line-height: 1;
+    padding: 0 10px;                /* zero vertical padding — see above */
+    border-radius: 999px; white-space: nowrap;
+    color: color-mix(in srgb, var(--accent) 72%, var(--ink-strong));
+    background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+  }
+  /* On the two washed themes the card ground is already an accent tint,
+     so an accent-tinted pill loses its edge against it. Lighter than the
+     "now" highlight in every theme: that is an accent wash at 14-36%
+     across a whole row, this is a 13% tint inside a 16px pill. */
+  :root[data-theme="colorful"] .nowline .nlpill,
+  :root[data-theme="colorful2"] .nowline .nlpill { background: var(--surface); }
+  :root[data-theme="colorful"] .nowline .nlpill {
+    color: color-mix(in srgb, var(--accent) 82%, var(--ink-strong));
+  }
 
   /* "עודכן" — a class whose subject changed since the board first loaded
-     it today, so students can see at a glance that something moved */
-  .upd { font-size: 18px; font-weight: 600; color: var(--warning);
-         flex: none; white-space: nowrap; margin-inline-start: 8px;
+     it today, so students can see at a glance that something moved.
+
+     It lives in the TIME cell, not beside the subject. Two reasons: the
+     fact it reports is a fact about the whole period, which is what the
+     time column represents; and .subj now holds a single scrolling
+     runner span, so a second child there would either ride the scroll or
+     break it. */
+  .upd { font-size: 15px; font-weight: 600; color: var(--warning);
+         flex: none; white-space: nowrap; margin-top: 2px;
          unicode-bidi: isolate; display: inline-flex; align-items: center;
-         gap: 5px; }
-  .upd svg { width: 17px; height: 17px; flex: none; }
+         gap: 4px; line-height: 1; }
+  .upd svg { width: 14px; height: 14px; flex: none; }
 
   /* shown instead of the grade cards when the sheet yields no grades */
   .card.nodata { grid-column: 1 / 4; grid-row: 1 / span 2;
@@ -516,7 +863,9 @@
   main.grades7 #leftcol { display: contents; }
   main.grades7 #exams { grid-column: 4; grid-row: 2; }
   main.grades7 #dayofday { display: none; }
-  #exams h2 { font-size: 28px; }
+  /* deliberately NOT overridden any more: the review asked for the grade
+     heading and the events heading to be the same size, and .card h2 is
+     now the 28.5px this pane already carried */
   #examlist { flex: 1; min-height: 0; overflow: hidden; padding-top: 10px; }
   /* the wrapper scrolls when the entries do not fit (see JS) */
   .agendawrap { display: flex; flex-direction: column; gap: 14px; }
@@ -614,7 +963,7 @@
      so mixed Hebrew/English/digit content can never reorder the UI
      around it (a message ending in an English word or a "12:30" would
      otherwise drag punctuation to the wrong end of the line). */
-  .period .subj, .exam .ttl, .exam .gchip,
+  .slot .subj, .slot .room span, .exam .ttl, .exam .gchip,
   .exam .row2 span, #urgenttext, .titem > span:last-child, .card h2 {
     unicode-bidi: isolate;
   }

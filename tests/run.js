@@ -937,61 +937,108 @@ function loadSample() {
     ctx, { filename: "sample-data.js" });
   return ctx.window.SAMPLE;
 }
+/* The demo is six per-grade tabs now, in the same shape the sheet
+   publishes them — so demo mode runs the live parser, not a shortcut. */
+const DEMO_LABELS = ["ז׳", "ח׳", "ט׳", "י׳", 'י"א', 'י"ב'];
+
+function sampleTabs() {
+  return loadSample().gradeCsv.map(
+    (csv) => Papa.parse(csv, { header: false }).data);
+}
 function sampleSchedule() {
-  const p = Papa.parse(loadSample().scheduleCsv,
-                       { header: true, skipEmptyLines: true });
-  return { s: L.buildSchedule(p.data, p.meta.fields),
-           fields: p.meta.fields, rows: p.data };
+  const mats = sampleTabs();
+  const tabs = mats.map((m, i) => L.parseGradeTab(m, DEMO_LABELS[i]));
+  return { s: L.mergeGradeSchedules(tabs, DEMO_LABELS), tabs, mats };
 }
 
-test("sample data: sixteen columns — a subject and a room per grade", () => {
-  const { s, fields } = sampleSchedule();
-  assert.equal(fields.length, 16, "the demo header is not 16 columns");
-  assert.deepEqual(s.grades, ["ז׳", "ח׳", "ט׳", "י׳", 'י"א', 'י"ב']);
-  assert.deepEqual(fields.slice(4), [
-    "ז׳", "ז׳ חדר", "ח׳", "ח׳ חדר", "ט׳", "ט׳ חדר",
-    "י׳", "י׳ חדר", 'י"א', 'י"א חדר', 'י"ב', 'י"ב חדר'
-  ]);
+test("sample data: six per-grade tabs, each naming its own grade in A1", () => {
+  const { s, mats } = sampleSchedule();
+  assert.equal(mats.length, 6, "the demo does not have six grade tabs");
+  assert.deepEqual(s.grades, ["ז'", "ח'", "ט'", "י'", 'י"א', 'י"ב'],
+    "the card headings did not come from each tab's own A1");
+  mats.forEach((m, i) => assert.ok(
+    /^מערכת שעות לכיתה /.test(m[0][0]),
+    "tab " + (i + 1) + " has no title in A1: " + JSON.stringify(m[0][0])));
 });
 
-test("sample data: fourteen periods Sunday-Thursday, six on Friday", () => {
+test("sample data: the day letters sit on the FIRST column of each merged pair", () => {
+  sampleTabs().forEach((m, i) => {
+    const where = "tab " + (i + 1);
+    assert.equal(m[0].length, 15, where + " is not 15 columns wide");
+    /* D F H J L N carry the letter; E G I K M O are the blank half of
+       the merged cell, exactly as Sheets exports one */
+    ["א", "ב", "ג", "ד", "ה", "ו"].forEach((d, k) => {
+      assert.equal(m[1][3 + k * 2], d, where + " day " + d + " is misplaced");
+      assert.equal(m[1][4 + k * 2], "", where + " merged half is not blank");
+    });
+    assert.equal(m[2][1], "מ-", where + " sub-header B");
+    assert.equal(m[2][2], "עד", where + " sub-header C");
+    assert.equal(m[2][3], "שיעור", where + " sub-header D");
+    assert.equal(m[2][4], "מיקום", where + " sub-header E");
+  });
+});
+
+test("sample data: ten periods Sunday-Thursday, four on Friday", () => {
   const { s } = sampleSchedule();
-  ["א", "ב", "ג", "ד", "ה"].forEach(
-    (d) => assert.equal(s.byDay[d].length, 14, "day " + d + " is not 14 periods"));
-  assert.equal(s.byDay["ו"].length, 6, "Friday is not six periods");
+  ["א", "ב", "ג", "ד", "ה"].forEach((d) => assert.equal(
+    s.byDay[d].length, 10, "day " + d + " is not 10 periods"));
+  assert.equal(s.byDay["ו"].length, 4, "Friday is not four periods");
   assert.deepEqual(Object.keys(s.byDay).sort(),
     ["א", "ב", "ג", "ד", "ה", "ו"].sort(),
-    "the merged day column did not group the rows into six days");
+    "the six day pairs did not become six days");
 });
 
 test("sample data: no period 0 — every day starts at 08:15 with period 1", () => {
-  const { s, rows } = sampleSchedule();
-  rows.forEach((r, i) => assert.notEqual(String(r["שיעור"]).trim(), "0",
-    "row " + (i + 2) + " of the demo data still carries a period 0"));
+  const { s, mats } = sampleSchedule();
+  mats.forEach((m, i) => m.slice(3).forEach((r, k) => assert.notEqual(
+    String(r[0]).trim(), "0",
+    "tab " + (i + 1) + " row " + (k + 4) + " still carries a period 0")));
   Object.keys(s.byDay).forEach((d) => {
     assert.equal(s.byDay[d][0].period, "1", "day " + d + " does not open on period 1");
     assert.equal(s.byDay[d][0].start, "08:15", "day " + d + " does not open at 08:15");
   });
-  assert.equal(s.byDay["א"][13].end, "20:00", "period 14 should end at 20:00");
-  assert.equal(s.byDay["ו"][5].end, "13:30", "Friday should end at 13:30");
+  assert.equal(s.byDay["א"][9].end, "17:00", "period 10 should end at 17:00");
+  assert.equal(s.byDay["ו"][3].end, "11:40", "Friday should end at 11:40");
 });
 
-test("sample data: a two-way and a four-way split are exercised", () => {
+test("sample data: two-, three- and four-way splits are all exercised", () => {
   const { s } = sampleSchedule();
-  const two = s.byDay["א"][2];                    /* period 3 */
-  assert.equal(two.period, "3");
-  assert.equal(two.entries["ז׳"].length, 2, "the two-way split did not parse");
-  assert.equal(two.entries["ח׳"].length, 1, "the split leaked into ח׳");
+  const widths = {};
+  Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) =>
+    s.grades.forEach((g) => {
+      const n = p.entries[g].length;
+      if (n) widths[n] = (widths[n] || 0) + 1;
+    })));
+  [2, 3, 4].forEach((n) => assert.ok(widths[n] > 0,
+    "the demo has no " + n + "-way concurrent period, so the redesign's " +
+    "own case is never rendered in demo mode"));
+  /* and the single-value view app.js's legacy path reads still agrees */
+  Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) =>
+    s.grades.forEach((g) => {
+      if (!p.entries[g].length) return;
+      assert.equal(p.subjects[g], p.entries[g][0].subject);
+      assert.equal(p.rooms[g], p.entries[g][0].room);
+    })));
+});
 
-  const four = s.byDay["א"][5];                   /* period 6 */
-  assert.equal(four.period, "6");
-  assert.equal(four.entries['י"א'].length, 4, "the four-way split did not parse");
-  four.entries['י"א'].forEach((e) => {
-    assert.ok(e.subject, "a concurrent class has no subject");
-    assert.ok(e.room, "a concurrent class has no room");
-  });
-  /* and the pane app.js draws today still gets one plain string */
-  assert.equal(four.subjects['י"א'], four.entries['י"א'][0].subject);
+test("sample data: a split never leaks into a grade that is not splitting", () => {
+  const { s } = sampleSchedule();
+  /* Every grade owns its own tab now, so a four-way split in one tab
+     cannot possibly reach another — but that is the property worth
+     pinning, because it is exactly what went wrong in the single-tab
+     shape where an inserted row was shared by every column. */
+  let checked = 0;
+  Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) => {
+    const wide = s.grades.filter((g) => p.entries[g].length > 1);
+    if (!wide.length) return;
+    checked++;
+    s.grades.forEach((g) => {
+      if (wide.indexOf(g) >= 0) return;
+      assert.ok(p.entries[g].length <= 1,
+        d + " period " + p.period + ": the split reached " + g);
+    });
+  }));
+  assert.ok(checked > 0, "no split periods were checked at all");
 });
 
 /* LIMITS.scheduleRoom / LIMITS.scheduleSubject in sheet-template/setup.gs —
@@ -1003,18 +1050,25 @@ test("sample data: a two-way and a four-way split are exercised", () => {
    old number. */
 const ROOM_MAX = 20, SUBJECT_MAX = 30;
 
-test("sample data: every lesson in the demo has a room the sheet accepts", () => {
+test("sample data: every lesson is within the lengths the sheet accepts", () => {
   const { s } = sampleSchedule();
+  let roomless = 0;
   Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) => {
     s.grades.forEach((g) => p.entries[g].forEach((e) => {
       const where = `${d} period ${p.period} ${g}: "${e.subject}"`;
-      assert.ok(e.room, where + " has no room");
-      assert.ok(e.room.length <= ROOM_MAX, where + " room is too long: " + e.room);
+      assert.ok(e.subject, where + " has no subject");
       assert.ok(e.subject.length <= SUBJECT_MAX, where + " subject is too long");
+      assert.ok(e.room.length <= ROOM_MAX, where + " room is too long: " + e.room);
+      if (!e.room) roomless++;
     }));
   }));
+  /* A lesson with NO room is real — חנ"ג outdoors, in the school's own
+     tabs — so the demo carries one on purpose. Asserting it is present
+     stops anyone "fixing" the data and losing the case with it. */
+  assert.ok(roomless > 0,
+    "the demo no longer contains a lesson with no room, which the real " +
+    "sheet does — the roomless render path is now untested");
 });
-
 test("LIMITS.scheduleSubject/scheduleRoom in setup.gs match the demo's own limits", () => {
   /* The demo fixture above hardcodes ROOM_MAX/SUBJECT_MAX rather than
      importing setup.gs (a .gs file, not requireable), so nothing forces
@@ -1460,6 +1514,7 @@ test("a whole-school closure reaches EVERY grade and is not a vacation", () => {
   assert.equal(L.vacationOn(d, loadVacations()), null,
     "a school closure must NOT trigger the ministry-vacation screen");
 });
+
 
 /* ==================================================================
    THE PER-GRADE מערכת TABS

@@ -72,9 +72,36 @@ function parseCsv(text) {
   return { rows: out.data, fields: out.meta.fields || [] };
 }
 
-function buildModel(csv, today) {
+/* The per-grade tabs are a GRID, not a list: the header names repeat once
+   per day pair, so there is nothing for header:true to key on and the
+   whole tab has to arrive as a matrix of cells. */
+function parseMatrix(text) {
+  const t = String(text == null ? "" : text).replace(/\r\n/g, "\n")
+              .replace(/\n+$/, "");
+  if (!t) return [];
+  return Papa.parse(t, { header: false }).data;
+}
+
+/* One timetable model from whichever source this deployment has.
+
+   Six per-grade tabs is what the school runs now; the single all-grades
+   tab is what an older kiosk URL still points at, including the one on
+   the wall until it is repointed. Both produce the SAME model shape, so
+   nothing downstream — the update marks, the agenda's grade list, the
+   closures pane — knows or cares which it got. */
+function buildScheduleModel(csv) {
+  if (csv.schedules && csv.schedules.length) {
+    const labels = CFG.gradeLabels || [];
+    return mergeGradeSchedules(
+      csv.schedules.map((text, i) => parseGradeTab(parseMatrix(text), labels[i])),
+      labels);
+  }
   const sched = parseCsv(csv.schedule);
-  const schedule = buildSchedule(sched.rows, sched.fields);
+  return buildSchedule(sched.rows, sched.fields);
+}
+
+function buildModel(csv, today) {
+  const schedule = buildScheduleModel(csv);
   return {
     grades: schedule.grades,
     byDay: schedule.byDay,
@@ -91,26 +118,16 @@ function buildModel(csv, today) {
   };
 }
 
-/* ?demo7 previews the 7-grade layout by splitting ז׳ into ז׳1 + ז׳2,
-   i.e. exactly what the school would do in the sheet if a grade were
-   split — the board adapts with no code change. */
-function addSeventhGrade(csv) {
-  return csv.split("\n").map((line, i) => {
-    const cells = Papa.parse(line).data[0];
-    if (i === 0) { cells[4] = "ז׳1"; cells.push("ז׳2"); }
-    else cells.push(cells[4]);
-    return Papa.unparse([cells]);
-  }).join("\n");
-}
-
 function sampleCsv(today) {
   const sub = (s) => s.split("{{TODAY}}").join(today);
   const q = new URLSearchParams(location.search);
-  const seven = q.has("demo7");
-  /* ?theme=light|colorful previews a theme without a sheet */
+  /* ?theme=light|colorful|colorful2 previews a theme without a sheet */
   const theme = q.get("theme");
   return {
-    schedule: seven ? addSeventhGrade(SAMPLE.scheduleCsv) : SAMPLE.scheduleCsv,
+    /* Demo mode runs the SAME six-tab path as the school, so there is no
+       second code path to rot: the sample data is six per-grade tabs in
+       the exact CSV shape the sheet publishes. */
+    schedules: SAMPLE.gradeCsv,
     exams: sub(SAMPLE.examsCsv),
     events: sub(SAMPLE.eventsCsv),
     messages: sub(SAMPLE.messagesCsv),
@@ -127,6 +144,50 @@ async function fetchCsv(url) {
   return res.text();
 }
 
+/* ---- the six per-grade schedule tabs ----------------------------
+   Six fetches where there used to be one, which is six chances for a
+   transient failure. Losing one tab must not cost the board a grade
+   card: the last good copy of THAT tab is kept and reused, per tab, so
+   one unreadable grade shows yesterday's timetable while the other five
+   are current — rather than the whole board falling back to a cached
+   model that is stale for everybody.
+
+   Only if EVERY tab fails does this throw, which hands over to the
+   existing whole-model cache path. The per-tab copies are persisted, so
+   a restart during an outage still has them. */
+const SCHED_CACHE_KEY = "dash-schedule-csv";
+let LAST_SCHEDULE = null;
+
+function readSchedCache(n) {
+  try {
+    const c = JSON.parse(localStorage.getItem(SCHED_CACHE_KEY) || "null");
+    if (Array.isArray(c) && c.length === n) return c;
+  } catch (e) { /* corrupt or unavailable — start empty */ }
+  return null;
+}
+
+async function fetchSchedules(urls) {
+  if (!LAST_SCHEDULE) {
+    LAST_SCHEDULE = readSchedCache(urls.length) || urls.map(() => "");
+  }
+  const got = await Promise.all(urls.map((u, i) => fetchCsv(u).catch((e) => {
+    console.error(`grade tab ${i + 1} unreadable, keeping the last good copy:`, e);
+    return null;
+  })));
+  let anyOk = false;
+  const merged = got.map((text, i) => {
+    if (text === null) return LAST_SCHEDULE[i] || "";
+    anyOk = true;
+    return text;
+  });
+  if (!anyOk) throw new Error("no grade tab could be read");
+  LAST_SCHEDULE = merged;
+  try {
+    localStorage.setItem(SCHED_CACHE_KEY, JSON.stringify(merged));
+  } catch (e) { /* quota / private mode — the cache is a bonus */ }
+  return merged;
+}
+
 async function loadData() {
   const today = dateKey(NOW());
   if (DEMO) {
@@ -136,9 +197,13 @@ async function loadData() {
     return;
   }
   try {
-    const [schedule, exams, events, messages] = await Promise.all([
-      fetchCsv(SHEETS.schedule), fetchCsv(SHEETS.exams),
-      fetchCsv(SHEETS.events),   fetchCsv(SHEETS.messages)
+    const perGrade = !!(SHEETS.schedules && SHEETS.schedules.length);
+    const [schedules, schedule, exams, events, messages] = await Promise.all([
+      perGrade ? fetchSchedules(SHEETS.schedules) : null,
+      perGrade ? null : fetchCsv(SHEETS.schedule),
+      fetchCsv(SHEETS.exams),
+      fetchCsv(SHEETS.events),
+      fetchCsv(SHEETS.messages)
     ]);
     /* the settings tab is optional and must never break the board:
        if it is missing or unreachable, defaults apply */
@@ -157,7 +222,8 @@ async function loadData() {
       catch (e) { console.error("closures tab unreadable, ignoring:", e); }
     }
     MODEL = buildModel(
-      { schedule, exams, events, messages, settings, closures }, today);
+      { schedules, schedule, exams, events, messages, settings, closures },
+      today);
     markUpdates(MODEL, today);
     FETCHED_AT = Date.now();
     SHEETS_OK = true;
@@ -255,6 +321,15 @@ const ICON_PIN = SVG_OPEN +
   '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/>' +
   '<circle cx="12" cy="10" r="2.4"/></svg>';
 
+/* The same mark for a lesson's room, at the smaller size the grade cards
+   use: it needs the .pin class (sized in em, so it tracks the room text)
+   and a slightly heavier stroke to survive being drawn that small. */
+const ICON_PIN_ROOM = '<svg class="pin" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/>' +
+  '<circle cx="12" cy="10" r="2.4"/></svg>';
+
 const ICON_WARN = SVG_OPEN +
   '<path d="M12 3.6 22.2 20.4H1.8z"/><path d="M12 9.4v4.8"/>' +
   '<circle cx="12" cy="17.6" r="0.9" fill="currentColor" stroke="none"/></svg>';
@@ -325,7 +400,7 @@ function renderGrades() {
 
   grades.forEach((name, gi) => {
     const card = document.createElement("section");
-    card.className = "card" + (gi === 6 ? " seventh" : "");
+    card.className = "card grade" + (gi === 6 ? " seventh" : "");
     card.style.setProperty("--accent", `var(${ACCENTS[gi] || "--muted"})`);
     /* Place every card explicitly. Without this, auto-placement spills a
        grade card into the left column whenever the day-of-the-day pane
@@ -349,21 +424,59 @@ function renderGrades() {
       return;
     }
     const rows = periods
-      .filter((p) => p.subjects[name])
-      .map((p, i) => {
-        const changed = UPDATED[name + "|" + p.start] || (UPD_PREVIEW && i === 1);
-        return `
-        <div class="period" data-start="${esc(p.start)}" data-end="${esc(p.end)}">
-          <span class="time">${esc(p.start)}–${esc(p.end)}</span>
-          <span class="subj">${esc(p.subjects[name])}</span>
-          ${changed ? UPD_BADGE : ""}
-        </div>`;
-      }).join("");
+      .filter((p) => classesIn(p, name).length)
+      .map((p, i) => slotHTML(p, name,
+        UPDATED[name + "|" + p.start] || (UPD_PREVIEW && i === 1)))
+      .join("");
     card.innerHTML = `
       <h2><span class="chip"></span>כיתה ${esc(name)}</h2>
       <div class="periods"><div class="pwrap">${rows}</div></div>`;
     grid.insertBefore(card, $("leftcol"));
   });
+}
+
+/* Every class this grade has in this period, in sheet order.
+
+   `entries` is the full picture and is what the six-tab parser fills.
+   The fallback to the single-value view is what keeps a board reading an
+   OLD single-tab schedule rendering correctly through the same code —
+   there is no second renderer, and there must not be. */
+function classesIn(p, name) {
+  const list = p.entries && p.entries[name];
+  if (list && list.length) return list;
+  const subject = p.subjects && p.subjects[name];
+  return subject ? [{ subject: subject, room: (p.rooms && p.rooms[name]) || "" }]
+                 : [];
+}
+
+/* ONE PERIOD, with all of its concurrent classes.
+
+   The time cell spans every row of the slot, which is what makes several
+   subjects visibly hang off a single clock reading. --n is written inline
+   because the row template and the cell's span both count from it — see
+   the .slot comment in style.css for why that is not optional.
+
+   data-start / data-end carry the times so tick() can decide "now",
+   "finished" and where the break falls straight from the DOM, without a
+   parallel model to keep in step. */
+function slotHTML(p, name, changed) {
+  const list = classesIn(p, name);
+  const cls = "slot" + (list.length > 1 ? " multi" : "");
+  const lines = list.map((k) =>
+    `<div class="subj"><span>${esc(k.subject)}</span></div>` +
+    `<div class="room">${k.room
+        ? ICON_PIN_ROOM + `<span>${esc(k.room)}</span>` : ""}</div>`
+  ).join("");
+  /* no dir attribute on the time: the RTL paragraph reorders the range and
+     the board shows 08:30–08:15, which is the shipped behaviour */
+  return `
+    <div class="${cls}" data-start="${esc(p.start)}" data-end="${esc(p.end)}"
+         style="--n:${list.length}">
+      <div class="tcell">
+        <span class="time">${esc(p.start)}–${esc(p.end)}</span>
+        ${changed ? UPD_BADGE : ""}
+      </div>${lines}
+    </div>`;
 }
 
 /* theme chosen by the principal in the sheet's settings tab */
@@ -696,86 +809,282 @@ function tick() {
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const hide = hidePassed();
-  document.querySelectorAll(".period").forEach((p) => {
-    const s = minutes(p.dataset.start), e = minutes(p.dataset.end);
-    p.classList.toggle("now", nowMin >= s && nowMin < e);
-  });
 
-  /* ":not(.closedpane)" matters: a closed grade's pane holds no .period
-     rows, so without it the loop below would call it an empty day and
-     paint "יום הלימודים הסתיים" over the closure reason. */
+  /* ":not(.closedpane)" matters: a closed grade's pane holds no slots,
+     so without it the loop below would call it an empty day and paint
+     "יום הלימודים הסתיים" over the closure reason. */
   document.querySelectorAll(".periods:not(.closedpane)").forEach((c) => {
-    const rows = [...c.querySelectorAll(".period")];
-    if (!rows.length) {                    /* no classes at all today */
+    const slots = [...c.querySelectorAll(".slot")];
+    if (!slots.length) {                    /* no classes at all today */
       c.classList.add("empty");
       c.removeAttribute("data-endtime");
       return;
     }
     let lastEnd = -1, lastEndText = "";
-    rows.forEach((p) => {
-      const e = minutes(p.dataset.end);
-      if (e > lastEnd) { lastEnd = e; lastEndText = p.dataset.end; }
+    slots.forEach((s) => {
+      const e = minutes(s.dataset.end);
+      if (e > lastEnd) { lastEnd = e; lastEndText = s.dataset.end; }
     });
 
-    /* The bell is approximate and a lesson often runs over, so the day is
-       not "over" until the last class has finished PLUS a grace period.
-       This is measured from the clock rather than from "are any rows still
-       showing", which is what lets it work in both modes: when the whole
-       day stays on screen no row ever disappears, so counting visible rows
-       would mean the end-of-day line could never appear. */
-    const dayOver = nowMin >= lastEnd + (CFG.endOfDayGraceMinutes || 0);
-
-    rows.forEach((p) => {
-      const e = minutes(p.dataset.end);
-      /* Once the day is over every row goes, in BOTH modes, so the pane
-         hands over to the end-of-day line rather than leaving a full
-         timetable up with nothing highlighted. Before that, a class is
-         hidden only if this mode hides classes at all — and never the
-         last one of the day, which is what the grace period protects. */
-      p.classList.toggle("done",
-        dayOver || (hide && nowMin >= e && e !== lastEnd));
+    /* Which periods this card shows is one decision, made in logic.js and
+       tested there: the display mode, the end-of-day grace, and the one
+       finished lesson a break keeps so the break marker has something to
+       hang under. Everything here just applies the answer. */
+    const shown = visibleSlots(
+      slots.map((s) => ({ start: s.dataset.start, end: s.dataset.end })),
+      nowMin, { hide: hide, graceMinutes: CFG.endOfDayGraceMinutes || 0 });
+    const on = {};
+    shown.forEach((i) => { on[i] = true; });
+    slots.forEach((s, i) => {
+      s.classList.toggle("done", !on[i]);
+      const a = minutes(s.dataset.start), b = minutes(s.dataset.end);
+      s.classList.toggle("now", nowMin >= a && nowMin < b);
     });
 
     c.dataset.endtime = lastEndText;       /* read by the CSS message */
-    c.classList.toggle("empty", dayOver);
+    c.classList.toggle("empty", shown.length === 0);
   });
   markAgendaDone(nowMin);
-  layoutPages();   /* row visibility changed → recompute pages */
+  layoutCards();   /* slot visibility changed → re-measure pages */
   stamp();
 }
 
-/* -- paging: a card with more remaining classes than fit cycles
-   through them page by page every 8 seconds, by translating the
-   row wrapper (a CSS transition does the animation) --------------- */
-const ROW_H = 52;   /* must match .period height in style.css */
+/* ================================================================
+   PAGING AND THE BREAK MARKER — one pass, because they are the same
+   measurement.
 
-function layoutPages() {
-  document.querySelectorAll(".periods").forEach((c) => {
-    const wrap = c.querySelector(".pwrap");
-    if (!wrap) return;
-    const rows = wrap.querySelectorAll(".period:not(.done)").length;
-    const perPage = Math.max(1, Math.floor(c.clientHeight / ROW_H));
-    /* snap pane height to a whole number of rows so a partial row
-       never peeks out at the bottom */
-    c.style.height = (perPage * ROW_H) + "px";
-    c.style.flex = "none";
-    const pages = Math.max(1, Math.ceil(rows / perPage));
-    c.dataset.pages = pages;
-    c.classList.toggle("paged", pages > 1);
-    const cur = Math.min(+(c.dataset.page || 0), pages - 1);
-    c.dataset.page = cur;
-    /* scroll the minimum needed: the last page anchors to the final
-       row instead of jumping a full page and leaving empty space */
-    const start = Math.min(cur * perPage, Math.max(0, rows - perPage));
-    wrap.style.transform = `translateY(-${start * ROW_H}px)`;
-  });
+   WHY THE OLD ARITHMETIC IS GONE. This used to be
+
+       perPage = floor(pane.clientHeight / 52)
+
+   which was exact when every row was a 52px .period. A .slot is one
+   PERIOD holding one to four concurrent classes, so slot heights now run
+   26 / 49 / 73.5 / 98px and the gap between periods is not the gap
+   inside a group (there is none). A uniform-row divide is wrong in both
+   directions.
+
+   WHAT REPLACES IT: the real offsetTop / offsetHeight of each visible
+   slot, packed greedily into pages by logic.js. The absolute rule —
+   never split a concurrent group across a page — holds structurally
+   rather than by a check, because the unit being packed is the whole
+   slot and a slot is exactly one period.
+
+   NO PARTIAL PERIOD PEEKS. Pages hold different numbers of lines, so a
+   page rarely ends on the pane's bottom edge. The shipped answer was to
+   snap the pane to a whole number of rows; the same answer works here
+   with a height that is measured instead of multiplied — the pane is
+   snapped to the exact pixel height of the page it is showing, and its
+   overflow:hidden then cuts on a period boundary by definition.
+   ================================================================ */
+const PAGE_MS = 8000;      /* the shipped cadence, unchanged */
+const PILL_CLEAR = 5;      /* px wanted clear above AND below the pill;
+                              the review's floor is 4, this asks for 5 so
+                              rounding cannot take it under */
+
+function ensureNowLine(wrap) {
+  let el = wrap.querySelector(".nowline");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "nowline";
+    el.innerHTML = '<span class="nlrule"></span>' +
+                   '<span class="nlpill">יצאנו להפסקה...</span>' +
+                   '<span class="nlrule"></span>';
+    wrap.appendChild(el);
+  }
+  return el;
+}
+
+const subjOf = (slot) => [...slot.querySelectorAll(".subj")];
+
+function layoutCard(pane) {
+  const wrap = pane.querySelector(".pwrap");
+  if (!wrap) return;                       /* a closed grade's pane */
+
+  /* -- 0 · reset every injected geometry, so this pass is idempotent
+        and can be re-run on every tick and every page advance -------- */
+  [...wrap.querySelectorAll(".slot")].forEach((s) => { s.style.marginTop = ""; });
+  pane.style.height = "";     /* back to flex:1, so the AVAILABLE height */
+  pane.style.flex = "";       /* can be read before it is snapped again  */
+  let line = wrap.querySelector(".nowline");
+  if (line) { line.remove(); line = null; }
+
+  const slots = [...wrap.querySelectorAll(".slot:not(.done)")];
+  if (!slots.length) {
+    wrap.style.transform = "translateY(0)";
+    pane.dataset.pages = "1";
+    pane.dataset.page = "0";
+    pane.classList.remove("paged");
+    return;
+  }
+
+  const n = NOW();
+  const nowMin = n.getHours() * 60 + n.getMinutes();
+  const times = slots.map((s) => ({ start: s.dataset.start, end: s.dataset.end }));
+
+  /* -- 1 · the seam, and the channel the pill needs there.
+        The gap comes from the pill's OWN rendered height rather than a
+        constant, which is what makes the clearance survive a change of
+        type or theme without a second set of numbers. ---------------- */
+  let seam = breakSeam(times, nowMin);
+  if (seam) {
+    line = ensureNowLine(wrap);
+    const pillH = line.querySelector(".nlpill").getBoundingClientRect().height / SCALE;
+    const a = subjOf(slots[seam.prev]).pop().getBoundingClientRect();
+    const b = subjOf(slots[seam.next])[0].getBoundingClientRect();
+    const chan = (b.top - a.bottom) / SCALE;        /* the natural channel */
+    const grow = Math.max(0, Math.ceil(pillH + 2 * PILL_CLEAR - chan));
+    if (grow) slots[seam.next].style.marginTop = grow + "px";
+  }
+
+  /* -- 2 · pack whole slots into pages, by measurement --------------- */
+  const availH = pane.clientHeight;                /* layout px, unscaled */
+  const boxes = () => slots.map((s) => ({ top: s.offsetTop, height: s.offsetHeight }));
+  let bx = boxes();
+  let avoid = seam ? seam.next : -1;
+  let wins = pageWindows(bx, availH, avoid);
+
+  /* The "never start a page on the slot after the break" rule can fail —
+     a page holding a single period has nothing to give back. Then the
+     marker is dropped rather than drawn half off the pane's top edge,
+     and the channel it asked for is handed back. */
+  if (seam && wins.some((w, k) => k > 0 && w.start === avoid)) {
+    slots[seam.next].style.marginTop = "";
+    if (line) { line.remove(); line = null; }
+    seam = null;
+    bx = boxes();                       /* the channel is gone: re-measure */
+    wins = pageWindows(bx, availH, -1);
+  }
+
+  /* -- 3 · snap the pane to the page it is showing, and translate ---- */
+  const pages = wins.length;
+  pane.dataset.pages = String(pages);
+  const cur = Math.min(Math.max(0, +(pane.dataset.page || 0)), pages - 1);
+  pane.dataset.page = String(cur);
+  pane.classList.toggle("paged", pages > 1);
+  if (pages > 1) {
+    pane.style.height = wins[cur].height + "px";
+    pane.style.flex = "none";
+  }
+  wrap.style.transform = `translateY(-${wins[cur].top}px)`;
+
+  /* -- 4 · park the marker on the seam, measured after the padding.
+        Midway between the INK boxes above and below, not between the
+        slot boxes, so the clearance really is equal on both sides. --- */
+  if (seam && line) {
+    const wr = wrap.getBoundingClientRect();
+    const a = subjOf(slots[seam.prev]).pop().getBoundingClientRect();
+    const b = subjOf(slots[seam.next])[0].getBoundingClientRect();
+    line.style.top = ((((a.bottom + b.top) / 2) - wr.top) / SCALE).toFixed(2) + "px";
+  }
+}
+
+function layoutCards() {
+  document.querySelectorAll(".periods").forEach(layoutCard);
+  setupScrollers();
 }
 
 function advancePages() {
   document.querySelectorAll(".periods.paged").forEach((c) => {
     c.dataset.page = (+(c.dataset.page || 0) + 1) % +(c.dataset.pages || 1);
   });
-  layoutPages();
+  layoutCards();
+}
+
+/* ================================================================
+   SCROLLING SUBJECT NAMES
+
+   A streamed subject name — "מעורבים בקהילה (מורה א, מורה ב)" — is longer than
+   the column, and truncating it hides exactly the part that says which
+   group a pupil belongs in. So names that do not fit move instead:
+
+     · only names that ACTUALLY overflow, decided by measuring
+       scrollWidth against clientWidth, never by counting characters;
+     · slow and mostly still — a long pause at each end and a ~15px/s
+       glide, so at any moment nearly every name on the board is
+       stationary;
+     · starts staggered, so six panes never pulse in unison;
+     · RTL-correct: the travel direction comes from the computed
+       `direction`, so the runner moves toward the reading start.
+
+   Called from every layout pass, and therefore IDEMPOTENT: a name whose
+   overflow has not changed keeps the animation it already has. Restarting
+   them all on each tick would park every name back at its start every
+   five seconds and nothing would ever visibly move.
+   ================================================================ */
+const SCROLL = {
+  speed:     15,    /* px per second — calm enough for a wall display  */
+  holdStart: 3.0,   /* seconds parked at the name's beginning          */
+  holdEnd:   2.6,   /* seconds parked at the name's end                */
+  reset:     0.45,  /* seconds to RESET — one quick eased gesture, not
+                       a second slow scroll. Halving the return is what
+                       keeps the duty cycle down.                       */
+  holdAfter: 1.8,   /* seconds parked after the reset                  */
+  minGlide:  1.4,   /* never faster than this, however short the run   */
+  spread:    2.8,   /* seconds. The window the per-name phase offsets are
+                       scattered across. Bounded deliberately: spread
+                       across the whole cycle instead, a name could sit
+                       dead still for the 3s hold PLUS up to 15s of delay
+                       before it first moved. This keeps every name's
+                       first movement inside 3.0-5.8s, and because each
+                       cycle is a function of that name's own overflow
+                       they drift apart from there rather than locking.  */
+  fade:      12     /* px of edge mask; travel overshoots by exactly this */
+};
+/* Multiples of the golden ratio, taken mod 1, land as far from each other
+   as a deterministic sequence can — so consecutive scrollers get offsets
+   scattered rather than stepping in a fixed increment that wraps and puts
+   them back in step once there are more than a handful. */
+const PHI = 0.6180339887;
+
+let scrollSeq = 0;
+function setupScrollers() {
+  let k = 0;
+  document.querySelectorAll(".card.grade .subj").forEach((el) => {
+    const run = el.firstElementChild;
+    if (!run) return;
+    /* MEASURED, not guessed. A hidden slot measures 0 and is simply left
+       alone until it is shown, at which point its overflow changes and it
+       is configured then. */
+    const over = el.scrollWidth - el.clientWidth;
+    if (el._over === over) { if (over > 1) k++; return; }   /* unchanged */
+    el._over = over;
+    if (el._anim) { el._anim.cancel(); el._anim = null; }
+    el.classList.remove("scroll");
+    if (over <= 1) return;            /* it fits: leave it perfectly still */
+
+    /* RTL: the overflow hangs off the physical LEFT, so the runner travels
+       in the positive x direction to bring the tail into view. Taken from
+       the computed direction rather than assumed. */
+    const sign = getComputedStyle(el).direction === "rtl" ? 1 : -1;
+    const dist = over + SCROLL.fade;
+    const glide = Math.max(SCROLL.minGlide, dist / SCROLL.speed);
+    const t1 = SCROLL.holdStart,
+          t2 = t1 + glide,
+          t3 = t2 + SCROLL.holdEnd,
+          t4 = t3 + SCROLL.reset,
+          tot = t4 + SCROLL.holdAfter;
+    const dx = (sign * dist) + "px";
+    const ease = "cubic-bezier(.42,0,.58,1)";     /* soft start, soft stop */
+
+    el.classList.add("scroll");
+    el._anim = run.animate([
+      { offset: 0,       transform: "translateX(0px)", easing: "linear" },
+      { offset: t1 / tot, transform: "translateX(0px)", easing: ease },
+      { offset: t2 / tot, transform: `translateX(${dx})`, easing: "linear" },
+      { offset: t3 / tot, transform: `translateX(${dx})`, easing: ease },
+      { offset: t4 / tot, transform: "translateX(0px)", easing: "linear" },
+      { offset: 1,       transform: "translateX(0px)" }
+    ], {
+      duration: tot * 1000,
+      iterations: Infinity,
+      /* every scroller starts PARKED, and late by a different fraction of
+         its own cycle, so nothing is mid-travel when the board first
+         paints and the six panes never move together */
+      delay: ((scrollSeq++ * PHI) % 1) * SCROLL.spread * 1000
+    });
+    k++;
+  });
+  return k;
 }
 
 /* ================================================================
@@ -892,10 +1201,19 @@ async function checkForNewVersion() {
   } catch (e) { /* offline: try again next time */ }
 }
 
-/* scale the fixed 1920×1080 stage to fit any window */
+/* Scale the fixed 1920×1080 stage to fit any window.
+
+   SCALE is kept because the layout pass mixes two coordinate systems:
+   offsetTop / offsetHeight are layout pixels (unscaled), while
+   getBoundingClientRect — the only way to measure where a line of INK
+   actually sits — returns screen pixels, i.e. already multiplied by
+   this. Dividing by it puts both back in stage pixels. On the TV it is
+   1 and none of this matters; in a scaled preview window it is what
+   keeps the break marker on its seam. */
+let SCALE = 1;
 function fit() {
-  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
-  $("stage").style.transform = `translate(-50%, -50%) scale(${s})`;
+  SCALE = Math.min(innerWidth / 1920, innerHeight / 1080);
+  $("stage").style.transform = `translate(-50%, -50%) scale(${SCALE})`;
 }
 
 /* ================================================================
@@ -910,7 +1228,22 @@ async function refresh() {
 }
 
 fit();
-addEventListener("resize", fit);
+/* a resize changes the stage scale, and with it every measurement the
+   page packer and the break marker were placed from */
+addEventListener("resize", () => { fit(); layoutCards(); });
+
+/* THE FIRST LAYOUT PASS RUNS BEFORE THE WEBFONT ARRIVES.
+   font-display:swap paints the board in the fallback face and swaps
+   Assistant in when it loads, which silently changes every text width —
+   so the page packer's measurements and the "does this name overflow?"
+   question were both answered against a font that is no longer on
+   screen. It self-corrected on the next 5s tick, but until then a card
+   could show the wrong number of pages and a name that needs to scroll
+   could sit still. Re-measuring when the fonts settle costs one layout
+   pass and removes the race. */
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => layoutCards()).catch(() => {});
+}
 refresh();
 setInterval(refresh, CFG.refreshSeconds * 1000);
 setInterval(tick, 5000);
@@ -919,6 +1252,6 @@ setInterval(tick, 5000);
    page is up but this was never set, something failed on the way here and
    the board reloads itself rather than standing white on a wall. */
 window.__boardBooted = true;
-setInterval(advancePages, 8000);
+setInterval(advancePages, PAGE_MS);
 setInterval(maybePlayVideo, 60000);
 setInterval(checkForNewVersion, CFG.updateCheckMinutes * 60000);

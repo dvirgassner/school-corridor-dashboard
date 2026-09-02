@@ -994,10 +994,16 @@ test("sample data: a two-way and a four-way split are exercised", () => {
   assert.equal(four.subjects['י"א'], four.entries['י"א'][0].subject);
 });
 
+/* LIMITS.scheduleRoom / LIMITS.scheduleSubject in sheet-template/setup.gs —
+   demo data the real sheet would reject is demo data that stopped
+   describing the sheet. Kept as separate literals (not read out of
+   setup.gs) so the two tests below — this one and the sync check right
+   after it — fail independently: a limit bumped in setup.gs but not here
+   is caught by the sync test even if no demo value happens to exceed the
+   old number. */
+const ROOM_MAX = 20, SUBJECT_MAX = 30;
+
 test("sample data: every lesson in the demo has a room the sheet accepts", () => {
-  /* LIMITS.scheduleRoom in sheet-template/setup.gs — demo data the real
-     sheet would reject is demo data that stopped describing the sheet */
-  const ROOM_MAX = 14, SUBJECT_MAX = 16;
   const { s } = sampleSchedule();
   Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) => {
     s.grades.forEach((g) => p.entries[g].forEach((e) => {
@@ -1007,6 +1013,28 @@ test("sample data: every lesson in the demo has a room the sheet accepts", () =>
       assert.ok(e.subject.length <= SUBJECT_MAX, where + " subject is too long");
     }));
   }));
+});
+
+test("LIMITS.scheduleSubject/scheduleRoom in setup.gs match the demo's own limits", () => {
+  /* The demo fixture above hardcodes ROOM_MAX/SUBJECT_MAX rather than
+     importing setup.gs (a .gs file, not requireable), so nothing forces
+     the two to move together. This test is that force: it reads the
+     real setup.gs source and parses LIMITS out of it, so a future bump
+     to one side alone fails here instead of silently drifting. */
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "sheet-template", "setup.gs"), "utf8");
+  const subjectMatch = /scheduleSubject:\s*(\d+)/.exec(src);
+  const roomMatch = /scheduleRoom:\s*(\d+)/.exec(src);
+  assert.ok(subjectMatch, "LIMITS.scheduleSubject not found in setup.gs");
+  assert.ok(roomMatch, "LIMITS.scheduleRoom not found in setup.gs");
+  assert.equal(Number(subjectMatch[1]), 30,
+    "setup.gs LIMITS.scheduleSubject is not 30");
+  assert.equal(Number(roomMatch[1]), 20,
+    "setup.gs LIMITS.scheduleRoom is not 20");
+  assert.equal(Number(subjectMatch[1]), SUBJECT_MAX,
+    "setup.gs LIMITS.scheduleSubject and tests/run.js SUBJECT_MAX disagree");
+  assert.equal(Number(roomMatch[1]), ROOM_MAX,
+    "setup.gs LIMITS.scheduleRoom and tests/run.js ROOM_MAX disagree");
 });
 
 test("the sheet the board reads TODAY still parses after the rebuild", () => {

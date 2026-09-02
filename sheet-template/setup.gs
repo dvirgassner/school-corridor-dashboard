@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.201';
+var SCRIPT_VERSION = '0.202';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -111,12 +111,17 @@ var LEGACY_LOCKS = {};
 LEGACY_LOCKS[SCHEDULE_LOCK] = ['יום ומספר שיעור — לא לשינוי'];
 
 var LIMITS = {
-  scheduleSubject: 16,
+  /* Sixteen rejected the real timetable outright: the longest subject
+     name in use, "תרבות יהודית ישראלית (ציפורי)", is 29 characters, and
+     43 subjects in that timetable are longer than the old 20-character
+     working limit. Thirty covers the longest with headroom. */
+  scheduleSubject: 30,
   /* A room is an identifier, not a sentence — but the identifier is
      sometimes a place: "מעבדת ביולוגיה" is fourteen characters, and
      rejecting it would send the office back to abbreviations nobody
-     reads. Fourteen is what fits the column at its own width. */
-  scheduleRoom: 14,
+     reads. The real timetable's longest room name is 17 characters;
+     twenty is what fits the column at its own width with headroom. */
+  scheduleRoom: 20,
   examSubject: 12,
   examRoom: 12,
   eventTitle: 22,

@@ -250,7 +250,7 @@ never overflow its box:
 
 | Field | Max characters |
 |---|---|
-| Schedule subject | 16 |
+| Schedule subject | 30 |
 | Exam subject | 12 |
 | Exam room | 12 |
 | Event title | 22 |

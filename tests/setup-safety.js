@@ -697,6 +697,63 @@ function run(test) {
       'the split row lost its subject');
   });
 
+  /* The scale the live sheet actually reached: 473 lessons typed in,
+     85 rows inserted for concurrent groups, 162 rows total. The test
+     above proves the mechanism with four inserted rows; this one proves
+     it does not fall over once the tab is that tall — a merge computed
+     off by one, or a write span that clips the last block, would not
+     necessarily show up at four rows but would at eighty-five. */
+  test('at the live sheet\'s scale — 85 inserted split rows, 162 total rows — survives a re-run', () => {
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const layout = scheduleLayout();
+    /* one count per day, summing to 85; every weekday plus a non-trivial
+       Friday, so no day block is left untouched */
+    const perDay = { 'א': 18, 'ב': 16, 'ג': 15, 'ד': 14, 'ה': 13, 'ו': 9 };
+    assert.equal(Object.values(perDay).reduce((a, b) => a + b, 0), 85,
+      'test setup error: perDay must sum to 85');
+    let shift = 0;
+    DAYS.forEach((day, di) => {
+      const insertAt = 2 + layout.offsets[di] + shift + 1;
+      for (let k = 0; k < perDay[day]; k++) {
+        insertRowAt(sched, insertAt);
+        const gi = k % GRADES.length;
+        const col = 5 + gi * 2;               /* subject column for grade gi */
+        sched.getRange(insertAt, col).setValue(
+          REAL_SUBJECTS[(di + k) % REAL_SUBJECTS.length] + ' — קבוצה ' + (k + 1));
+        sched.getRange(insertAt, col + 1).setValue(
+          REAL_ROOMS[(di + k) % REAL_ROOMS.length]);
+      }
+      shift += perDay[day];
+    });
+
+    const expectedTotalRows = TOTAL_ROWS + 85;      /* 76 + 85 = 161 data rows */
+    assert.equal(expectedTotalRows, 161);
+    assert.equal(sched.merges.length, 6,
+      'the fixture should still be six day blocks after 85 insertions');
+    const expectedMerges = sched.merges.slice();
+
+    const before = snapshot(ss);
+    sched.writes.length = 0;
+
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures at scale: ' + said);
+    assert.deepEqual(diff(before, snapshot(ss)), [],
+      'content was lost or changed on the 162-row tab');
+    assert.deepEqual(sched.writes.map((w) => w.a1),
+      ['A2:A' + (1 + expectedTotalRows)],
+      'expected one column-A rewrite spanning the whole 162-row tab, got: ' +
+      sched.writes.map((w) => w.a1).join(', '));
+    assert.deepEqual(sched.merges, expectedMerges,
+      'day blocks were not preserved at scale: ' + sched.merges.join(', '));
+    assert.equal(sched.getLastRow(), 1 + expectedTotalRows,
+      '162-row tab did not end where expected: last row is ' +
+      sched.getLastRow());
+  });
+
   test('a tab still on the previous geometry is refused, not overwritten', () => {
     const ss = oldShapeSheet();
     const sched = ss.getSheetByName('מערכת');

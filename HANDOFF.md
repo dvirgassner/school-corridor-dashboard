@@ -23,10 +23,18 @@ outside the repo. Without it you cannot reach the Pi.
 - Sheet has the five shared tabs plus **six per-grade timetable tabs**
   (`מערכת ז` … `מערכת יב`); the principal is using it.
 - **The board now reads the six per-grade tabs and renders concurrent
-  classes with rooms** (`0.210`, the approved card redesign). The Pi is
-  still on its OLD kiosk URL and therefore still reading the single
-  legacy `מערכת` tab — that path is kept working deliberately. See
-  *Repointing the Pi* below; that is the only step left.
+  classes with rooms** (`0.210`, the approved card redesign). **The Pi
+  is repointed**: its kiosk URL carries `&s=<six gids>` and the board
+  reads eleven tabs a cycle, all returning 200 — verified from inside
+  the live page (408 responses observed, 407×200 and the one 400 below).
+- **The legacy single-`מערכת` path is DEAD, not a fallback.** `g=`
+  position 0 names the all-grades tab the six-tab migration replaced,
+  and that gid now answers **HTTP 400**. Anything that falls back to it
+  — a build without `s=` support, a rollback, a malformed `s=` — fails
+  every cycle. This is exactly what put "מנותק מגוגל שיטס" over a
+  correctly-rendered board during the repoint; see `0.213`. The gid
+  stays in the URL because `g=` is positional and the four tabs after it
+  are live, but treat position 0 as a tombstone.
 - Remote access via a reverse-SSH relay on port 443 (Tailscale and
   Cloudflare are both blocked by the school's SNI filter — do not retry
   them without new evidence).
@@ -86,7 +94,7 @@ outside the repo. Without it you cannot reach the Pi.
 | **Under-voltage** | Unresolved. `0x50005` — throttled *now*, not historically. Needs a 5.1 V / 2.5 A supply with a captive cable. Can masquerade as a TV fault. |
 | **CEC end-to-end** | Untested. First real trial is the 07:00 wake on Sunday 30 Aug; it has never once worked. |
 | **Run `setup()`** | Pending, on `0.201`. It must rebuild the `מערכת` grid to periods 1-14 — the tab is still half-migrated, column A on the new geometry and B-D on the old. Confirm the toast says `מערכת: הלוח נבנה מחדש ואומת ✓`; anything else means it did not take. Also for the renamed theme dropdown — then re-pick the theme, the cell holds a superseded name. |
-| **Repoint the Pi to the six tabs** | Pending. Append `&s=<six gids>` to `DASH_URL` in `~/.dashboard-env` and reboot — a pure URL change, reversible, no code involved. Exact format and the check to run after it: `pi/README.md`. |
+| **Repoint the Pi to the six tabs** | **Done.** The kiosk URL carries `&s=<six gids>`; all six grade tabs read 200 from the board itself. Not reversible after all: dropping `s=` now falls back to a tab that answers HTTP 400. |
 | **Service worker offline** | Never verified, and must not be tested on the wall Pi. |
 | **`gviz` by name** | Would remove tab gids from the board URL entirely; verified it works and sends CORS. Trade-off: a gid survives a tab rename, a name does not. Argued in `docs/decisions.md`, not acted on. |
 | **Relay VPS has no monitoring of its own** | The 2026-08 IPv4 lockout (see `docs/decisions.md`) was found by a human, not an alert — the Pi/TV healthchecks both depend on the relay already working. No check currently watches the relay itself. |

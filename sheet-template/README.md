@@ -26,16 +26,34 @@ go only into a tab that is empty, so once the school's real timetable is
 in, every later run restyles and re-validates and seeds nothing.
 
 That is enforced rather than intended. Every content write goes through
-one of three named helpers — `writeHeader_()`, `writeDayColumn_()` and
-`seedIfEmpty_()` — and `node tests/run.js` fails if a content-mutating
-call appears anywhere else, or if running `setup()` against a mock sheet
-full of realistic data changes a single cell outside those helpers' own
-columns. See [`tests/setup-safety.js`](../tests/setup-safety.js).
+one of four named helpers — `writeHeader_()`, `writeDayColumn_()`,
+`rebuildScheduleGrid_()` and `seedIfEmpty_()` — and `node tests/run.js`
+fails if a content-mutating call appears anywhere else, or if running
+`setup()` against a mock sheet full of realistic data changes a single
+cell outside those helpers' own columns. See
+[`tests/setup-safety.js`](../tests/setup-safety.js).
 
-The first two own *generated structure* — the header row, and the `יום`
-column in `מערכת` — which are locked and cannot be typed into. Only
-`seedIfEmpty_()` ever writes where a person could have, and it refuses
-any tab holding so much as one cell.
+The first three own *generated structure* — the header row, and the
+`יום`, `שיעור`, `התחלה` and `סיום` columns in `מערכת`, which are locked
+and cannot be typed into. Only `seedIfEmpty_()` ever writes where a
+person could have, and it refuses any tab holding so much as one cell.
+
+**The write-safety rule for `מערכת`, in full.** `setup()` writes the
+tab's script-owned columns A-D only while the tab holds **no subject and
+no room**. The moment one is present it writes **column A alone** — the
+day letters, over the day blocks as they really stand — and it refuses
+the tab outright if the geometry under those subjects is an older,
+shorter one, saying so rather than moving anything.
+
+The wide half of that rule is what repairs a tab left half-migrated. A
+timetable built to the previous eleven-period grid, whose subject cells
+were then cleared, kept its old period numbers and bell times in B-D:
+only column A was ever rebuilt, so the new fourteen-row day letters ended
+up sitting over an eleven-row grid — period 1 at 08:30, a second period 0
+halfway down Sunday. On such a tab there is no lesson that could be moved
+under the wrong day, so `setup()` now rebuilds the whole skeleton and
+clears whatever an older shape left below it. Running `setup` again is
+the entire repair.
 
 Two consequences worth knowing, both verified by those tests:
 

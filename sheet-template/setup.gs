@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.199';
+var SCRIPT_VERSION = '0.200';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -561,7 +561,7 @@ function ensureSheet_(ss, name) {
   return sh;
 }
 
-/* ---------- the only two functions here that write cell contents -------
+/* ---------- the only functions here that write cell contents -------
    Everything else in this file formats, validates, protects or annotates.
    Those operations reach the data rows freely — a background colour or a
    dropdown is stored beside a cell's value, not in place of it — which is
@@ -569,9 +569,9 @@ function ensureSheet_(ss, name) {
    without disturbing a single subject name.
 
    tests/run.js enforces this mechanically: it walks the whole file and
-   fails if any content-mutating call appears outside the four functions
-   allowed to make one (these two, plus the two that answer a click in
-   the אירועים tab). Keep it that way. */
+   fails if any content-mutating call appears outside the short list of
+   functions allowed to make one (the write helpers here, plus the two
+   that answer a click in the אירועים tab). Keep it that way. */
 
 /**
  * Own the יום column: one merged cell per day, carrying the day letter
@@ -622,6 +622,88 @@ function writeDayColumn_(sh, layout) {
      .setFontWeight('bold')
      .setHorizontalAlignment('center')
      .setVerticalAlignment('middle');
+}
+
+/**
+ * Rebuild the WHOLE script-owned skeleton — the period numbers and both
+ * bell times, columns B, C and D — to the canonical grid.
+ *
+ * THE WRITE-SAFETY RULE, stated once, in full:
+ *
+ *   setup() writes the מערכת tab's script-owned columns A-D only while
+ *   the tab holds NO subject and NO room. The moment one is present it
+ *   writes COLUMN A ALONE — the day letters, over the blocks as they
+ *   really stand — and it refuses the tab outright when the geometry
+ *   underneath those subjects is an older, shorter one. It is therefore
+ *   impossible for setup() to overwrite anything typed into columns E-P,
+ *   because those columns are never written outside a seed of an empty
+ *   tab, and impossible for it to move a lesson under the wrong period,
+ *   because the only tab whose B-D it rewrites has no lessons in it.
+ *
+ * The bug this exists to fix: clearing the SUBJECT cells of a tab built
+ * to the eleven-period grid, then running the new setup(), left columns
+ * B-D holding eleven rows per day while column A was restated with
+ * fourteen — period 1 at 08:30, a second period 0 halfway down Sunday,
+ * and the day letters out of step with the times under them. Column A
+ * was rebuilt; nothing rebuilt the rest.
+ *
+ * Three things happen here, in this order:
+ *
+ *   1. Every merged day block comes apart, so nothing straddling the new
+ *      grid's last row survives to block a write or outlive its rows.
+ *      writeDayColumn_ re-merges to the new geometry immediately after.
+ *   2. Anything an older grid left BELOW the new one — a taller shape's
+ *      trailing rows — is cleared, across the timetable's own sixteen
+ *      columns. Columns past those are not the timetable's and are left
+ *      alone; the grid rows' own E-P are already empty, which is the
+ *      precondition for being here at all.
+ *   3. The period numbers and bell times are written, and only if they
+ *      differ from what is already there — compared as TIMES, so a tab
+ *      whose text times have been converted to real ones compares equal.
+ *      A tab already on this grid is a complete no-op, exactly like
+ *      writeHeader_ on an unchanged header.
+ *
+ * Returns true when it actually changed something.
+ */
+function rebuildScheduleGrid_(sh) {
+  var layout = scheduleLayout_();
+  var width = Math.min(scheduleHeaders_().length, sh.getMaxColumns());
+  var bottom = 1 + layout.total;                 /* the last grid row: 77 */
+  var last = scheduleLastRow_(sh);
+  var changed = false;
+
+  if (last > 1) {
+    try { sh.getRange(2, 1, last - 1, 1).breakApart(); } catch (e) {}
+  }
+  if (last > bottom) {
+    var stale = sh.getRange(bottom + 1, 1, last - bottom, width);
+    if (!stale.isBlank()) { stale.clearContent(); changed = true; }
+  }
+
+  var want = [];
+  DAYS.forEach(function (day) {
+    var count = periodCount_(day);
+    for (var p = 0; p < count; p++) {
+      want.push([PERIODS[p][0], PERIODS[p][1], PERIODS[p][2]]);
+    }
+  });
+
+  var rng = sh.getRange(2, 2, layout.total, 3);
+  var have = rng.getValues();
+  var same = true;
+  for (var r = 0; r < want.length && same; r++) {
+    if (Number(have[r][0]) !== want[r][0]) same = false;
+    for (var c = 1; c < 3 && same; c++) {
+      var got = have[r][c];
+      var mine = typeof got === 'number' ? got : timeValue_(got);
+      /* a second apart is the same bell — never compare floats exactly */
+      if (mine === null || Math.abs(mine - timeValue_(want[r][c])) > 1e-6) {
+        same = false;
+      }
+    }
+  }
+  if (!same) { rng.setValues(want); changed = true; }
+  return changed;
 }
 
 /**
@@ -1300,8 +1382,17 @@ function scheduleHasSubjects_(sh) {
 
 /**
  * The geometry styleSchedule_ and writeDayColumn_ must agree on, in
- * three cases:
+ * four cases:
  *
+ *   • NOTHING TYPED IN THE TAB → the canonical grid, unconditionally.
+ *     With no subject and no room anywhere there is no lesson that could
+ *     land under the wrong day, so whatever shape the tab is in is not
+ *     worth preserving — it is a skeleton to be replaced. This is the
+ *     one state in which rebuildScheduleGrid_ is allowed to restate
+ *     columns B-D as well, and it must: writing new fourteen-row day
+ *     letters over an old eleven-row grid's period numbers and bell
+ *     times, and leaving those, is exactly the mess this case exists to
+ *     stop. See the write-safety rule on rebuildScheduleGrid_.
  *   • no readable skeleton (a fresh tab, or the old repeated-letter
  *     shape) → the canonical grid, which is also the migration;
  *   • the current shape, at or above the canonical height → ITS OWN
@@ -1310,11 +1401,13 @@ function scheduleHasSubjects_(sh) {
  *     sheet built to a previous version's geometry (eleven periods, no
  *     room columns), and restating the canonical skeleton over it would
  *     leave every subject under the wrong day, the wrong period and the
- *     wrong grade. This script may only write column A, so it cannot
- *     repair that — it has to refuse, and say why.
+ *     wrong grade. With subjects present this script may only write
+ *     column A, so it cannot repair that — it has to refuse, and say why.
  */
 function scheduleGeometry_(sh) {
   var canonical = scheduleLayout_();
+  if (!scheduleHasSubjects_(sh)) return canonical;
+
   var actual = readDayBlocks_(sh);
   if (!actual) return canonical;
 
@@ -1323,7 +1416,6 @@ function scheduleGeometry_(sh) {
     if (actual.counts[i] < canonical.counts[i]) shorter = true;
   }
   if (!shorter) return actual;
-  if (!scheduleHasSubjects_(sh)) return canonical;
 
   throw new Error(
     'לשונית "מערכת" בנויה לפי מבנה ישן: ' + actual.total +
@@ -1449,6 +1541,12 @@ function styleSchedule_(sh) {
      fit. On a live tab with split rows in it, this is what returns the
      blocks as they really stand. */
   var layout = scheduleGeometry_(sh);
+  /* The one state in which the script owns columns B-D as well as A: an
+     empty tab, whose skeleton may therefore be replaced outright rather
+     than only re-lettered. With a single subject or room present this is
+     skipped and the run writes column A alone, as it always has. See the
+     write-safety rule on rebuildScheduleGrid_. */
+  if (!scheduleHasSubjects_(sh)) rebuildScheduleGrid_(sh);
   var headers = scheduleHeaders_();
   writeHeader_(sh, headers);
   var rows = layout.total;

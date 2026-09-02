@@ -1,6 +1,6 @@
 # Handoff — school corridor dashboard
 
-State as of **2026-08-28**. Board `0.200`, Apps Script `0.197`, 188 tests
+State as of **2026-09-02**. Board `0.202`, Apps Script `0.200`, 225 tests
 passing.
 
 ## What it is

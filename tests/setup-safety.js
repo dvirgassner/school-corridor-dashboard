@@ -52,6 +52,14 @@ const t = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
   return (h * 60 + m) / 1440;
 };
+/* the inverse of t(): a day fraction back to "HH:MM", for comparing a
+   whole grid in one deepEqual and reading the failure when it differs */
+const hhmm = (v) => {
+  if (typeof v !== 'number') return String(v);
+  const mins = Math.round(v * 1440);
+  return String(Math.floor(mins / 60)).padStart(2, '0') + ':' +
+         String(mins % 60).padStart(2, '0');
+};
 const PERIOD_TIMES = [
   ['08:15', '09:00'], ['09:00', '09:45'], ['10:10', '10:55'],
   ['10:55', '11:40'], ['12:00', '12:45'], ['12:45', '13:30'],
@@ -238,6 +246,85 @@ function oldShapeSheet() {
   return ss;
 }
 
+/* The OLD period table, exactly as commit c6684a6 shipped it: eleven
+   periods numbered 0-10, opening with a fifteen-minute "period 0" before
+   the day proper, and only five of them on Friday. Written out in full
+   rather than approximated, because the regression tests below assert
+   these SPECIFIC times are gone afterwards — a fixture that merely said
+   "some old time" could not tell a rebuilt grid from an untouched one. */
+const OLD_PERIODS = [
+  [0, '08:15', '08:30'], [1, '08:30', '09:00'], [2, '09:00', '09:45'],
+  [3, '10:10', '10:55'], [4, '10:55', '11:40'], [5, '12:00', '12:45'],
+  [6, '12:45', '13:30'], [7, '14:00', '14:45'], [8, '14:45', '15:30'],
+  [9, '15:30', '16:15'], [10, '16:15', '17:00']
+];
+const OLD_COUNTS = [11, 11, 11, 11, 11, 5];      /* 60 data rows, to row 61 */
+
+/* Lay the old eleven-period grid into the מערכת tab with the SUBJECT
+   cells empty — what is left after somebody selects the coloured columns
+   and presses Delete. The period numbers and bell times in B-D are
+   script-written, were never selected, and survive; so do the old merged
+   day blocks in column A. This is the state the live sheet was in on the
+   morning the bug was reported, BEFORE the new setup() was run on it. */
+function clearedOldGridSheet() {
+  const ss = populatedSheet();
+  const sched = ss.getSheetByName('מערכת');
+  sched.values = Array.from({ length: sched.maxRows },
+                            () => Array(sched.maxCols).fill(''));
+  sched.merges.length = 0;
+  sched.getRange(1, 1, 1, 10).setValues([
+    ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
+  ]);
+  const rows = [];
+  DAYS.forEach((day, di) => {
+    for (let p = 0; p < OLD_COUNTS[di]; p++) {
+      const row = [p === 0 ? day : '', OLD_PERIODS[p][0],
+                   t(OLD_PERIODS[p][1]), t(OLD_PERIODS[p][2])];
+      GRADES.forEach(() => row.push(''));        /* subjects: cleared */
+      rows.push(row);
+    }
+  });
+  sched.getRange(2, 1, rows.length, 10).setValues(rows);
+  let off = 0;
+  OLD_COUNTS.forEach((c) => { sched.getRange(2 + off, 1, c, 1).merge(); off += c; });
+  sched.writes.length = 0;
+  return ss;
+}
+
+/* THE STATE THE LIVE SHEET IS IN RIGHT NOW — clearedOldGridSheet() after
+   version 0.199's setup() has already run over it once:
+
+     • column A rebuilt to the NEW geometry, one merged block per day,
+       fourteen rows for א-ה and six for ו, letters at rows 2, 16, 30,
+       44, 58 and 72;
+     • columns B-D still the OLD eleven-row-per-day grid, so row 2 is
+       period 0 at 08:15-08:30, row 3 period 1 at 08:30-09:00, row 12
+       period 10, and row 13 a SECOND period 0 sitting in the middle of
+       the א block — day letters and bell times completely out of step;
+     • rows 62-77 empty in B-D, the old grid being sixty rows where the
+       new one is seventy-six;
+     • the header already widened to all sixteen columns.
+
+   The fix has to repair THIS, not merely the state before it: the tab it
+   has to put right is the one the principal is looking at. */
+function messedUpSheet() {
+  const ss = clearedOldGridSheet();
+  const sched = ss.getSheetByName('מערכת');
+  sched.getRange(1, 1, 1, SCHED_COLS).setValues([SCHED_HEADERS]);
+  sched.merges.length = 0;
+  const layout = scheduleLayout();
+  const colA = [];
+  DAYS.forEach((d, di) => {
+    for (let i = 0; i < layout.counts[di]; i++) colA.push([i === 0 ? d : '']);
+  });
+  sched.getRange(2, 1, layout.total, 1).setValues(colA);
+  DAYS.forEach((d, di) => {
+    sched.getRange(2 + layout.offsets[di], 1, layout.counts[di], 1).merge();
+  });
+  sched.writes.length = 0;
+  return ss;
+}
+
 /* Every value in every sheet, as a comparable string. Dates are stamped
    by time so a silently rewritten date is caught too. */
 function snapshot(ss) {
@@ -287,12 +374,18 @@ const MUTATORS = [
   '.insertRowBefore(', '.insertRowsBefore(', '.moveRows('
 ];
 
-/* The only functions permitted to contain one. The first two are the
-   script's own write helpers; the last two answer a click the principal
-   just made in the אירועים tab, where clearing the conflicting box IS
-   the requested behaviour. */
+/* The only functions permitted to contain one. Most are the script's own
+   write helpers; resolveEventTick_ and enforceExclusive_ answer a click
+   the principal just made in the אירועים tab, where clearing the
+   conflicting box IS the requested behaviour.
+
+   rebuildScheduleGrid_ is the widest of them — it restates columns B, C
+   and D of מערכת — and it is on this list only because styleSchedule_
+   calls it behind a scheduleHasSubjects_() check. That guard is what
+   keeps the write-safety rule true, so it is asserted on its own below,
+   in "the B-D rebuild is reachable only through a no-subjects check". */
 const MAY_WRITE = new Set([
-  'writeHeader_', 'writeDayColumn_', 'seedIfEmpty_',
+  'writeHeader_', 'writeDayColumn_', 'seedIfEmpty_', 'rebuildScheduleGrid_',
   'resolveEventTick_', 'enforceExclusive_', 'convertTimeColumn_',
   'ensureSettingRows_'
 ]);
@@ -639,6 +732,355 @@ function run(test) {
       'the empty old shape was not rebuilt to 1-14: ' + sched.merges.join(', '));
   });
 
+  /* ====== 1c. the half-migration: column A rebuilt, B-D left behind ====
+     The bug, in one sentence: setup() decided a tab with no subjects was
+     safe to migrate, restated column A to the new fourteen-row day
+     blocks, and rebuilt NOTHING ELSE — so the old eleven-period grid's
+     numbers and bell times stayed where they were, now under the wrong
+     day letters. Version 0.199 shipped that; these tests are what keeps
+     it from coming back.
+
+     They assert the FULL grid, cell by cell, rather than the merges
+     alone. Checking only column A was precisely the blind spot: column A
+     was the one thing that WAS being rebuilt, so the older test above
+     passed all the way through the bug. */
+
+  /* The timetable skeleton as plain, comparable data: the day each row
+     belongs to, its period number, and its two bell times as "HH:MM". */
+  function readGrid(sched, rows) {
+    const out = [];
+    let day = '';
+    for (let r = 2; r <= 1 + rows; r++) {
+      const line = sched.getRange(r, 1, 1, 4).getValues()[0];
+      if (String(line[0]).trim() !== '') day = String(line[0]).trim();
+      out.push([day, line[1], hhmm(line[2]), hhmm(line[3])]);
+    }
+    return out;
+  }
+
+  /* The grid setup() is supposed to end up with: 1-14 every day, 1-6 on
+     Friday. Built from the fixture's own PERIOD_TIMES rather than from
+     setup.gs, so the two sides cannot be wrong together. */
+  function expectedGrid() {
+    const out = [];
+    DAYS.forEach((day) => {
+      for (let p = 0; p < periodCount(day); p++) {
+        out.push([day, p + 1, hhmm(PERIOD_TIMES[p][0]), hhmm(PERIOD_TIMES[p][1])]);
+      }
+    });
+    return out;
+  }
+
+  function hasSubjects(sched) {
+    return sched.getRange(2, 5, TOTAL_ROWS, SCHED_COLS - 4).getValues()
+      .some((row) => row.some((v) => String(v).trim() !== ''));
+  }
+
+  test('the fixture really is the broken sheet that was reported', () => {
+    /* If this drifts, every assertion below is testing something else. */
+    const sched = messedUpSheet().getSheetByName('מערכת');
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'the fixture should already carry the NEW 14-row day merges');
+    assert.equal(sched.getRange(2, 2).getValue(), 0, 'row 2 should be period 0');
+    assert.equal(sched.getRange(3, 2).getValue(), 1, 'row 3 should be period 1');
+    assert.equal(sched.getRange(3, 3).getValue(), t('08:30'),
+      'row 3 should carry the OLD 08:30 start');
+    assert.equal(sched.getRange(12, 2).getValue(), 10, 'row 12 should be period 10');
+    assert.equal(sched.getRange(13, 2).getValue(), 0,
+      'row 13 should be a second period 0 — the old ב block, sitting ' +
+      'inside the new א block');
+    assert.equal(sched.getRange(62, 2).getValue(), '',
+      'the old sixty-row grid should stop short of the new one');
+    assert.equal(hasSubjects(sched), false,
+      'the fixture must hold no subject at all — that is what made ' +
+      'setup() think it could migrate');
+  });
+
+  test('re-running setup repairs the half-migrated grid, row by row', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    /* every row: right day, right period number, right bell times */
+    assert.deepEqual(readGrid(sched, TOTAL_ROWS), expectedGrid(),
+      'the grid was not rebuilt to the 1-14 schedule');
+  });
+
+  test('the repaired grid has no period 0 and no old bell time left', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+
+    const nums = sched.getRange(2, 2, TOTAL_ROWS, 1).getValues().map((r) => r[0]);
+    assert.equal(nums.filter((n) => Number(n) === 0).length, 0,
+      'a period 0 row survived the rebuild');
+    assert.ok(nums.every((n) => Number(n) >= 1 && Number(n) <= 14),
+      'a period number outside 1-14 survived the rebuild');
+
+    /* 08:30 was the old period 0's end and the old period 1's start; it
+       is neither in the new table */
+    const starts = sched.getRange(2, 3, TOTAL_ROWS, 1).getValues().map((r) => r[0]);
+    const ends = sched.getRange(2, 4, TOTAL_ROWS, 1).getValues().map((r) => r[0]);
+    assert.ok(starts.every((v) => v !== t('08:30')),
+      'the old 08:30 period-1 start is still in the sheet');
+    assert.ok(ends.every((v) => v !== t('08:30')),
+      'the old 08:30 period-0 end is still in the sheet');
+    assert.equal(sched.getRange(2, 3).getValue(), t('08:15'), 'row 2 starts 08:15');
+    assert.equal(sched.getRange(2, 4).getValue(), t('09:00'), 'row 2 ends 09:00');
+  });
+
+  test('Friday is rebuilt to periods 1-6 and the tab stops at row 77', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+
+    assert.equal(sched.getRange(72, 1).getValue(), 'ו');
+    for (let i = 0; i < 6; i++) {
+      assert.equal(sched.getRange(72 + i, 2).getValue(), i + 1,
+        'Friday row ' + (72 + i) + ' should be period ' + (i + 1));
+    }
+    assert.equal(sched.getRange(77, 4).getValue(), t('13:30'),
+      'Friday should end at 13:30');
+    assert.equal(sched.getLastRow(), 77,
+      'the timetable should stop at row 77, nothing below it');
+  });
+
+  test('the repaired grid is merged, lettered and locked correctly', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'day blocks not merged as expected: ' + sched.merges.join(', '));
+    const layout = scheduleLayout();
+    DAYS.forEach((d, di) => {
+      const top = 2 + layout.offsets[di];
+      assert.equal(sched.getRange(top, 1).getValue(), d);
+      for (let r = top + 1; r < top + layout.counts[di]; r++) {
+        assert.equal(sched.getRange(r, 1).getValue(), '',
+          'row ' + r + ' should be blank under the ' + d + ' merge');
+      }
+    });
+    const byDesc = {};
+    sched.protections.forEach((pr) => {
+      byDesc[pr.getDescription()] = pr.getRange().getA1Notation();
+    });
+    assert.equal(byDesc['יום, שיעור ושעות — לא לשינוי'], 'A2:D77',
+      'the rebuilt skeleton was not locked across A-D');
+    assert.deepEqual(sched.getRange(1, 1, 1, SCHED_COLS).getValues()[0],
+      SCHED_HEADERS, 'the header was not brought to sixteen columns');
+  });
+
+  test('no stray old value is left anywhere in the tab', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+
+    /* The grade columns of the grid, still completely empty. The old grid
+       kept its subjects at E-J, which are now ז׳, ז׳ חדר, ח׳ … — so
+       anything surviving there would be under the wrong grade as well as
+       the wrong period. */
+    assert.equal(hasSubjects(sched), false,
+      'the rebuild invented content in the grade columns');
+    /* and the whole sheet below the grid, across every column it has */
+    for (let r = 78; r <= sched.getMaxRows(); r++) {
+      for (let c = 1; c <= sched.getMaxColumns(); c++) {
+        assert.equal(sched.getRange(r, c).getValue(), '',
+          'row ' + r + ' column ' + c + ' still holds something');
+      }
+    }
+  });
+
+  test('a taller old grid leaves nothing below the new one', () => {
+    /* The other direction: an old shape running PAST row 77. Its trailing
+       rows are stale skeleton and must go, or the board reads phantom
+       lessons under a seventh day letter. */
+    const ss = clearedOldGridSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.getRange(80, 1, 1, 4).setValues([['ו', 9, t('16:15'), t('17:00')]]);
+    sched.getRange(85, 2).setValue(11);
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.equal(sched.getLastRow(), 77,
+      'rows past the new grid survived: last row is ' + sched.getLastRow());
+    assert.deepEqual(readGrid(sched, TOTAL_ROWS), expectedGrid(),
+      'the grid was not rebuilt to the 1-14 schedule');
+  });
+
+  test('blank inserted rows are reset too, not kept as a taller geometry', () => {
+    /* The reason scheduleHasSubjects_ is asked FIRST, before the blocks
+       are read back. A row inserted for a concurrent class earns its keep
+       only by holding a lesson; on a tab where everything has been
+       cleared, keeping the taller blocks would mean writing 76 rows of
+       period numbers under 78 rows of day letters — the same mismatch,
+       one row at a time. Nothing typed here, so reset the lot. */
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.getRange(2, 5, TOTAL_ROWS, SCHED_COLS - 4).setValue('');
+    insertRowAt(sched, 4);
+    insertRowAt(sched, 4);
+    assert.equal(sched.merges[0], 'A2:A17', 'the fixture should be two rows taller');
+
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'the empty taller grid was not reset: ' + sched.merges.join(', '));
+    assert.deepEqual(readGrid(sched, TOTAL_ROWS), expectedGrid(),
+      'the grid was not rebuilt to the 1-14 schedule');
+    assert.equal(sched.getLastRow(), 77,
+      'the extra rows were left below the grid: last row is ' +
+      sched.getLastRow());
+  });
+
+  test('the pre-run state — old merges, old grid, no subjects — repairs too', () => {
+    /* The same tab one step earlier, before 0.199 ever touched it, so
+       column A still carries the OLD eleven-row blocks. Both states must
+       end up in the same place, or "just run setup() again" is only true
+       for one of them. */
+    const ss = clearedOldGridSheet();
+    const sched = ss.getSheetByName('מערכת');
+    assert.deepEqual(sched.merges,
+      ['A2:A12', 'A13:A23', 'A24:A34', 'A35:A45', 'A46:A56', 'A57:A61'],
+      'the fixture should carry the OLD 11-row day merges');
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.deepEqual(readGrid(sched, TOTAL_ROWS), expectedGrid(),
+      'the grid was not rebuilt to the 1-14 schedule');
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'day blocks not merged as expected: ' + sched.merges.join(', '));
+  });
+
+  test('repairing is idempotent — a second run writes only the day column', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const between = snapshot(ss);
+    sched.writes.length = 0;
+    ctx.setup();
+    const changes = diff(between, snapshot(ss));
+    assert.deepEqual(changes, [],
+      'the second run changed content:\n  ' + changes.join('\n  '));
+    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A77'],
+      'the rebuild wrote again over an already-correct grid: ' +
+      sched.writes.map((w) => w.a1).join(', '));
+  });
+
+  /* ====== 1d. the write-safety rule the repair is allowed under ======
+     "setup() writes the מערכת tab's columns A-D only while the tab holds
+     no subject and no room; with one present it writes column A alone,
+     and refuses the tab outright when the geometry under those subjects
+     is an older, shorter one."
+
+     Both halves are load-bearing: without the first the sheet cannot be
+     repaired at all, and without the second the repair could move
+     somebody's timetable. */
+
+  test('with subjects present, B-D are never written — even when wrong', () => {
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    /* a period number and a start time that are simply wrong */
+    sched.getRange(5, 2).setValue(99);
+    sched.getRange(5, 3).setValue(t('03:00'));
+    const before = snapshot(ss);
+    sched.writes.length = 0;
+
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A77'],
+      'setup wrote outside the day column on a tab holding subjects: ' +
+      sched.writes.map((w) => w.a1).join(', '));
+    assert.equal(sched.getRange(5, 2).getValue(), 99,
+      'the odd period number was overwritten — the rebuild reached a tab ' +
+      'that holds real content');
+    assert.deepEqual(diff(before, snapshot(ss)), [], 'content changed');
+  });
+
+  test('one subject is enough to stop the rebuild and refuse an old grid', () => {
+    /* The boundary: the SAME broken tab with a single lesson typed back
+       into it. Rebuilding B-D would put that lesson under the wrong
+       period, so setup() must refuse the tab instead. */
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.getRange(9, 5).setValue('מתמטיקה');
+    const before = snapshot(ss);
+    sched.writes.length = 0;
+
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(/נכשלו/.test(said) && /מערכת/.test(said),
+      'a single subject over a broken grid should be refused, got: ' + said);
+    assert.deepEqual(sched.writes.map((w) => w.a1), [],
+      'the tab was written to anyway: ' +
+      sched.writes.map((w) => w.a1).join(', '));
+    assert.deepEqual(diff(before, snapshot(ss)), [], 'content changed');
+  });
+
+  test('a room with no subject beside it also counts as content', () => {
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.getRange(9, 6).setValue('חדר 12');       /* ז׳ חדר, no subject */
+    sched.writes.length = 0;
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    assert.deepEqual(sched.writes.map((w) => w.a1), [],
+      'a lone room did not stop the rebuild: ' +
+      sched.writes.map((w) => w.a1).join(', '));
+    assert.equal(sched.getRange(9, 6).getValue(), 'חדר 12');
+  });
+
+  test('the B-D rebuild is reachable only through a no-subjects check', () => {
+    /* Structural, not behavioural. rebuildScheduleGrid_ is on the write
+       allowlist, so nothing else in the guard would notice if a later
+       edit called it unconditionally — which would hand setup() the power
+       to restate the period and time columns of a live timetable. Pin the
+       call site instead. */
+    const code = blankComments(SOURCE);
+    const spans = functionSpans(code);
+    const calls = [];
+    let i = -1;
+    while ((i = code.indexOf('rebuildScheduleGrid_(', i + 1)) !== -1) {
+      const span = spans.filter((sp) => i >= sp.start && i <= sp.end).pop();
+      if (span && span.name === 'rebuildScheduleGrid_') continue;   /* the definition */
+      calls.push({ owner: span ? span.name : '(top level)',
+                   line: code.slice(0, i).split('\n').pop() });
+    }
+    assert.equal(calls.length, 1,
+      'rebuildScheduleGrid_ should have exactly one call site, found ' +
+      calls.length + ': ' + calls.map((c) => c.owner).join(', '));
+    assert.equal(calls[0].owner, 'styleSchedule_',
+      'the rebuild moved out of styleSchedule_');
+    assert.ok(/if\s*\(\s*!\s*scheduleHasSubjects_\(sh\)\s*\)\s*$/
+                .test(calls[0].line),
+      'the rebuild must be guarded by !scheduleHasSubjects_(sh) on its ' +
+      'own line — found: ' + calls[0].line.trim());
+  });
+
   /* ============ 1b. the locale, which decides how dates are READ ====== */
 
   test('setup lands the sheet in a Hebrew locale', () => {
@@ -946,7 +1388,7 @@ function run(test) {
 
   /* ============ 5. the structural guard ============ */
 
-  test('no content-mutating call outside the four write helpers', () => {
+  test('no content-mutating call outside the write helpers', () => {
     const code = blankComments(SOURCE);
     const spans = functionSpans(code);
     const offenders = [];

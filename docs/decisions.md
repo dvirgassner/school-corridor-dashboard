@@ -186,10 +186,11 @@ independent guards run on every `node tests/run.js`:
   messages with quotes and emoji, and a chosen theme. Every cell is
   compared before and after; any difference fails the build.
 - **Structural.** The source is scanned for content-mutating calls, which
-  are legal only inside the four functions allowed to make one:
-  `writeHeader_`, `seedIfEmpty_`, and the two that answer a checkbox
-  click. This catches a destructive call added on a path the behavioural
-  test happens not to reach.
+  are legal only inside the short list of functions allowed to make one:
+  `writeHeader_`, `writeDayColumn_`, `rebuildScheduleGrid_`,
+  `seedIfEmpty_`, and the two that answer a checkbox click. This catches
+  a destructive call added on a path the behavioural test happens not to
+  reach.
 
 Both were mutation-tested — `sh.clear()` reintroduced, each of
 `seedIfEmpty_`'s two guards removed, a stray `setValues()` planted in a
@@ -199,6 +200,42 @@ was caught, most by several tests at once.
 No destructive rebuild was kept, not even a hidden one. Starting a tab
 over means deleting it by hand and re-running `setup`, which cannot
 happen by accident.
+
+### The one place that rule was too narrow: a half-migrated timetable
+
+"Write column A and nothing else" was the whole rule until v0.200, and it
+had a gap that showed up on the live sheet. The `מערכת` tab was on the
+old eleven-period grid; its subject cells were cleared by hand, ready for
+the new one; `setup()` then judged a tab with no subjects safe to migrate
+and restated column A to the new fourteen-row day blocks — while columns
+B, C and D, which are script-written and had never been selected, kept
+the old grid. The result was every day letter out of step with the times
+under it: period 1 starting at 08:30, period 10 in the middle of Sunday,
+a second period 0 where Monday used to begin.
+
+Both halves of the mistake were real: the tab was allowed to migrate, and
+nothing rebuilt what migrating actually required. The rule is now stated
+by state rather than by column:
+
+> `setup()` writes the `מערכת` tab's script-owned columns A-D only while
+> the tab holds no subject and no room. With one present it writes column
+> A alone, and refuses the tab outright when the geometry under those
+> subjects is an older, shorter one.
+
+That keeps the property that mattered — it remains impossible for
+`setup()` to overwrite anything typed — while making the empty case a
+complete repair rather than half of one. `rebuildScheduleGrid_` restates
+the period numbers and both bell times, clears whatever an older, taller
+shape left below the new grid, and is a no-op on a tab already correct.
+The guard is asserted structurally as well as behaviourally: a test pins
+the single call site to `styleSchedule_` and requires it to sit behind
+`!scheduleHasSubjects_(sh)`, because the function is on the write
+allowlist and nothing else would notice it being called unconditionally.
+
+Mutation-tested in four ways — the call removed, the no-subjects check
+moved back below the geometry comparison, the below-grid clearing
+dropped, the B-D write dropped — and each was caught, by between one and
+seven tests.
 
 ## Why the HDMI mode is forced, and why that needs undoing afterwards
 

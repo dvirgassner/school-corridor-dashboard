@@ -490,8 +490,22 @@
      carry the same template — see the note above. */
   header { display: grid; align-items: center; height: 92px;
            grid-template-columns: 1fr 1fr 1fr 340px; gap: 18px; }
-  .now { grid-column: 1; display: flex; align-items: center; gap: 24px;
-         min-width: 0; }
+  /* SCOPED TO THE HEADER, and that is not cosmetic. Written bare, this
+     rule also matched `.slot.now` — the currently-running period in every
+     grade card. `.slot` re-declares `column-gap`, so the 8px between the
+     time, the subject and the room survived and the leak was invisible
+     there; but nothing re-declared ROW-gap, so the running period alone
+     was rendered with 24px between its concurrent classes. Measured: a
+     3-way split went from a 24.5px line pitch and 74px tall to 48.5px and
+     122px the moment it became "now". That inflated pitch destroys the
+     one cue the design has for concurrency (tight rows against --sgap
+     between periods) exactly when people look, and it changed a slot's
+     HEIGHT with its state, which moved the page packer's boundaries from
+     one tick to the next. `.slot` now pins both axes as well — see the
+     `gap: 0 8px` there — so the same leak cannot come back through any
+     other selector. */
+  header .now { grid-column: 1; display: flex; align-items: center;
+                gap: 24px; min-width: 0; }
   #clock  { font-size: 60px; font-weight: 700; color: var(--ink-strong);
             font-variant-numeric: tabular-nums; line-height: 1; flex: none; }
   .dates  { display: flex; flex-direction: column; gap: 2px; flex: none; }
@@ -667,7 +681,15 @@
        group — which is the whole concurrency cue, gone, with nothing on
        screen to say so. */
     grid-template-rows: repeat(var(--n, 1), var(--row));
-    column-gap: 8px;
+    /* BOTH axes, stated together on purpose. The row gap is what makes
+       the lines of a concurrent group touch, and it used to be left at
+       its initial value — which meant any rule that happened to match a
+       slot could set it. One did: the header's clock wrapper is also
+       `.now`, and its `gap: 24px` reached the running period and opened
+       24px between its classes. Declaring the row gap here means the
+       group's pitch is a property of a slot, not of whatever else the
+       cascade brings, and it holds in EVERY state a slot can be in. */
+    gap: 0 8px;
     align-items: center;
     border-radius: 9px;
     padding: 0 6px;

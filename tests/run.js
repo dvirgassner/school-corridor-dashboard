@@ -2107,6 +2107,74 @@ test("parseSheetFragment: s= does not rescue a fragment that is broken anyway", 
   assert.equal(L.parseSheetFragment(`#t=${TOKEN}&g=1,2&s=20,21,22,23,24,25`), null,
     "too few g= gids must still be null");
 });
+/* ---------- the "now" highlight must not move anything ----------------
+   The running period is meant to differ from every other period by its
+   TINT and its accent bar, and by nothing else. It did not: the header's
+   clock wrapper is `<div class="now">`, its rule was written bare as
+   `.now { … gap: 24px … }`, and that selector also matched `.slot.now` —
+   the running period in every grade card. `.slot` re-declares
+   `column-gap`, so the leak was invisible along that axis, but nothing
+   re-declared the ROW gap, so the concurrent classes of a running split
+   period were pushed 24px apart.
+
+   Measured in headless Chrome on the demo board at 09:10, with the
+   09:00-09:45 period running: כיתה י"ב's three-way split rendered at a
+   48.5px line pitch and 122px tall, against 24.5px and 74px for the
+   identical block at 12:00 — the same block, the same grade, one state
+   apart. That inflated pitch destroys the design's only cue for
+   concurrency (rows that touch, against --sgap between periods) exactly
+   when a pupil is looking for the current lesson, and because the page
+   packer measures offsetHeight, a slot that changes height when the
+   clock crosses its start time also moves the page boundaries under it.
+
+   This is pure CSS, so there is no DOM here to assert against. What CAN
+   be pinned is the two properties of the stylesheet that make the leak
+   impossible, and both of them fail this test if reverted. The pixel
+   evidence lives in the commit message.  ------------------------------ */
+const CSS_SRC = fs.readFileSync(
+  path.join(__dirname, "..", "dashboard", "style.css"), "utf8");
+
+/* every comma-separated selector in the file, comments stripped */
+function cssSelectors(src) {
+  const clean = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const out = [];
+  let buf = "";
+  for (const ch of clean) {
+    if (ch === "{") { out.push(buf); buf = ""; }
+    else if (ch === "}") { buf = ""; }
+    else buf += ch;
+  }
+  return out.flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+}
+
+test("no rule matches a bare .now — the header's clock cannot reach .slot.now", () => {
+  const sels = cssSelectors(CSS_SRC);
+  /* the guard is only meaningful if the two rules it is about still
+     exist, so prove that first — otherwise a rename makes this vacuous */
+  assert.ok(sels.some((s) => /(^|\s)header\s+\.now$/.test(s)),
+    "the header's clock-wrapper rule is gone or no longer scoped to header");
+  assert.ok(sels.some((s) => s.indexOf(".slot.now") >= 0),
+    "the running-period rule .slot.now is gone");
+  const bare = sels.filter((s) => s === ".now");
+  assert.deepEqual(bare, [],
+    "a bare `.now` selector is back: it matches the header's clock wrapper " +
+    "AND every .slot.now, and its `gap` reaches the running period's rows");
+});
+
+test(".slot pins BOTH gap axes, so no rule can open its group's row pitch", () => {
+  const block = /\n\s*\.slot\s*\{([\s\S]*?)\}/.exec(
+    CSS_SRC.replace(/\/\*[\s\S]*?\*\//g, ""));
+  assert.ok(block, ".slot rule not found in style.css");
+  const body = block[1];
+  /* `gap: 0 8px` or an explicit `row-gap: 0` — either states the row
+     axis. `column-gap` alone is what let the header's gap through. */
+  const rowPinned = /(^|;)\s*gap\s*:\s*0(px)?\s+[^;]*;/.test(body) ||
+                    /(^|;)\s*row-gap\s*:\s*0(px)?\s*;/.test(body);
+  assert.ok(rowPinned,
+    ".slot declares no row gap, so its concurrent lines' pitch is at the " +
+    "mercy of any other rule that happens to match a slot");
+});
+
 /* ---------- setup.gs: does it harm data? (see setup-safety.js) ---------- */
 require("./setup-safety.js").run(test);
 

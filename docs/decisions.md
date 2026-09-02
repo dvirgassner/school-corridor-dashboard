@@ -237,6 +237,62 @@ moved back below the geometry comparison, the below-grid clearing
 dropped, the B-D write dropped — and each was caught, by between one and
 seven tests.
 
+### And why that fix did nothing at all on the real sheet
+
+v0.200 passed 225 tests, including a fixture of the exact broken tab, and
+changed nothing when it was run on the school's sheet. Twice. The run
+reported "ההרצה הושלמה חלקית" and columns B-D kept the old grid.
+
+Three things were wrong, and only the first of them was the bug:
+
+1. **`breakApart()` was called on a range that ended inside a merge.**
+   The rebuild unmerged `A2:A<lastRow>`, and `lastRow` is judged by
+   content. On the half-migrated tab the last day letter sat at row 72
+   inside a block running `A72:A77`, because the new fourteen-row
+   geometry reaches five rows below where the old sixty-row grid stops.
+   Sheets refuses to unmerge a range that only partially spans a merge —
+   its own API says so: *"The range must not partially span any merge."*
+
+2. **The refusal arrived late, and outside the `try`.** Apps Script
+   queues writes, merges and unmerges; a rejected one reports at the next
+   *flush*, which was the `getValues()` two lines further down. The
+   `try { … } catch (e) {}` wrapped around `breakApart()` caught nothing,
+   the whole tab was reported failed, and the message named the wrong
+   call. The fix is `breakMerges_()`, which asks `getMergedRanges()` for
+   each merge in full and breaks it by its own extent — a range that can
+   never partially span anything — then calls `SpreadsheetApp.flush()` so
+   a failure surfaces where it can still be named.
+
+3. **The mock said yes to all of it.** Its `breakApart()` silently
+   ignored a partial merge, and it returned time cells as the numbers it
+   stores rather than the `Date` objects the real service returns, so the
+   "write only if different" comparison — which stringified a `Date`,
+   failed to parse it, and declared the grid different from itself —
+   rewrote all 228 cells on every live run and looked like a no-op in
+   every test. Both behaviours are now modelled, including the deferred
+   throw. With the faithful mock, v0.200's own tests fail with the exact
+   message the live run produced.
+
+The rule that came out of it is the one worth keeping:
+
+> Nothing in `setup()` reports success on the strength of having made the
+> calls. The `מערכת` skeleton is READ BACK — periods, both bell times,
+> day letters, merges, and the rows below the grid — and a run that does
+> not match refuses, in Hebrew, naming the first row that is wrong.
+
+The completion toast now carries one line for the tab
+(`מערכת: הלוח נבנה מחדש ואומת ✓`), because a silent success and a silent
+failure looked identical from the principal's side of the screen. The
+partial-failure toast lists the failures first: a toast is cut at 400
+characters, and the previous order spent that budget on the tabs that
+worked.
+
+Mutation-tested: reverting the unmerge to v0.200's is caught by ten
+tests, the `Date` comparison by one, the read-back inside the rebuild by
+one, the final verify by one, the toast line by one, and the same
+unmerge bug in `writeDayColumn_` — which bites a tab that HAS subjects —
+by one.
+
 ## Why the HDMI mode is forced, and why that needs undoing afterwards
 
 The Pi pins its HDMI mode in `cmdline.txt`:

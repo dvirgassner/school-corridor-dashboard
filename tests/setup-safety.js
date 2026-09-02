@@ -986,6 +986,158 @@ function run(test) {
       sched.writes.map((w) => w.a1).join(', '));
   });
 
+  /* ---- the three ways 0.200 passed every test above and still failed
+     on the school's sheet. Each of these fails without its own line of
+     0.201, and the first of them fails with the message the principal
+     actually saw. ---- */
+
+  test('the half-migrated tab has a day block hanging below its content', () => {
+    /* The property that broke the live run, pinned so a tidied fixture
+       cannot quietly remove it: the last merged block runs A72:A77 while
+       the last row holding anything is 72. scheduleLastRow_ therefore
+       answers 72, and a breakApart() over A2:A72 ends INSIDE a merge —
+       which Sheets rejects, at the next flush, out of reach of the
+       try/catch that was around the call. */
+    const sched = messedUpSheet().getSheetByName('מערכת');
+    assert.equal(sched.merges[sched.merges.length - 1], 'A72:A77');
+    assert.equal(sched.getLastRow(), 72,
+      'the last row with content should be 72, five rows above the ' +
+      'bottom of the last merged block');
+  });
+
+  test('the day column is unmerged one block at a time, never mid-block', () => {
+    /* Same tab, with the leftover block made taller still, so a rebuild
+       that reasons from row counts instead of from the merges themselves
+       cannot pass by luck. */
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.merges[sched.merges.length - 1] = 'A72:A90';
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'day blocks not merged as expected: ' + sched.merges.join(', '));
+    assert.deepEqual(readGrid(sched, TOTAL_ROWS), expectedGrid(),
+      'the grid was not rebuilt to the 1-14 schedule');
+  });
+
+  test('a Date in the time columns is the same bell, not a difference', () => {
+    /* getValues() on a real time-formatted cell returns a Date on the
+       spreadsheet epoch, not the fraction this mock stores. 0.200
+       compared it via String(), never matched, and rewrote all 228 cells
+       on every run — invisible here because nothing ever produced a
+       Date. Produce one, and pin the write count. */
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    for (let r = 2; r <= TOTAL_ROWS + 1; r++) {
+      [3, 4].forEach((c) => {
+        const v = sched.values[r - 1][c - 1];
+        if (typeof v !== 'number') return;
+        const mins = Math.round(v * 1440);
+        sched.values[r - 1][c - 1] =
+          new Date(1899, 11, 30, Math.floor(mins / 60), mins % 60);
+      });
+    }
+    sched.writes.length = 0;
+    ctx.setup();
+    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A77'],
+      'a grid whose times came back as Dates was treated as wrong and ' +
+      'rewritten: ' + sched.writes.map((w) => w.a1).join(', '));
+  });
+
+  test('a rebuild that silently does not take is reported, not celebrated', () => {
+    /* The whole point of 0.201: correctness is READ BACK. Make the one
+       write vanish — the shape of every "the call was made and nothing
+       happened" failure — and setup() must say so, in Hebrew, naming the
+       tab, rather than reporting a successful run over the old grid. */
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const realGetRange = sched.getRange.bind(sched);
+    sched.getRange = function (...args) {
+      const r = realGetRange(...args);
+      if (r.getA1Notation() === 'B2:D77') r.setValues = () => r;
+      return r;
+    };
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(/נכשלו/.test(said),
+      'a rebuild that did nothing was reported as a success: ' + said);
+    assert.ok(/מערכת/.test(said), 'the failure did not name the tab: ' + said);
+    assert.ok(/לא נקלטה/.test(said),
+      'the failure did not say the rebuild never landed: ' + said);
+    assert.ok(/שורה 2/.test(said),
+      'the failure did not say which row is wrong: ' + said);
+  });
+
+  test('a merge that never happens is caught by the read-back, not shipped', () => {
+    /* rebuildScheduleGrid_ checks its own three columns; the day letters
+       and the merged blocks are written after it, by writeDayColumn_, and
+       are checked at the very end of the tab's style pass. Take the merge
+       away and the run must fail loudly — the state it would otherwise
+       report as a success is a timetable the board groups wrongly. */
+    const ss = messedUpSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const realGetRange = sched.getRange.bind(sched);
+    sched.getRange = function (...args) {
+      const r = realGetRange(...args);
+      if (/^A\d+:A\d+$/.test(r.getA1Notation())) r.merge = () => r;
+      return r;
+    };
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(/נכשלו/.test(said),
+      'an unmerged day column was reported as a success: ' + said);
+    assert.ok(/מיזוג/.test(said),
+      'the failure did not say the merges are wrong: ' + said);
+  });
+
+  test('a stray taller day block on a LIVE tab does not fail the run', () => {
+    /* Same trap as the empty tab's, on the path that carries the
+       school's timetable: writeDayColumn_ takes its height from the day
+       letters, so a merged block reaching BELOW the last lesson leaves
+       its range ending mid-merge. Nothing may be written to B-P here —
+       there are subjects — and the run must still finish. */
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    sched.merges[sched.merges.length - 1] = 'A72:A85';   /* ו, five too tall */
+    const before = snapshot(ss);
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.deepEqual(diff(before, snapshot(ss)), [],
+      'a populated tab lost or gained content');
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'the oversized block was not put right: ' + sched.merges.join(', '));
+  });
+
+  test('the toast says the מערכת grid was rebuilt, then that it was verified', () => {
+    const ss = messedUpSheet();
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+    assert.ok(/מערכת: הלוח נבנה מחדש ואומת/.test(
+      env.ss.toasts.map((tt) => tt.msg).join('\n')),
+      'the first run did not report a rebuild: ' +
+      env.ss.toasts.map((tt) => tt.msg).join('\n'));
+
+    env.ss.toasts.length = 0;
+    ctx.setup();
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(/מערכת: הלוח נבדק ואומת/.test(said),
+      'the second run did not report a verification: ' + said);
+  });
+
   /* ====== 1d. the write-safety rule the repair is allowed under ======
      "setup() writes the מערכת tab's columns A-D only while the tab holds
      no subject and no room; with one present it writes column A alone,

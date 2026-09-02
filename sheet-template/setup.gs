@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.200';
+var SCRIPT_VERSION = '0.201';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -281,12 +281,16 @@ function setup() {
   /* Each tab under its own guard. Without this, one bad call aborts the
      run with a stack trace partway through, leaving the rest of the sheet
      on the old design with no report of how far it got. */
-  var seeded = [], styled = [], failed = [];
+  var seeded = [], styled = [], failed = [], notes = [];
   tabs_().forEach(function (tab) {
     try {
       var sh = ensureSheet_(ss, tab.name);
       var isNew = tab.seed(sh);
-      tab.style(sh);
+      /* A style pass may report on itself. מערכת does: it is the only tab
+         whose skeleton this script rebuilds, so it is the only one whose
+         success is worth stating rather than assuming. */
+      var note = tab.style(sh);
+      if (note) notes.push(note);
       applyRules_(sh, tab.name);
       (isNew ? seeded : styled).push(tab.name);
     } catch (err) {
@@ -295,18 +299,27 @@ function setup() {
   });
 
   if (failed.length) {
+    /* The failures come FIRST. A toast is cut off at 400 characters, and
+       the run that produced this message spent its one chance on a list
+       of the tabs that worked, leaving the reason the fourth one did not
+       below the cut. Whoever reads this needs the reason, not the roll
+       call. The full text is in the execution log either way. */
     toast_(
-      'ההרצה הושלמה חלקית.\n\n' +
-      'הצליחו: ' + seeded.concat(styled).join(', ') + '\n\n' +
-      'נכשלו:\n' + failed.join('\n') + '\n\n' +
+      'ההרצה הושלמה חלקית — נכשלו:\n' + failed.join('\n') + '\n\n' +
       'לא נמחק מידע. אפשר להריץ שוב לאחר תיקון, ' +
-      'או לפנות לאחראי הטכני עם הטקסט הזה.');
+      'או לפנות לאחראי הטכני עם הטקסט הזה.\n\n' +
+      'הצליחו: ' + seeded.concat(styled).join(', '));
     return;
   }
 
+  /* one short line per tab that has something to report — today only
+     מערכת, saying that its grid was checked against the bell times */
+  var report = notes.length ? '\n' + notes.join('\n') : '';
+
   if (!styled.length) {
     toast_(
-      'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
+      'הגיליון נבנה בהצלחה. (גרסת סקריפט ' + SCRIPT_VERSION + ')' +
+      report + '\n\n' +
       'השלב הבא: שיתוף → גישה כללית → "כל מי שיש לו הקישור" (מציג),\n' +
       'או פרסום באינטרנט של כל גיליון בנפרד כ-CSV.\n' +
       'ראו את ההוראות המלאות בקובץ README.\n\n' +
@@ -315,7 +328,8 @@ function setup() {
   }
 
   toast_(
-    'העיצוב והחוקים עודכנו. (גרסת סקריפט ' + SCRIPT_VERSION + ')\n\n' +
+    'העיצוב והחוקים עודכנו. (גרסת סקריפט ' + SCRIPT_VERSION + ')' +
+    report + '\n\n' +
     'עודכנו: ' + styled.join(', ') +
     (seeded.length ? '\nנבנו מחדש (היו ריקים): ' + seeded.join(', ') : '') +
     '\n\nהתוכן שהוזן בגיליון לא השתנה.' + localeNote_(locale));
@@ -561,6 +575,70 @@ function ensureSheet_(ss, name) {
   return sh;
 }
 
+/* ---------- talking to Sheets without being lied to ----------
+
+   Apps Script does not execute a call the moment you make it. Writes,
+   merges and unmerges are QUEUED, and a queued call that the server
+   rejects reports its failure at the next FLUSH — the next call that
+   reads or writes a cell — not at the line that made it. A try/catch
+   wrapped around the call itself therefore catches nothing, and the
+   error surfaces somewhere with no idea what it is about.
+
+   That is not a theory. It is what version 0.200 did on the school's
+   sheet: breakApart() was called on a range that ended inside a merged
+   block, the rejection landed on the getValues() two lines below, the
+   whole מערכת tab was reported as "failed" with a message about the
+   wrong call, and the grid it was there to rebuild never got rebuilt.
+
+   Hence the two helpers below: flush_() to make a queued failure surface
+   HERE, and step_() to give it a name when it does. */
+
+/** Empty the queue now, so a failure belongs to the call that caused it. */
+function flush_() {
+  if (typeof SpreadsheetApp.flush === 'function') SpreadsheetApp.flush();
+}
+
+/**
+ * Run one step, and if it fails say WHICH step and on what, in Hebrew.
+ *
+ * "ההרצה הושלמה חלקית" plus a raw English stack trace is what debugging
+ * blind looks like from the principal's side of the screen. Every step
+ * that touches the sheet's structure goes through here.
+ */
+function step_(what, fn) {
+  try {
+    return fn();
+  } catch (err) {
+    throw new Error(what + ' — ' + (err && err.message ? err.message : err));
+  }
+}
+
+/**
+ * Break every merge that TOUCHES this range, one merge at a time, each
+ * by its own full extent.
+ *
+ * THE BUG THIS EXISTS TO STOP, in full, because it cost a live run:
+ *
+ *   rebuildScheduleGrid_ used to call breakApart() on A2:A<lastRow>,
+ *   where lastRow is judged by CONTENT. On the half-migrated tab the
+ *   last day letter sat at row 72 in a merged block running A72:A77 —
+ *   so the range ended on the block's first row. Sheets refuses to
+ *   unmerge a range that only partially spans a merge (its own API
+ *   documentation: "The range must not partially span any merge"), the
+ *   refusal arrived at the next flush, outside the try/catch, and setup()
+ *   reported the whole tab as failed while columns B-D kept the old
+ *   eleven-period grid.
+ *
+ * getMergedRanges() hands back each merge in FULL, so unmerging them one
+ * by one can never partially span anything, whatever shape the tab is
+ * in. flush_() then proves it worked before the caller moves on.
+ */
+function breakMerges_(range) {
+  var merged = range.getMergedRanges();
+  for (var i = 0; i < merged.length; i++) merged[i].breakApart();
+  flush_();
+}
+
 /* ---------- the only functions here that write cell contents -------
    Everything else in this file formats, validates, protects or annotates.
    Those operations reach the data rows freely — a background colour or a
@@ -605,7 +683,13 @@ function writeDayColumn_(sh, layout) {
   layout = layout || scheduleLayout_();
   var col = sh.getRange(2, 1, layout.total, 1);
 
-  try { col.breakApart(); } catch (e) {}   /* no-op when nothing is merged */
+  /* Whole column, one merge at a time: a block left over from a taller
+     or shorter geometry can hang below layout.total, and a breakApart()
+     stopping at layout.total's row would end inside it — the exact call
+     that failed on the live sheet. See breakMerges_. */
+  step_('ביטול מיזוג עמודת היום', function () {
+    breakMerges_(sh.getRange(1, 1, sh.getMaxRows(), 1));
+  });
 
   var vals = [];
   DAYS.forEach(function (d, di) {
@@ -647,21 +731,29 @@ function writeDayColumn_(sh, layout) {
  * and the day letters out of step with the times under them. Column A
  * was rebuilt; nothing rebuilt the rest.
  *
- * Three things happen here, in this order:
+ * Four things happen here, in this order:
  *
- *   1. Every merged day block comes apart, so nothing straddling the new
- *      grid's last row survives to block a write or outlive its rows.
- *      writeDayColumn_ re-merges to the new geometry immediately after.
+ *   1. Every merged day block comes apart — one merge at a time, by its
+ *      own extent, so a block hanging below the content ends nowhere
+ *      awkward. writeDayColumn_ re-merges to the new geometry shortly
+ *      after. (Version 0.200 did this with a single breakApart() over
+ *      A2:A<lastRow> and that is precisely what failed live: see
+ *      breakMerges_ for the full account.)
  *   2. Anything an older grid left BELOW the new one — a taller shape's
  *      trailing rows — is cleared, across the timetable's own sixteen
  *      columns. Columns past those are not the timetable's and are left
  *      alone; the grid rows' own E-P are already empty, which is the
  *      precondition for being here at all.
  *   3. The period numbers and bell times are written, and only if they
- *      differ from what is already there — compared as TIMES, so a tab
- *      whose text times have been converted to real ones compares equal.
- *      A tab already on this grid is a complete no-op, exactly like
- *      writeHeader_ on an unchanged header.
+ *      differ from what is already there — compared as TIMES, through
+ *      timeFraction_, so a number, a Date and the text "08:15" all
+ *      compare equal. A tab already on this grid is a complete no-op,
+ *      exactly like writeHeader_ on an unchanged header.
+ *   4. The result is READ BACK and checked against the canonical grid.
+ *      Nothing here reports success on the strength of having made the
+ *      calls: the calls were made last time too, and the sheet kept the
+ *      old grid anyway. If B-D still do not match, this throws, in
+ *      Hebrew, naming the first row that is wrong.
  *
  * Returns true when it actually changed something.
  */
@@ -669,40 +761,58 @@ function rebuildScheduleGrid_(sh) {
   var layout = scheduleLayout_();
   var width = Math.min(scheduleHeaders_().length, sh.getMaxColumns());
   var bottom = 1 + layout.total;                 /* the last grid row: 77 */
-  var last = scheduleLastRow_(sh);
   var changed = false;
 
-  if (last > 1) {
-    try { sh.getRange(2, 1, last - 1, 1).breakApart(); } catch (e) {}
-  }
-  if (last > bottom) {
-    var stale = sh.getRange(bottom + 1, 1, last - bottom, width);
-    if (!stale.isBlank()) { stale.clearContent(); changed = true; }
-  }
-
-  var want = [];
-  DAYS.forEach(function (day) {
-    var count = periodCount_(day);
-    for (var p = 0; p < count; p++) {
-      want.push([PERIODS[p][0], PERIODS[p][1], PERIODS[p][2]]);
+  /* How far down the tab anything reaches. getValues() cannot see it on
+     its own: a merged block shows its value on the top row only, so a
+     day letter at row 72 hides a block running to row 77. */
+  var dayCol = sh.getRange(1, 1, sh.getMaxRows(), 1);
+  var last = scheduleLastRow_(sh);
+  step_('קריאת מיזוגי עמודת היום', function () {
+    var merged = dayCol.getMergedRanges();
+    for (var i = 0; i < merged.length; i++) {
+      last = Math.max(last, merged[i].getLastRow());
     }
   });
 
+  step_('ביטול מיזוג עמודת היום', function () { breakMerges_(dayCol); });
+
+  if (last > bottom) {
+    var stale = sh.getRange(bottom + 1, 1, last - bottom, width);
+    step_('ניקוי שורות ישנות מתחת לשורה ' + bottom, function () {
+      if (!stale.isBlank()) { stale.clearContent(); changed = true; }
+    });
+  }
+
+  var want = canonicalGridRows_();
   var rng = sh.getRange(2, 2, layout.total, 3);
-  var have = rng.getValues();
+  var have = step_('קריאת ' + rng.getA1Notation(), function () {
+    return rng.getValues();
+  });
   var same = true;
   for (var r = 0; r < want.length && same; r++) {
     if (Number(have[r][0]) !== want[r][0]) same = false;
     for (var c = 1; c < 3 && same; c++) {
-      var got = have[r][c];
-      var mine = typeof got === 'number' ? got : timeValue_(got);
+      var mine = timeFraction_(have[r][c]);
       /* a second apart is the same bell — never compare floats exactly */
-      if (mine === null || Math.abs(mine - timeValue_(want[r][c])) > 1e-6) {
+      if (mine === null || Math.abs(mine - timeFraction_(want[r][c])) > 1e-6) {
         same = false;
       }
     }
   }
-  if (!same) { rng.setValues(want); changed = true; }
+  if (!same) {
+    step_('כתיבת השיעורים והשעות ל-' + rng.getA1Notation(), function () {
+      rng.setValues(want);
+      flush_();
+    });
+    changed = true;
+  }
+
+  /* Verified, never assumed. */
+  var bad = scheduleGridProblems_(sh, false);
+  if (bad.length) {
+    throw new Error('בניית עמודות השיעור והשעות לא נקלטה: ' + bad.join('; '));
+  }
   return changed;
 }
 
@@ -1425,6 +1535,145 @@ function scheduleGeometry_(sh) {
     '"מערכת" (בלי למחוק את הלשונית עצמה) ולהריץ שוב.');
 }
 
+/* ---------- checking the skeleton instead of trusting it ----------
+
+   Everything above decides what the מערכת tab SHOULD look like. This
+   part reads back what it actually looks like, and it exists because
+   version 0.200 shipped without it: the rebuild made all the right
+   calls, one of them was rejected, and setup() had no way to tell the
+   difference between "rebuilt" and "reported an error nobody could
+   read". A grid is now correct only once it has been read back. */
+
+/** The canonical B-D content: period number, start bell, end bell. */
+function canonicalGridRows_() {
+  var rows = [];
+  DAYS.forEach(function (day) {
+    var count = periodCount_(day);
+    for (var p = 0; p < count; p++) {
+      rows.push([PERIODS[p][0], PERIODS[p][1], PERIODS[p][2]]);
+    }
+  });
+  return rows;
+}
+
+/**
+ * A cell's time of day as a fraction of a day, whatever Sheets handed
+ * back — and it hands back three different things for the same cell:
+ *
+ *   • a NUMBER (0.34375) — what a time value is underneath, and what the
+ *     mock stores;
+ *   • a DATE — what getValues() actually returns for a cell formatted as
+ *     a time, on the real service, which is where this matters. The old
+ *     comparison ran String() over it, got "Sat Dec 30 1899 08:15:00
+ *     GMT+0200", failed to parse it and declared the grid different from
+ *     itself. Every live run rewrote all 228 cells for nothing, and no
+ *     test could see it because the mock only ever produced numbers;
+ *   • TEXT ("08:15") — what this script writes, and what sits in a tab
+ *     built before the times were converted.
+ *
+ * null when it is not a time at all.
+ */
+function timeFraction_(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return v - Math.floor(v);
+  if (v instanceof Date || (v && typeof v.getHours === 'function')) {
+    return (v.getHours() * 3600 + v.getMinutes() * 60 + v.getSeconds()) / 86400;
+  }
+  return timeValue_(v);
+}
+
+/** A time cell as HH:MM, for saying what was found where. */
+function timeText_(v) {
+  var f = timeFraction_(v);
+  if (f === null) return v === '' || v === null || v === undefined
+    ? '(ריק)' : String(v);
+  var mins = Math.round(f * 1440);
+  return ('0' + Math.floor(mins / 60)).slice(-2) + ':' +
+         ('0' + (mins % 60)).slice(-2);
+}
+
+/**
+ * Everything wrong with the script-owned skeleton of the מערכת tab, in
+ * Hebrew, read back out of the sheet. An empty list means the tab
+ * matches the canonical grid exactly.
+ *
+ * withDays adds the day letters and the merged blocks, which only make
+ * sense once writeDayColumn_ has run — rebuildScheduleGrid_ checks its
+ * own three columns and nothing else.
+ *
+ * At most three problems are reported. This ends up inside a toast, and
+ * a list of seventy-six wrong rows is not more informative than the
+ * first three of them.
+ */
+function scheduleGridProblems_(sh, withDays) {
+  var layout = scheduleLayout_();
+  var headers = scheduleHeaders_();
+  var bottom = 1 + layout.total;
+  var bad = [];
+
+  if (sh.getMaxRows() < bottom || sh.getMaxColumns() < headers.length) {
+    bad.push('הלשונית קטנה מהנדרש: ' + sh.getMaxRows() + ' שורות ו-' +
+             sh.getMaxColumns() + ' עמודות');
+    return bad;
+  }
+
+  var want = canonicalGridRows_();
+  var have = sh.getRange(2, 2, layout.total, 3).getValues();
+  for (var r = 0; r < want.length && bad.length < 3; r++) {
+    if (Number(have[r][0]) !== want[r][0]) {
+      bad.push('שורה ' + (r + 2) + ': שיעור ' +
+               (have[r][0] === '' ? '(ריק)' : have[r][0]) +
+               ' במקום ' + want[r][0]);
+      continue;
+    }
+    for (var c = 1; c < 3; c++) {
+      var mine = timeFraction_(have[r][c]);
+      if (mine === null ||
+          Math.abs(mine - timeFraction_(want[r][c])) > 1e-6) {
+        bad.push('שורה ' + (r + 2) + ': ' +
+                 (c === 1 ? 'התחלה ' : 'סיום ') + timeText_(have[r][c]) +
+                 ' במקום ' + want[r][c]);
+        break;
+      }
+    }
+  }
+
+  /* nothing may survive below the grid's last row */
+  if (bad.length < 3 && sh.getMaxRows() > bottom) {
+    var width = Math.min(headers.length, sh.getMaxColumns());
+    var below = sh.getRange(bottom + 1, 1, sh.getMaxRows() - bottom, width);
+    if (!below.isBlank()) {
+      bad.push('נשאר תוכן מתחת לשורה ' + bottom);
+    }
+  }
+
+  if (!withDays) return bad;
+
+  var colA = sh.getRange(2, 1, layout.total, 1).getValues();
+  for (var d = 0; d < DAYS.length && bad.length < 3; d++) {
+    var at = layout.offsets[d];
+    if (String(colA[at][0]).trim() !== DAYS[d]) {
+      bad.push('שורה ' + (at + 2) + ': יום ' +
+               (colA[at][0] === '' ? '(ריק)' : colA[at][0]) +
+               ' במקום ' + DAYS[d]);
+    }
+  }
+
+  var wantMerges = [];
+  DAYS.forEach(function (d, di) {
+    wantMerges.push('A' + (2 + layout.offsets[di]) + ':A' +
+                    (1 + layout.offsets[di] + layout.counts[di]));
+  });
+  var gotMerges = sh.getRange(1, 1, sh.getMaxRows(), 1).getMergedRanges()
+    .sort(function (a, b) { return a.getRow() - b.getRow(); })
+    .map(function (m) { return m.getA1Notation(); });
+  if (gotMerges.join(',') !== wantMerges.join(',') && bad.length < 3) {
+    bad.push('מיזוג עמודת היום: ' + (gotMerges.join(', ') || '(אין)') +
+             ' במקום ' + wantMerges.join(', '));
+  }
+  return bad;
+}
+
 /* ---------- seeds: example content for an EMPTY tab only ---------- */
 
 /**
@@ -1543,9 +1792,14 @@ function styleSchedule_(sh) {
   var layout = scheduleGeometry_(sh);
   /* The one state in which the script owns columns B-D as well as A: an
      empty tab, whose skeleton may therefore be replaced outright rather
-     than only re-lettered. With a single subject or room present this is
-     skipped and the run writes column A alone, as it always has. See the
-     write-safety rule on rebuildScheduleGrid_. */
+     than only re-lettered. With a single subject or room present the
+     rebuild is skipped and the run writes column A alone, as it always
+     has. See the write-safety rule on rebuildScheduleGrid_.
+
+     Both questions are asked HERE, before anything is written, because
+     afterwards the answer would only describe this run's own work. */
+  var empty = !scheduleHasSubjects_(sh);
+  var broken = empty && scheduleGridProblems_(sh, true).length > 0;
   if (!scheduleHasSubjects_(sh)) rebuildScheduleGrid_(sh);
   var headers = scheduleHeaders_();
   writeHeader_(sh, headers);
@@ -1621,6 +1875,19 @@ function styleSchedule_(sh) {
     'המקצוע והחדר של הקבוצה הנוספת. משאירים את עמודות היום, השיעור\n' +
     'והשעות ריקות — הלוח מבין ששורה כזו שייכת לשיעור שמעליה.\n\n' +
     'העמודות "יום", "שיעור", "התחלה" ו"סיום" נעולות — אין למלא בהן.');
+
+  /* The last word on this tab, and the only one setup() is allowed to
+     believe: read the finished skeleton back — day letters, merges,
+     periods and both bells — and refuse to call the run a success on a
+     tab that still does not match. A silent half-repair is exactly the
+     failure that reached the principal's screen twice. */
+  if (!empty) return '';
+  var bad = scheduleGridProblems_(sh, true);
+  if (bad.length) {
+    throw new Error('הלוח בלשונית "מערכת" עדיין אינו תקין: ' + bad.join('; '));
+  }
+  return broken ? 'מערכת: הלוח נבנה מחדש ואומת ✓'
+                : 'מערכת: הלוח נבדק ואומת ✓';
 }
 
 function styleExams_(sh) {

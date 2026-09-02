@@ -1,6 +1,6 @@
 # Handoff — school corridor dashboard
 
-State as of **2026-09-02**. Board `0.202`, Apps Script `0.200`, 225 tests
+State as of **2026-09-02**. Board `0.202`, Apps Script `0.201`, 232 tests
 passing.
 
 ## What it is
@@ -69,7 +69,7 @@ outside the repo. Without it you cannot reach the Pi.
 |---|---|
 | **Under-voltage** | Unresolved. `0x50005` — throttled *now*, not historically. Needs a 5.1 V / 2.5 A supply with a captive cable. Can masquerade as a TV fault. |
 | **CEC end-to-end** | Untested. First real trial is the 07:00 wake on Sunday 30 Aug; it has never once worked. |
-| **Run `setup()`** | Pending, for the renamed theme dropdown. Then re-pick the theme — the cell holds a superseded name, which still works but shows as off-list. |
+| **Run `setup()`** | Pending, on `0.201`. It must rebuild the `מערכת` grid to periods 1-14 — the tab is still half-migrated, column A on the new geometry and B-D on the old. Confirm the toast says `מערכת: הלוח נבנה מחדש ואומת ✓`; anything else means it did not take. Also for the renamed theme dropdown — then re-pick the theme, the cell holds a superseded name. |
 | **Service worker offline** | Never verified, and must not be tested on the wall Pi. |
 | **`gviz` by name** | Would remove tab gids from the board URL entirely; verified it works and sends CORS. Trade-off: a gid survives a tab rename, a name does not. Argued in `docs/decisions.md`, not acted on. |
 | **Relay VPS has no monitoring of its own** | The 2026-08 IPv4 lockout (see `docs/decisions.md`) was found by a human, not an alert — the Pi/TV healthchecks both depend on the relay already working. No check currently watches the relay itself. |

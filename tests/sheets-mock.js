@@ -162,6 +162,7 @@ class Range {
 
   /* --- values: the only thing a test cares about preserving --- */
   getValues() {
+    this.sheet.flushPending();
     const out = [];
     for (let r = 0; r < this.numRows; r++) {
       const line = [];
@@ -175,6 +176,7 @@ class Range {
   getValue() { return this.getValues()[0][0]; }
 
   setValues(rows) {
+    this.sheet.flushPending();
     if (rows.length !== this.numRows || rows[0].length !== this.numCols) {
       throw new Error(
         `setValues shape ${rows.length}x${rows[0].length} != ` +
@@ -194,6 +196,7 @@ class Range {
     return this;
   }
   setValue(v) {
+    this.sheet.flushPending();
     this.sheet.writes.push({ a1: this.getA1Notation(), kind: 'setValue' });
     for (let r = 0; r < this.numRows; r++) {
       for (let c = 0; c < this.numCols; c++) {
@@ -222,31 +225,58 @@ class Range {
     }
     return this;
   }
-  /* Merging is modelled because setup.gs merges the יום column, and the
-     rule that makes it worth modelling is the one that bites: Sheets
-     refuses to write values across a merged range. If the script ever
-     stops breaking the block apart first, this throws in the tests
-     instead of failing on the live sheet. */
+  /* Merging is modelled because setup.gs merges the יום column, and
+     THREE rules make it worth modelling — all three of them cost a live
+     run before they were modelled here:
+
+       1. Sheets refuses to write values across a merged range.
+       2. breakApart() refuses a range that only PARTIALLY spans a merge.
+          The underlying UnmergeCellsRequest says so in as many words:
+          "The range must not partially span any merge." A range that
+          ends on the FIRST row of a taller merged block is exactly that.
+       3. The refusal arrives LATE. Apps Script queues the unmerge and
+          reports the failure at the next flush — which is whatever call
+          next reads or writes a cell, typically several lines further on
+          and outside the try/catch that was meant to contain it.
+
+     Rule 2 without rule 3 would be a mock that lies comfortingly: the
+     script wrapped breakApart() in try/catch and would have looked safe.
+     Together they reproduce what the live sheet actually did. */
   merge() {
     this.sheet.merges.push(this.getA1Notation());
     return this;
   }
   breakApart() {
-    const a1 = this.getA1Notation();
+    const partial = this.sheet.merges.filter(
+      (m) => this._overlaps(m) && !this._covers(m));
+    if (partial.length) {
+      /* queued, not thrown: surfaces at the next flush point */
+      this.sheet.pending = this.sheet.pending || new Error(
+        `cannot breakApart ${this.getA1Notation()} on "${this.sheet.name}": ` +
+        `it only partially spans the merged range ${partial[0]}`);
+      return this;
+    }
     this.sheet.merges = this.sheet.merges.filter((m) => !this._covers(m));
     return this;
+  }
+  /* Every merged range this range touches, each in FULL — the shape real
+     Sheets returns, and the only safe way to unmerge one. */
+  getMergedRanges() {
+    return this.sheet.merges.filter((m) => this._overlaps(m))
+               .map((m) => this.sheet.getRange(m));
   }
   _covers(a1) {
     const r = this.sheet.getRange(a1);
     return r.row >= this.row && r.getLastRow() <= this.getLastRow() &&
            r.col >= this.col && r.getLastColumn() <= this.getLastColumn();
   }
+  _overlaps(a1) {
+    const r = this.sheet.getRange(a1);
+    return !(r.getLastRow() < this.row || r.row > this.getLastRow() ||
+             r.getLastColumn() < this.col || r.col > this.getLastColumn());
+  }
   _isMerged() {
-    return this.sheet.merges.some((m) => {
-      const r = this.sheet.getRange(m);
-      return !(r.getLastRow() < this.row || r.row > this.getLastRow() ||
-               r.getLastColumn() < this.col || r.col > this.getLastColumn());
-    });
+    return this.sheet.merges.some((m) => this._overlaps(m));
   }
 
   setFontSize(s) { return this._stamp('fontSize', s); }
@@ -299,6 +329,9 @@ class Sheet {
                              () => Array(maxCols).fill(EMPTY));
     this.format = {};
     this.merges = [];
+    /* A queued failure from a rejected merge/unmerge, waiting for the
+       next flush point to throw — see Range.breakApart(). */
+    this.pending = null;
     this.borders = [];
     this.protections = [];
     this.condRules = [];
@@ -312,7 +345,16 @@ class Sheet {
   getMaxRows() { return this.maxRows; }
   getMaxColumns() { return this.maxCols; }
 
+  /* Throw whatever a queued merge/unmerge failed with, at the first call
+     that touches a cell — which is what Apps Script does, and the reason
+     a try/catch wrapped around breakApart() alone catches nothing. */
+  flushPending() {
+    const e = this.pending;
+    if (e) { this.pending = null; throw e; }
+  }
+
   getLastRow() {
+    this.flushPending();
     for (let r = this.maxRows - 1; r >= 0; r--) {
       if (this.values[r].some((v) => v !== EMPTY && v !== null && v !== undefined)) {
         return r + 1;
@@ -444,6 +486,11 @@ function makeEnvironment(ss, opts = {}) {
     globals: {
       SpreadsheetApp: {
         getActiveSpreadsheet: () => ss,
+        /* The explicit flush point. Real Apps Script empties its queue of
+           pending writes here and raises whatever failed inside it — the
+           only way a caller can find out about a rejected merge/unmerge
+           at the place it made the call. */
+        flush: () => { ss.getSheets().forEach((sh) => sh.flushPending()); },
         getUi: () => { throw new Error('no UI in this context'); },
         newDataValidation: () => new DataValidationBuilder(),
         newConditionalFormatRule: () => new ConditionalFormatRuleBuilder(),

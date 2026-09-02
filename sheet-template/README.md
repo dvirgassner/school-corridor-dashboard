@@ -206,9 +206,10 @@ English-headed sheet keeps working.)
 
 | Tab | Column | Meaning |
 |---|---|---|
-| מערכת | `יום` | א–ו (Sunday–Friday) |
-| | `שיעור`, `התחלה`, `סיום` | period number and `HH:MM` times |
-| | one column per grade | the subject; empty = no class |
+| מערכת | `יום` | א–ו (Sunday–Friday), one merged cell per day |
+| | `שיעור`, `התחלה`, `סיום` | period 1–14 (1–6 on Friday; there is no period 0) and `HH:MM` times — all four leading columns are script-written and locked |
+| | two columns per grade | the subject, then `<grade> חדר` for the room; empty = no class |
+| | a row with the four leading columns BLANK | a concurrent class in the slot above: the principal inserts it to split one period into groups, and fills in only that group's subject and room |
 | מבחנים | `תאריך`, `שכבה`, `מקצוע`, `התחלה`, `סיום`, `חדר` | one grade per exam; enter the subject only — the board displays "מבחן ב…" |
 | אירועים | `תאריך`, `כותרת`, `התחלה`, `סיום`, `מקום`, then one **checkbox column per grade**, plus `כולם` | tick every grade the event applies to, or tick `כולם` for a whole-school activity; `כולם` or 4+ grades display as "כולם" |
 | הודעות | `הודעה`, `סוג`, `קישור`, `מתאריך`, `עד תאריך`, `פעיל` | `סוג`: רגילה / דחופה / וידאו · `פעיל`: כן / לא · empty dates = always |

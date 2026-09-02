@@ -243,36 +243,130 @@
   /* how many leading columns are fixed before the grade columns start */
   var SCHEDULE_FIXED_COLS = 4;
 
+  /* Each grade owns two columns in the מערכת tab: its subject, and the
+     room that lesson is in. The template heads the second one with the
+     grade's own label plus " חדר" — "ז׳ חדר" — so the pair is obvious in
+     the sheet and derivable here. A bare "חדר", or the English "Room",
+     is accepted as well, for a sheet somebody headed by hand. */
+  var ROOM_SUFFIX = " חדר";
+  function isRoomHeader(h) {
+    h = txt(h);
+    if (!h) return false;
+    if (h === "חדר" || h.toLowerCase() === "room") return true;
+    return h.length > ROOM_SUFFIX.length &&
+           h.slice(h.length - ROOM_SUFFIX.length) === ROOM_SUFFIX;
+  }
+
   /* the events tab's "applies to every grade" column */
   var ALL_LABELS = ["כולם", "כל השכבות", "all"];
 
-  /* Schedule: columns are Day, Period, Start, End, then one column per
-     grade — so the grade list is whatever the school put in the header. */
+  /* Schedule: columns are Day, Period, Start, End, then a SUBJECT and a
+     ROOM column per grade — so the grade list is whatever the school put
+     in the header, minus the room columns that follow each one.
+
+     Two features of the real sheet drive the shape of this function:
+
+       1. THE MERGED יום COLUMN. Sheets exports a merged cell as its
+          value on the first row and blanks on the rest, so a blank day
+          means "same day as above", not "no day".
+
+       2. CONCURRENT CLASSES. When a period splits into groups — a grade
+          divided for languages, five parallel electives in י"ב — the
+          principal inserts an extra row directly under the lesson and
+          fills in only the splitting grade's subject and room. The
+          inserted row's day, period and time cells are locked and
+          therefore blank, so it arrives here carrying nothing but the
+          extra class. Rows are grouped by DAY + START TIME, and every
+          row landing in the same slot contributes to it.
+
+     Each period therefore carries the same information twice:
+
+       subjects[grade]  the first subject in that slot, a plain string —
+       rooms[grade]     and its room. This is what app.js renders today,
+                        and it must keep working unchanged.
+       entries[grade]   every concurrent class in that slot, in sheet
+                        order, as { subject, room } objects. Empty array
+                        when the grade has no class then. This is the
+                        full picture, for the pane redesign to consume.
+
+     Keeping both is deliberate: the sheet's new shape and the board's
+     new rendering are separate changes, and this one must not wait for
+     the other to land. */
   function buildSchedule(rows, fields) {
-    var grades = (fields || []).slice(SCHEDULE_FIXED_COLS).map(txt).filter(Boolean);
+    var cols = (fields || []).slice(SCHEDULE_FIXED_COLS).map(txt).filter(Boolean);
+    /* a room column belongs to the grade column immediately before it */
+    var grades = [], roomCol = {};
+    cols.forEach(function (h, i) {
+      if (isRoomHeader(h)) return;
+      grades.push(h);
+      var next = cols[i + 1];
+      if (next && isRoomHeader(next)) roomCol[h] = next;
+    });
+
     var byDay = {};
-    /* The יום column is a merged cell per day in the sheet, and Sheets
-       exports a merged cell as its value on the FIRST row and blanks on
-       the rest. So a blank day means "same day as above", not "no day" —
-       carry it forward. A sheet with the letter repeated on every row
-       (the older shape, or one typed by hand) still works: each row
-       simply states its own day and replaces what was carried. */
-    var carried = "";
+    var slots = {};                    /* "day|start" -> the period object */
+    /* What the row above stated, for the cells this row leaves blank: the
+       day (a merged cell), and the period and times (locked columns an
+       inserted split row cannot carry). */
+    var at = { day: "", period: "", start: "", end: "" };
+
     (rows || []).forEach(function (r) {
-      var stated = pick(r, "day");
-      if (stated) carried = stated;
-      var day = stated || carried;
+      var statedDay = pick(r, "day");
+      if (statedDay) at.day = statedDay;
       var start = pick(r, "start"), end = pick(r, "end");
+
+      /* A row with no start time of its own is a split row: it belongs to
+         the slot the row above opened. A row that states a time opens a
+         new slot and becomes what later blank rows inherit. */
+      var split = !validTime(start);
+      if (split) {
+        start = at.start; end = at.end;
+      } else {
+        at.start = start;
+        at.end = end;
+        at.period = pick(r, "period");
+      }
+      var day = at.day;
       if (!day || !validTime(start) || !validTime(end)) return;
-      var subjects = {};
-      grades.forEach(function (g) { subjects[g] = clean(r[g]); });
-      (byDay[day] = byDay[day] || []).push({
-        period: pick(r, "period"),
-        start: start,
-        end: end,
-        subjects: subjects
+
+      /* what this row says, grade by grade */
+      var here = {}, any = false;
+      grades.forEach(function (g) {
+        var subject = clean(r[g]);
+        var room = roomCol[g] ? clean(r[roomCol[g]]) : "";
+        if (!subject && !room) return;
+        here[g] = { subject: subject, room: room };
+        any = true;
+      });
+      /* a blank row under a lesson is spacing, not a silent extra class */
+      if (split && !any) return;
+
+      var key = day + "|" + start;
+      var slot = slots[key];
+      if (!slot) {
+        slot = { period: at.period, start: start, end: end,
+                 subjects: {}, rooms: {}, entries: {} };
+        grades.forEach(function (g) {
+          slot.subjects[g] = "";
+          slot.rooms[g] = "";
+          slot.entries[g] = [];
+        });
+        slots[key] = slot;
+        (byDay[day] = byDay[day] || []).push(slot);
+      }
+      grades.forEach(function (g) {
+        var e = here[g];
+        if (!e) return;
+        slot.entries[g].push(e);
+        /* first one wins the single-value view — the pane shows one line
+           per grade per period until the redesign lands */
+        if (!slot.subjects[g]) {
+          slot.subjects[g] = e.subject;
+          slot.rooms[g] = e.room;
+        }
       });
     });
+
     Object.keys(byDay).forEach(function (d) {
       byDay[d].sort(function (a, b) { return minutes(a.start) - minutes(b.start); });
     });

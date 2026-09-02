@@ -218,6 +218,135 @@ test("buildSchedule: blank rows before any day are not invented into one", () =>
   assert.equal(Object.keys(s.byDay).length, 1);
   assert.equal(s.byDay["א"].length, 1);
 });
+
+/* ---------- buildSchedule: rooms, and concurrent classes ----------
+   The sheet now gives every grade TWO columns — subject and room — and
+   says "these classes run at the same time" by INSERTING a row under the
+   lesson. An inserted row cannot carry a day, a period or a time,
+   because those four columns are locked, so it arrives holding nothing
+   but the extra group's subject and room. Every test below is a shape
+   the real sheet produces. */
+const ROOM_FIELDS = ["יום", "שיעור", "התחלה", "סיום",
+                     "ז׳", "ז׳ חדר", "ח׳", "ח׳ חדר"];
+/* one CSV row of that sheet, with only the named cells filled */
+const R = (day, period, start, end, cells) =>
+  Object.assign({ "יום": day, "שיעור": period, "התחלה": start, "סיום": end,
+                  "ז׳": "", "ז׳ חדר": "", "ח׳": "", "ח׳ חדר": "" }, cells);
+
+test("buildSchedule: a room column is not mistaken for a grade", () => {
+  const s = L.buildSchedule(
+    [R("א", "1", "08:15", "09:00", { "ז׳": "מתמטיקה", "ז׳ חדר": "חדר 12" })],
+    ROOM_FIELDS);
+  assert.deepEqual(s.grades, ["ז׳", "ח׳"],
+    "the room columns leaked into the grade list — the board would draw " +
+    "a card for each of them");
+});
+
+test("buildSchedule: a lesson carries the room beside it", () => {
+  const s = L.buildSchedule([R("א", "1", "08:15", "09:00", {
+    "ז׳": "מתמטיקה", "ז׳ חדר": "חדר 12", "ח׳": "אנגלית", "ח׳ חדר": "מעבדה"
+  })], ROOM_FIELDS);
+  const p = s.byDay["א"][0];
+  assert.equal(p.subjects["ז׳"], "מתמטיקה");
+  assert.equal(p.rooms["ז׳"], "חדר 12");
+  assert.deepEqual(p.entries["ז׳"], [{ subject: "מתמטיקה", room: "חדר 12" }]);
+  assert.deepEqual(p.entries["ח׳"], [{ subject: "אנגלית", room: "מעבדה" }]);
+});
+
+test("buildSchedule: an inserted row is another class in the SAME slot", () => {
+  const s = L.buildSchedule([
+    R("א", "1", "08:15", "09:00", { "ז׳": "אנגלית — קבוצה א", "ז׳ חדר": "חדר 4" }),
+    R("",  "",  "",      "",      { "ז׳": "אנגלית — קבוצה ב", "ז׳ חדר": "חדר 9" }),
+    R("",  "2", "09:00", "09:45", { "ז׳": "מתמטיקה", "ז׳ חדר": "חדר 12" })
+  ], ROOM_FIELDS);
+  assert.equal(s.byDay["א"].length, 2,
+    "the split row was counted as a period of its own");
+  const p = s.byDay["א"][0];
+  assert.equal(p.entries["ז׳"].length, 2, "the second group was lost");
+  assert.deepEqual(p.entries["ז׳"][1],
+    { subject: "אנגלית — קבוצה ב", room: "חדר 9" });
+  assert.equal(p.start, "08:15", "the slot kept its own start time");
+  assert.equal(p.end, "09:00");
+  assert.equal(p.period, "1", "the slot kept the period number of its first row");
+  assert.equal(s.byDay["א"][1].entries["ז׳"].length, 1,
+    "the split leaked into the following period");
+});
+
+test("buildSchedule: four concurrent classes in one period", () => {
+  const s = L.buildSchedule([
+    R("א", "6", "12:45", "13:30", { "ח׳": "פיזיקה", "ח׳ חדר": "מעבדה" }),
+    R("",  "",  "",      "",      { "ח׳": "כימיה", "ח׳ חדר": "מעבדת כימיה" }),
+    R("",  "",  "",      "",      { "ח׳": "ביולוגיה", "ח׳ חדר": "חדר 3" }),
+    R("",  "",  "",      "",      { "ח׳": "מחשבים", "ח׳ חדר": "חדר מחשבים" })
+  ], ROOM_FIELDS);
+  assert.equal(s.byDay["א"].length, 1);
+  const p = s.byDay["א"][0];
+  assert.deepEqual(p.entries["ח׳"].map((e) => e.subject),
+    ["פיזיקה", "כימיה", "ביולוגיה", "מחשבים"]);
+  assert.deepEqual(p.entries["ח׳"].map((e) => e.room),
+    ["מעבדה", "מעבדת כימיה", "חדר 3", "חדר מחשבים"]);
+  assert.deepEqual(p.entries["ז׳"], [], "a grade with no class has no entries");
+});
+
+test("buildSchedule: the single-subject view still answers for app.js", () => {
+  /* app.js renders one line per grade per period and reads subjects[g]
+     as a plain string. Until that pane is redesigned, a split period
+     must present its FIRST class there — not an object, not a list. */
+  const s = L.buildSchedule([
+    R("א", "1", "08:15", "09:00", { "ז׳": "אנגלית — קבוצה א", "ז׳ חדר": "חדר 4" }),
+    R("",  "",  "",      "",      { "ז׳": "אנגלית — קבוצה ב", "ז׳ חדר": "חדר 9" })
+  ], ROOM_FIELDS);
+  const p = s.byDay["א"][0];
+  assert.equal(typeof p.subjects["ז׳"], "string");
+  assert.equal(p.subjects["ז׳"], "אנגלית — קבוצה א");
+  assert.equal(p.rooms["ז׳"], "חדר 4");
+  assert.equal(p.subjects["ח׳"], "", "a grade with no class must be falsy");
+});
+
+test("buildSchedule: a split for one grade leaves the others alone", () => {
+  const s = L.buildSchedule([
+    R("א", "1", "08:15", "09:00", { "ז׳": "אנגלית", "ח׳": "מתמטיקה" }),
+    R("",  "",  "",      "",      { "ז׳": "אנגלית — קבוצה ב" })
+  ], ROOM_FIELDS);
+  const p = s.byDay["א"][0];
+  assert.equal(p.entries["ז׳"].length, 2);
+  assert.equal(p.entries["ח׳"].length, 1, "ח׳ gained a class it does not have");
+  assert.equal(p.subjects["ח׳"], "מתמטיקה");
+});
+
+test("buildSchedule: an empty row under a lesson adds nothing", () => {
+  const s = L.buildSchedule([
+    R("א", "1", "08:15", "09:00", { "ז׳": "אנגלית" }),
+    R("",  "",  "",      "",      {}),
+    R("",  "2", "09:00", "09:45", { "ז׳": "מתמטיקה" })
+  ], ROOM_FIELDS);
+  assert.equal(s.byDay["א"].length, 2);
+  assert.equal(s.byDay["א"][0].entries["ז׳"].length, 1,
+    "a blank spacing row became a silent extra class");
+});
+
+test("buildSchedule: a split row works on a sheet that repeats the day", () => {
+  /* the same insertion in a sheet whose יום column was typed by hand
+     rather than merged: the day IS stated, the times still are not */
+  const s = L.buildSchedule([
+    R("א", "1", "08:15", "09:00", { "ז׳": "אנגלית" }),
+    R("א", "",  "",      "",      { "ז׳": "אנגלית — קבוצה ב" })
+  ], ROOM_FIELDS);
+  assert.equal(s.byDay["א"].length, 1);
+  assert.equal(s.byDay["א"][0].entries["ז׳"].length, 2);
+});
+
+test("buildSchedule: a sheet with no room columns still parses", () => {
+  /* the shape before rooms existed — it must keep working, because the
+     board is deployed before the sheet is rebuilt */
+  const s = L.buildSchedule(SCHED_ROWS, SCHED_FIELDS);
+  const p = s.byDay["א"][0];
+  assert.deepEqual(s.grades, ["ז׳", "ח׳"]);
+  assert.equal(p.subjects["ז׳"], "מתמטיקה");
+  assert.equal(p.rooms["ז׳"], "", "there is no room column to read");
+  assert.deepEqual(p.entries["ז׳"], [{ subject: "מתמטיקה", room: "" }]);
+  assert.deepEqual(p.entries["ח׳"], [{ subject: "אנגלית", room: "" }]);
+});
 test("buildSchedule: a skipped bad-time row still carries its day on", () => {
   const rows = [
     { Day: "א", Period: "1", Start: "nope", End: "08:45", "ז׳": "x", "ח׳": "" },
@@ -795,6 +924,125 @@ test("CSV round-trip: quotes, commas, newlines, emoji survive", () => {
   const m = L.buildMessages(parsed.data, TODAY);
   assert.deepEqual(m.normal, ['מבחן ב"לשון", אולם 3 🎉']);
   assert.deepEqual(m.urgent, ["שורה שנייה"]);   /* newline → space */
+});
+
+/* ---------- the demo dataset, parsed exactly as the board parses it ----
+   sample-data.js is the CSV the Google Sheet publishes, written out by
+   hand. If it drifts from the shape setup.gs builds, demo mode stops
+   exercising the live path and starts hiding regressions instead. */
+function loadSample() {
+  const ctx = { window: {} };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "..", "dashboard", "sample-data.js"), "utf8"),
+    ctx, { filename: "sample-data.js" });
+  return ctx.window.SAMPLE;
+}
+function sampleSchedule() {
+  const p = Papa.parse(loadSample().scheduleCsv,
+                       { header: true, skipEmptyLines: true });
+  return { s: L.buildSchedule(p.data, p.meta.fields),
+           fields: p.meta.fields, rows: p.data };
+}
+
+test("sample data: sixteen columns — a subject and a room per grade", () => {
+  const { s, fields } = sampleSchedule();
+  assert.equal(fields.length, 16, "the demo header is not 16 columns");
+  assert.deepEqual(s.grades, ["ז׳", "ח׳", "ט׳", "י׳", 'י"א', 'י"ב']);
+  assert.deepEqual(fields.slice(4), [
+    "ז׳", "ז׳ חדר", "ח׳", "ח׳ חדר", "ט׳", "ט׳ חדר",
+    "י׳", "י׳ חדר", 'י"א', 'י"א חדר', 'י"ב', 'י"ב חדר'
+  ]);
+});
+
+test("sample data: fourteen periods Sunday-Thursday, six on Friday", () => {
+  const { s } = sampleSchedule();
+  ["א", "ב", "ג", "ד", "ה"].forEach(
+    (d) => assert.equal(s.byDay[d].length, 14, "day " + d + " is not 14 periods"));
+  assert.equal(s.byDay["ו"].length, 6, "Friday is not six periods");
+  assert.deepEqual(Object.keys(s.byDay).sort(),
+    ["א", "ב", "ג", "ד", "ה", "ו"].sort(),
+    "the merged day column did not group the rows into six days");
+});
+
+test("sample data: no period 0 — every day starts at 08:15 with period 1", () => {
+  const { s, rows } = sampleSchedule();
+  rows.forEach((r, i) => assert.notEqual(String(r["שיעור"]).trim(), "0",
+    "row " + (i + 2) + " of the demo data still carries a period 0"));
+  Object.keys(s.byDay).forEach((d) => {
+    assert.equal(s.byDay[d][0].period, "1", "day " + d + " does not open on period 1");
+    assert.equal(s.byDay[d][0].start, "08:15", "day " + d + " does not open at 08:15");
+  });
+  assert.equal(s.byDay["א"][13].end, "20:00", "period 14 should end at 20:00");
+  assert.equal(s.byDay["ו"][5].end, "13:30", "Friday should end at 13:30");
+});
+
+test("sample data: a two-way and a four-way split are exercised", () => {
+  const { s } = sampleSchedule();
+  const two = s.byDay["א"][2];                    /* period 3 */
+  assert.equal(two.period, "3");
+  assert.equal(two.entries["ז׳"].length, 2, "the two-way split did not parse");
+  assert.equal(two.entries["ח׳"].length, 1, "the split leaked into ח׳");
+
+  const four = s.byDay["א"][5];                   /* period 6 */
+  assert.equal(four.period, "6");
+  assert.equal(four.entries['י"א'].length, 4, "the four-way split did not parse");
+  four.entries['י"א'].forEach((e) => {
+    assert.ok(e.subject, "a concurrent class has no subject");
+    assert.ok(e.room, "a concurrent class has no room");
+  });
+  /* and the pane app.js draws today still gets one plain string */
+  assert.equal(four.subjects['י"א'], four.entries['י"א'][0].subject);
+});
+
+test("sample data: every lesson in the demo has a room the sheet accepts", () => {
+  /* LIMITS.scheduleRoom in sheet-template/setup.gs — demo data the real
+     sheet would reject is demo data that stopped describing the sheet */
+  const ROOM_MAX = 14, SUBJECT_MAX = 16;
+  const { s } = sampleSchedule();
+  Object.keys(s.byDay).forEach((d) => s.byDay[d].forEach((p) => {
+    s.grades.forEach((g) => p.entries[g].forEach((e) => {
+      const where = `${d} period ${p.period} ${g}: "${e.subject}"`;
+      assert.ok(e.room, where + " has no room");
+      assert.ok(e.room.length <= ROOM_MAX, where + " room is too long: " + e.room);
+      assert.ok(e.subject.length <= SUBJECT_MAX, where + " subject is too long");
+    }));
+  }));
+});
+
+test("the sheet the board reads TODAY still parses after the rebuild", () => {
+  /* The board ships from this repo before the Google Sheet is rebuilt,
+     so for a while the new parser is pointed at the OLD tab: eleven
+     periods numbered 0-10, five on Friday, one column per grade and no
+     rooms. Exactly the CSV that tab publishes, merged day column and
+     all. If this ever fails, deploying the board breaks the wall. */
+  const csv = [
+    'יום,שיעור,התחלה,סיום,ז׳,ח׳,ט׳,י׳,"י""א","י""ב"',
+    'א,0,08:15,08:30,מתמטיקה,ספרות,לשון,אזרחות,ביולוגיה,מחשבים',
+    ',1,08:30,09:00,היסטוריה,חינוך גופני,פיזיקה,מתמטיקה,ספרות,לשון',
+    ',2,09:00,09:45,כימיה,אנגלית,"תנ""ך",היסטוריה,חינוך גופני,פיזיקה',
+    ',7,14:00,14:45,,,מחשבים,כימיה,אנגלית,"תנ""ך"',
+    'ו,0,08:15,08:30,אנגלית,"תנ""ך",היסטוריה,חינוך גופני,פיזיקה,מתמטיקה',
+    ',4,10:55,11:40,חינוך גופני,חינוך גופני,חינוך גופני,חינוך גופני,חינוך גופני,חינוך גופני'
+  ].join("\n");
+  const p = Papa.parse(csv, { header: true, skipEmptyLines: true });
+  const s = L.buildSchedule(p.data, p.meta.fields);
+
+  assert.deepEqual(s.grades, ["ז׳", "ח׳", "ט׳", "י׳", 'י"א', 'י"ב'],
+    "the old six-column shape no longer yields six grades");
+  assert.equal(s.byDay["א"].length, 4, "Sunday lost rows from the merged day");
+  assert.equal(s.byDay["ו"].length, 2);
+  /* period 0 is not a shape this parser knows about — it is simply a row */
+  assert.equal(s.byDay["א"][0].period, "0");
+  assert.equal(s.byDay["א"][0].start, "08:15");
+  /* what app.js actually reads, unchanged */
+  assert.equal(s.byDay["א"][0].subjects["ז׳"], "מתמטיקה");
+  assert.equal(s.byDay["א"][2].subjects['י"ב'], "פיזיקה");
+  assert.equal(s.byDay["א"][3].subjects["ז׳"], "", "an empty cell must stay empty");
+  assert.equal(s.byDay["ו"][1].subjects["ט׳"], "חינוך גופני");
+  /* and the structured view degrades cleanly: one entry, no room */
+  assert.deepEqual(s.byDay["א"][0].entries["ז׳"],
+    [{ subject: "מתמטיקה", room: "" }]);
+  assert.deepEqual(s.byDay["א"][3].entries["ז׳"], []);
 });
 
 test("CSV round-trip: grade names containing quotes match schedule columns", () => {

@@ -53,18 +53,20 @@ const t = (hhmm) => {
   return (h * 60 + m) / 1440;
 };
 const PERIOD_TIMES = [
-  ['08:15', '08:30'], ['08:30', '09:00'], ['09:00', '09:45'],
-  ['10:10', '10:55'], ['10:55', '11:40'], ['12:00', '12:45'],
-  ['12:45', '13:30'], ['14:00', '14:45'], ['14:45', '15:30'],
-  ['15:30', '16:15'], ['16:15', '17:00']
+  ['08:15', '09:00'], ['09:00', '09:45'], ['10:10', '10:55'],
+  ['10:55', '11:40'], ['12:00', '12:45'], ['12:45', '13:30'],
+  ['14:00', '14:45'], ['14:45', '15:30'], ['15:30', '16:15'],
+  ['16:15', '17:00'], ['17:00', '17:45'], ['17:45', '18:30'],
+  ['18:30', '19:15'], ['19:15', '20:00']
 ].map((pair) => pair.map(t));
 
-/* Friday (ו) ends after period 4 (11:40); every other day runs the full
-   eleven periods (0-10). Mirrors setup.gs's own SHORT_DAYS, kept as a
-   separate literal here on purpose: the fixture must independently model
-   the geometry setup.gs is supposed to produce, not borrow its logic and
-   risk both sides being wrong together. */
-const SHORT_DAYS = { 'ו': 5 };
+/* Friday (ו) ends after period 6 (13:30); every other day runs the full
+   fourteen, numbered 1 to 14 — there is no period 0. Mirrors setup.gs's
+   own SHORT_DAYS, kept as a separate literal here on purpose: the
+   fixture must independently model the geometry setup.gs is supposed to
+   produce, not borrow its logic and risk both sides being wrong
+   together. */
+const SHORT_DAYS = { 'ו': 6 };
 const periodCount = (day) => SHORT_DAYS[day] || PERIOD_TIMES.length;
 
 /* Row layout implied by periodCount: offsets are 0-based, relative to
@@ -78,6 +80,33 @@ function scheduleLayout() {
   return { counts, offsets, total };
 }
 
+/* 5 x 14 + 6 = 76 data rows, so the tab ends at row 77. */
+const TOTAL_ROWS = scheduleLayout().total;
+
+/* Each grade owns two columns: the subject, then the room. Sixteen in
+   all, and the room header is the grade's own label plus " חדר". */
+const ROOM_SUFFIX = ' חדר';
+const SCHED_HEADERS = ['יום', 'שיעור', 'התחלה', 'סיום'];
+GRADES.forEach((g) => SCHED_HEADERS.push(g, g + ROOM_SUFFIX));
+const SCHED_COLS = SCHED_HEADERS.length;
+
+/* The mock only appends rows, so model "insert row below" here: splice a
+   blank row into the values and grow whichever merged day block contains
+   it — which is what Sheets itself does, and the reason an inserted
+   split row keeps the day letter above it. */
+function insertRowAt(sh, row) {
+  sh.values.splice(row - 1, 0, Array(sh.maxCols).fill(''));
+  sh.values.pop();
+  sh.merges = sh.merges.map((m) => {
+    const p = /^A(\d+):A(\d+)$/.exec(m);
+    if (!p) return m;
+    let top = Number(p[1]), bottom = Number(p[2]);
+    if (row <= top) { top += 1; bottom += 1; }
+    else if (row <= bottom) bottom += 1;
+    return `A${top}:A${bottom}`;
+  });
+}
+
 /* Deliberately awkward content: quotes, an emoji, an em dash, a comma,
    a subject over the length limit, and a בס"ד-style abbreviation with a
    double quote in the middle. If styling mangles any of it, the diff
@@ -86,14 +115,16 @@ const REAL_SUBJECTS = [
   'מתמטיקה', 'תנ"ך', 'של"ח', 'אנגלית 🎉', 'ספרות — מגמה',
   'היסטוריה, מגמה מורחבת', 'שם מקצוע ארוך מאוד שחורג מהמגבלה'
 ];
+const REAL_ROOMS = [
+  'חדר 12', 'מעבדה', 'חדר 3', 'אולם', 'חדר 214', 'ספרייה',
+  'שם חדר ארוך מאוד שחורג מהמגבלה'
+];
 
 function populatedSheet() {
   const ss = new Spreadsheet();
 
   const sched = ss.addSheet('מערכת');
-  sched.getRange(1, 1, 1, 10).setValues([
-    ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
-  ]);
+  sched.getRange(1, 1, 1, SCHED_COLS).setValues([SCHED_HEADERS]);
   const layout = scheduleLayout();
   const rows = [];
   DAYS.forEach((day, di) => {
@@ -102,14 +133,16 @@ function populatedSheet() {
       const times = PERIOD_TIMES[pi];
       /* the day letter only on the first row of each block — the shape a
          merged יום column exports, and the shape setup() maintains */
-      const row = [pi === 0 ? day : '', pi, times[0], times[1]];
+      const row = [pi === 0 ? day : '', pi + 1, times[0], times[1]];
       GRADES.forEach((g, gi) => {
-        row.push(pi < 7 ? REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length] : '');
+        const filled = pi < 8;
+        row.push(filled ? REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length] : '',
+                 filled ? REAL_ROOMS[(di + pi + gi) % REAL_ROOMS.length] : '');
       });
       rows.push(row);
     }
   });
-  sched.getRange(2, 1, rows.length, 10).setValues(rows);
+  sched.getRange(2, 1, rows.length, SCHED_COLS).setValues(rows);
   DAYS.forEach((d, di) => {
     sched.getRange(2 + layout.offsets[di], 1, layout.counts[di], 1).merge();
   });
@@ -175,6 +208,33 @@ function populatedSheet() {
     ['אופן הצגת שיעורים', 'הצג רק משיעור נוכחי ואילך']
   ]);
 
+  return ss;
+}
+
+/* The מערכת tab as commit c6684a6 built it: eleven periods numbered 0-10,
+   five on Friday, and ONE column per grade with no room beside it. Used
+   to prove that setup() refuses such a tab rather than restating a
+   76-row skeleton over 60 rows of somebody's timetable. */
+function oldShapeSheet() {
+  const ss = populatedSheet();
+  const sched = ss.getSheetByName('מערכת');
+  sched.values = Array.from({ length: sched.maxRows },
+                            () => Array(sched.maxCols).fill(''));
+  sched.merges.length = 0;
+  sched.getRange(1, 1, 1, 10).setValues([
+    ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
+  ]);
+  const counts = [11, 11, 11, 11, 11, 5];
+  const rows = [];
+  DAYS.forEach((day, di) => {
+    for (let pi = 0; pi < counts[di]; pi++) {
+      rows.push([pi === 0 ? day : '', pi, t('08:15'), t('08:30')].concat(
+        GRADES.map((g, gi) => REAL_SUBJECTS[(di + pi + gi) % REAL_SUBJECTS.length])));
+    }
+  });
+  sched.getRange(2, 1, rows.length, 10).setValues(rows);
+  let off = 0;
+  counts.forEach((c) => { sched.getRange(2 + off, 1, c, 1).merge(); off += c; });
   return ss;
 }
 
@@ -331,7 +391,7 @@ function run(test) {
     /* Pinned exactly rather than allowlisted by pattern. Column A of
        מערכת is script-owned and re-stated every run; anything else
        appearing in this list is a regression, and the assertion names it. */
-    assert.deepEqual(writes, ['מערכת A2:A61'],
+    assert.deepEqual(writes, ['מערכת A2:A77'],
       'unexpected write calls: ' + writes.join(', '));
   });
 
@@ -340,10 +400,10 @@ function run(test) {
     const { ctx } = loadScript(ss);
     ctx.setup();
     const sched = ss.getSheetByName('מערכת');
-    /* eleven rows per day except Friday (ו), which gets five and ends at
-       row 61: א 2-12, ב 13-23, ג 24-34, ד 35-45, ה 46-56, ו 57-61 */
+    /* fourteen rows per day except Friday (ו), which gets six and ends
+       at row 77: א 2-15, ב 16-29, ג 30-43, ד 44-57, ה 58-71, ו 72-77 */
     assert.deepEqual(sched.merges,
-      ['A2:A12', 'A13:A23', 'A24:A34', 'A35:A45', 'A46:A56', 'A57:A61'],
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
       'day blocks not merged as expected: ' + sched.merges.join(', '));
   });
 
@@ -352,7 +412,7 @@ function run(test) {
      that Friday ends after period 4. If that uniform-row assumption ever
      comes back — someone "simplifies" writeDayColumn_/styleSchedule_ back
      to `DAYS.length * PERIODS.length`, or drops SHORT_DAYS — Friday's
-     block grows to 11 rows and every day's rows this closes must land at
+     block grows to 14 rows and every day's rows this closes must land at
      boundaries only reachable from PER-DAY counts, not a flat multiple. */
   test('per-day period counts are respected — Friday is short, the rest are not', () => {
     const ss = populatedSheet();
@@ -362,7 +422,7 @@ function run(test) {
     const layout = scheduleLayout();
 
     DAYS.forEach((d, di) => {
-      const expectedCount = d === 'ו' ? 5 : 11;
+      const expectedCount = d === 'ו' ? 6 : 14;
       assert.equal(layout.counts[di], expectedCount,
         `test fixture expected ${expectedCount} periods for ${d}, got ` +
         layout.counts[di]);
@@ -375,8 +435,8 @@ function run(test) {
         sched.merges.join(', '));
     });
 
-    assert.equal(layout.total, 60,
-      'five eleven-period days plus one five-period Friday should total 60 rows');
+    assert.equal(layout.total, 76,
+      'five fourteen-period days plus a six-period Friday should total 76 rows');
   });
 
   test('each merged block carries its letter once, blank below', () => {
@@ -407,8 +467,8 @@ function run(test) {
   });
 
   test('an unmerged sheet is migrated without touching the subjects', () => {
-    /* the shape every existing sheet is in today: the letter repeated on
-       all ten rows of each day, nothing merged */
+    /* the shape a hand-typed sheet is in: the letter repeated on every
+       row of each day, nothing merged */
     const ss = populatedSheet();
     const sched = ss.getSheetByName('מערכת');
     sched.merges.length = 0;
@@ -418,7 +478,7 @@ function run(test) {
         sched.getRange(2 + layout.offsets[di] + i, 1).setValue(d);
       }
     });
-    const subjectsBefore = sched.getRange(2, 5, 60, 6).getValues();
+    const subjectsBefore = sched.getRange(2, 5, TOTAL_ROWS, SCHED_COLS - 4).getValues();
 
     const { ctx } = loadScript(ss);
     ctx.setup();
@@ -427,8 +487,156 @@ function run(test) {
     assert.equal(sched.getRange(2, 1).getValue(), 'א');
     assert.equal(sched.getRange(3, 1).getValue(), '',
       'the repeated letter was left behind under the merge');
-    assert.deepEqual(sched.getRange(2, 5, 60, 6).getValues(), subjectsBefore,
-      'migrating the day column disturbed the timetable');
+    assert.deepEqual(sched.getRange(2, 5, TOTAL_ROWS, SCHED_COLS - 4).getValues(),
+      subjectsBefore, 'migrating the day column disturbed the timetable');
+  });
+
+  /* ============ 1a. the new geometry: 1-14, rooms, split rows ======== */
+
+  test('the header is sixteen columns: a subject and a room per grade', () => {
+    const ss = populatedSheet();
+    const { ctx } = loadScript(ss);
+    assert.deepEqual(ctx.scheduleHeaders_(), [
+      'יום', 'שיעור', 'התחלה', 'סיום',
+      'ז׳', 'ז׳ חדר', 'ח׳', 'ח׳ חדר', 'ט׳', 'ט׳ חדר',
+      'י׳', 'י׳ חדר', 'י"א', 'י"א חדר', 'י"ב', 'י"ב חדר'
+    ]);
+    assert.equal(ctx.scheduleHeaders_().length, 16);
+    ctx.setup();
+    assert.deepEqual(
+      ss.getSheetByName('מערכת').getRange(1, 1, 1, 16).getValues()[0],
+      ctx.scheduleHeaders_(), 'the header row was not brought to 16 columns');
+  });
+
+  test('periods are 1 to 14 — there is no period 0 anywhere', () => {
+    const ss = new Spreadsheet();
+    const { ctx } = loadScript(ss);
+    assert.deepEqual(ctx.PERIODS.map((p) => p[0]),
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+      'the period numbers are not 1-14');
+    assert.equal(ctx.PERIODS[0][1], '08:15', 'the day starts at 08:15');
+    assert.equal(ctx.PERIODS[13][2], '20:00', 'period 14 ends at 20:00');
+
+    ctx.setup();
+    const seeded = ss.getSheetByName('מערכת')
+      .getRange(2, 2, TOTAL_ROWS, 1).getValues().map((r) => r[0]);
+    assert.equal(seeded.filter((n) => Number(n) === 0).length, 0,
+      'a period 0 row was seeded');
+    assert.ok(seeded.every((n) => Number(n) >= 1 && Number(n) <= 14),
+      'a seeded period number falls outside 1-14');
+  });
+
+  test('Friday runs periods 1-6, every other day 1-14', () => {
+    const { ctx } = loadScript(new Spreadsheet());
+    assert.equal(ctx.periodCount_('ו'), 6);
+    ['א', 'ב', 'ג', 'ד', 'ה'].forEach(
+      (d) => assert.equal(ctx.periodCount_(d), 14, 'day ' + d));
+    const layout = ctx.scheduleLayout_();
+    assert.equal(layout.total, 76);
+    assert.deepEqual(layout.offsets, [0, 14, 28, 42, 56, 70]);
+  });
+
+  test('all four script-written columns are locked, under one protection', () => {
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    /* a protection left behind by the version that locked only two
+       columns — it must not survive alongside the new one */
+    sched.getRange(2, 1, 60, 2).protect()
+      .setDescription('יום ומספר שיעור — לא לשינוי');
+    const { ctx } = loadScript(ss);
+    ctx.setup();
+    const own = sched.protections.filter(
+      (p) => p.getRange().getSheet() === sched);
+    const byDesc = {};
+    own.forEach((p) => { byDesc[p.getDescription()] = p.getRange().getA1Notation(); });
+    assert.equal(byDesc['יום, שיעור ושעות — לא לשינוי'], 'A2:D77',
+      'the day, period and both time columns should be locked together');
+    assert.ok(!('יום ומספר שיעור — לא לשינוי' in byDesc),
+      'the previous version\'s protection was left behind over the same cells');
+  });
+
+  /* The point of the whole redesign: the principal adds a concurrent
+     class by inserting a row under the lesson and filling in only that
+     group's subject and room. Sheets grows the merged day block around
+     it, and setup() must then work from the blocks AS THEY ARE — not
+     from the 76-row grid the tab was seeded to. Getting this wrong moves
+     day letters up the sheet and reassigns lessons to the wrong day
+     without touching a single subject cell. */
+  test('rows inserted for a split lesson survive a re-run', () => {
+    const ss = populatedSheet();
+    const sched = ss.getSheetByName('מערכת');
+    /* three concurrent groups added to Sunday's period 2 (row 3), and
+       one to Friday's period 1 (which then sits at row 76) */
+    insertRowAt(sched, 4);
+    insertRowAt(sched, 4);
+    insertRowAt(sched, 4);
+    sched.getRange(4, 5).setValue('אנגלית — קבוצה ב');
+    sched.getRange(4, 6).setValue('חדר 9');
+    sched.getRange(5, 5).setValue('אנגלית — קבוצה ג');
+    sched.getRange(6, 15).setValue('פיזיקה 5 יח"ל');
+    insertRowAt(sched, 76);
+    sched.getRange(76, 7).setValue('של"ח');
+    const before = snapshot(ss);
+    sched.writes.length = 0;
+
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'setup() reported failures: ' + said);
+    assert.deepEqual(diff(before, snapshot(ss)), [],
+      'an inserted split row cost content');
+    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A81'],
+      'the day column should be restated over the taller grid, and nothing ' +
+      'else written: ' + sched.writes.map((w) => w.a1).join(', '));
+    /* Sunday is three rows taller, Friday one — every later block moved */
+    assert.deepEqual(sched.merges,
+      ['A2:A18', 'A19:A32', 'A33:A46', 'A47:A60', 'A61:A74', 'A75:A81'],
+      'day blocks not merged around the inserted rows: ' +
+      sched.merges.join(', '));
+    /* and the letters still sit on the first row of each block */
+    assert.equal(sched.getRange(2, 1).getValue(), 'א');
+    assert.equal(sched.getRange(19, 1).getValue(), 'ב');
+    assert.equal(sched.getRange(75, 1).getValue(), 'ו');
+    assert.equal(sched.getRange(4, 1).getValue(), '',
+      'a split row must stay blank in the day column');
+    assert.equal(sched.getRange(4, 5).getValue(), 'אנגלית — קבוצה ב',
+      'the split row lost its subject');
+  });
+
+  test('a tab still on the previous geometry is refused, not overwritten', () => {
+    const ss = oldShapeSheet();
+    const sched = ss.getSheetByName('מערכת');
+    const before = snapshot(ss);
+    sched.writes.length = 0;
+
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(/נכשלו/.test(said) && /מערכת/.test(said),
+      'the old shape should be reported as a failure, got: ' + said);
+    assert.ok(/מבנה ישן/.test(said), 'the report should say what is wrong');
+    assert.deepEqual(sched.writes.map((w) => w.a1), [],
+      'the old-shaped tab was written to: ' +
+      sched.writes.map((w) => w.a1).join(', '));
+    assert.deepEqual(diff(before, snapshot(ss)), [],
+      'the old-shaped tab lost or gained content');
+  });
+
+  test('an EMPTY tab on the previous geometry is migrated, not refused', () => {
+    const ss = oldShapeSheet();
+    const sched = ss.getSheetByName('מערכת');
+    /* the same old skeleton with nothing typed into it: there is no
+       lesson to put under the wrong day, so rebuilding is safe */
+    sched.getRange(2, 5, 60, GRADES.length).setValue('');
+    const { ctx, env } = loadScript(ss);
+    ctx.setup();
+    const said = env.ss.toasts.map((tt) => tt.msg).join('\n');
+    assert.ok(!/נכשלו/.test(said), 'the empty old shape should migrate: ' + said);
+    assert.deepEqual(sched.merges,
+      ['A2:A15', 'A16:A29', 'A30:A43', 'A44:A57', 'A58:A71', 'A72:A77'],
+      'the empty old shape was not rebuilt to 1-14: ' + sched.merges.join(', '));
   });
 
   /* ============ 1b. the locale, which decides how dates are READ ====== */
@@ -498,10 +706,12 @@ function run(test) {
 
   test('an over-length subject is left in place, not truncated', () => {
     const ss = populatedSheet();
-    const before = ss.getSheetByName('מערכת').getRange(2, 1, 60, 10).getValues();
+    const before =
+      ss.getSheetByName('מערכת').getRange(2, 1, TOTAL_ROWS, SCHED_COLS).getValues();
     const { ctx } = loadScript(ss);
     ctx.setup();
-    const after = ss.getSheetByName('מערכת').getRange(2, 1, 60, 10).getValues();
+    const after =
+      ss.getSheetByName('מערכת').getRange(2, 1, TOTAL_ROWS, SCHED_COLS).getValues();
     assert.deepEqual(after, before);
   });
 
@@ -514,11 +724,21 @@ function run(test) {
     const sched = ss.getSheetByName('מערכת');
     /* grade tint on a cell deep in the timetable, not just the header */
     assert.equal(sched.getRange(40, 5).getBackground(), '#d9ead3',
-      'the ז׳ column tint did not reach row 40');
-    assert.equal(sched.getRange(61, 10).getBackground(), '#d0e0e3',
+      'the ז׳ subject column tint did not reach row 40');
+    assert.equal(sched.getRange(40, 6).getBackground(), '#d9ead3',
+      'the ז׳ ROOM column should carry the same tint as its subject');
+    assert.equal(sched.getRange(77, 15).getBackground(), '#d0e0e3',
       'the י"ב column tint did not reach the last row');
-    /* the locked day column is greyed all the way down */
-    assert.equal(sched.getRange(61, 1).getBackground(), '#f0f0f0');
+    assert.equal(sched.getRange(77, 16).getBackground(), '#d0e0e3',
+      'the י"ב room column tint did not reach the last row');
+    /* the room reads as an annotation: smaller and grey, not a subject */
+    assert.equal(sched.getRange(40, 6).getFontColor(), '#666666');
+    assert.notEqual(sched.getRange(40, 5).getFontColor(), '#666666',
+      'the subject itself must not be dimmed');
+    /* all four locked columns are greyed all the way down */
+    [1, 2, 3, 4].forEach((c) => assert.equal(
+      sched.getRange(77, c).getBackground(), '#f0f0f0',
+      'column ' + c + ' should be greyed as a locked column'));
     /* six thick day boxes were drawn */
     assert.ok(sched.borders.length >= 7,
       'expected the day boxes, saw ' + sched.borders.length + ' border calls');
@@ -572,8 +792,8 @@ function run(test) {
       assert.ok(ss.getSheetByName(n).getLastRow() >= 2,
         'tab ' + n + ' was not seeded');
     });
-    assert.equal(ss.getSheetByName('מערכת').getLastRow(), 61,
-      'the timetable should be 60 rows plus a header');
+    assert.equal(ss.getSheetByName('מערכת').getLastRow(), 77,
+      'the timetable should be 76 rows plus a header');
     const said = env.ss.toasts.map((t) => t.msg).join('\n');
     assert.ok(/הגיליון נבנה בהצלחה/.test(said),
       'expected the first-build report, got: ' + said);
@@ -583,12 +803,10 @@ function run(test) {
     const ss = new Spreadsheet();
     /* the principal typed the timetable but nothing else yet */
     const sched = ss.addSheet('מערכת');
-    sched.getRange(1, 1, 1, 10).setValues([
-      ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES)
-    ]);
-    sched.getRange(2, 1, 1, 10).setValues([
-      ['א', 1, t('08:00'), t('08:45'), 'מתמטיקה', '', '', '', '', '']
-    ]);
+    sched.getRange(1, 1, 1, SCHED_COLS).setValues([SCHED_HEADERS]);
+    const only = ['א', 1, t('08:15'), t('09:00'), 'מתמטיקה', 'חדר 12'];
+    while (only.length < SCHED_COLS) only.push('');
+    sched.getRange(2, 1, 1, SCHED_COLS).setValues([only]);
     sched.writes.length = 0;
     const { ctx } = loadScript(ss);
     ctx.setup();
@@ -599,7 +817,7 @@ function run(test) {
     assert.equal(sched.getRange(2, 5).getValue(), 'מתמטיקה');
     assert.equal(sched.getRange(3, 5).getValue(), '',
       'an example row was seeded into a tab that already had content');
-    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A61'],
+    assert.deepEqual(sched.writes.map((w) => w.a1), ['A2:A77'],
       'setup wrote outside the day column: ' +
       sched.writes.map((w) => w.a1).join(', '));
     /* but the empty tabs did get their examples */
@@ -673,7 +891,7 @@ function run(test) {
     ss.getSheets().forEach((sh) => {
       sh.writes.forEach((w) => writes.push(sh.getName() + ' ' + w.a1));
     });
-    assert.deepEqual(writes, ['מערכת A2:A61'],
+    assert.deepEqual(writes, ['מערכת A2:A77'],
       'the second run rewrote time columns: ' + writes.join(', '));
   });
 

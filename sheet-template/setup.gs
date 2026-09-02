@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.198';
+var SCRIPT_VERSION = '0.199';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -78,8 +78,45 @@ function checkVersion() {
    characters so they fit the chips. */
 var GRADES = ['ז׳', 'ח׳', 'ט׳', 'י׳', 'י"א', 'י"ב'];
 
+/* Every grade owns TWO columns in the מערכת tab: the subject, and the
+   room it is taught in. The room column's header is the grade's own
+   label plus this suffix — one convention, derivable in both
+   directions, so the board can find a grade's room column from its
+   subject column without a second lookup table to keep in step. */
+var ROOM_SUFFIX = ' חדר';
+function roomHeader_(grade) { return grade + ROOM_SUFFIX; }
+
+/** Is this header a room column rather than a subject column? */
+function isRoomHeader_(h) {
+  h = String(h == null ? '' : h).trim();
+  if (!h) return false;
+  if (h === 'חדר') return true;                 /* a hand-headed sheet */
+  return h.length > ROOM_SUFFIX.length &&
+         h.slice(h.length - ROOM_SUFFIX.length) === ROOM_SUFFIX;
+}
+
+/* Columns before the first grade: יום, שיעור, התחלה, סיום. */
+var SCHEDULE_FIXED_COLS = 4;
+
+/** 1-based column of grade gi's SUBJECT; its room is the next column. */
+function gradeColumn_(gi) { return SCHEDULE_FIXED_COLS + 1 + gi * 2; }
+
+/* The description lock_ uses for the מערכת tab's script-written columns,
+   and the descriptions earlier versions used over the same cells. lock_
+   removes those too, so a sheet that has lived through both does not end
+   up carrying two protections over one range — which is invisible until
+   someone tries to work out who may edit what. */
+var SCHEDULE_LOCK = 'יום, שיעור ושעות — לא לשינוי';
+var LEGACY_LOCKS = {};
+LEGACY_LOCKS[SCHEDULE_LOCK] = ['יום ומספר שיעור — לא לשינוי'];
+
 var LIMITS = {
   scheduleSubject: 16,
+  /* A room is an identifier, not a sentence — but the identifier is
+     sometimes a place: "מעבדת ביולוגיה" is fourteen characters, and
+     rejecting it would send the office back to abbreviations nobody
+     reads. Fourteen is what fits the column at its own width. */
+  scheduleRoom: 14,
   examSubject: 12,
   examRoom: 12,
   eventTitle: 22,
@@ -516,8 +553,10 @@ function ensureSheet_(ss, name) {
   if (sh.getMaxRows() < 100) {
     sh.insertRowsAfter(sh.getMaxRows(), 100 - sh.getMaxRows());
   }
-  if (sh.getMaxColumns() < 12) {
-    sh.insertColumnsAfter(sh.getMaxColumns(), 12 - sh.getMaxColumns());
+  /* sixteen: four fixed columns, then a subject and a room per grade */
+  var wantCols = SCHEDULE_FIXED_COLS + GRADES.length * 2;
+  if (sh.getMaxColumns() < wantCols) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), wantCols - sh.getMaxColumns());
   }
   return sh;
 }
@@ -549,13 +588,21 @@ function ensureSheet_(ss, name) {
  * so a re-run changes nothing. Order matters — Sheets refuses to set
  * values across merged cells, so the block has to come apart first.
  *
+ * The LAYOUT IS PASSED IN, from scheduleGeometry_, and that is the whole
+ * defence against a split row. Computing it here from DAYS and PERIODS
+ * would describe the grid as it was seeded; once the principal has
+ * inserted rows for concurrent classes, the real blocks are taller, and
+ * writing the seeded skeleton over them would slide every day letter up
+ * the sheet — moving lessons to the wrong day without changing one
+ * subject cell, which is the kind of damage nobody notices for a week.
+ *
  * The board reads this column to group rows by day, and a merged cell
  * exports to CSV as its value on the first row and BLANKS below. That is
  * handled in buildSchedule(), which treats a blank day as "same as
  * above". The two must change together.
  */
-function writeDayColumn_(sh) {
-  var layout = scheduleLayout_();
+function writeDayColumn_(sh, layout) {
+  layout = layout || scheduleLayout_();
   var col = sh.getRange(2, 1, layout.total, 1);
 
   try { col.breakApart(); } catch (e) {}   /* no-op when nothing is merged */
@@ -629,8 +676,14 @@ function seedIfEmpty_(sh, rows) {
 function lock_(range, description) {
   var sh = range.getSheet();
   var existing = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  /* Also drop whatever an EARLIER version of this script called the same
+     range. Renaming a lock without this leaves the old protection behind
+     over cells the new one already covers — harmless to look at, and
+     impossible to reason about when someone asks who may edit what. */
+  var legacy = LEGACY_LOCKS[description] || [];
   existing.forEach(function (p) {
-    if (p.getDescription() === description) p.remove();
+    var d = p.getDescription();
+    if (d === description || legacy.indexOf(d) >= 0) p.remove();
   });
 
   var p = range.protect().setDescription(description);
@@ -901,13 +954,22 @@ function dateFlags_(sh, dateCol, contentCol) {
 
 function rulesSchedule_(sh) {
   /* No dropdown on the day column: every row is pre-filled with its day
-     and period, so there is nothing to choose. The column is locked
+     and period, so there is nothing to choose. Those columns are locked
      instead (see styleSchedule_). */
   timeRule_(sh, 3);
   timeRule_(sh, 4);
-  var last = Math.max(5, sh.getLastColumn());
-  for (var c = 5; c <= last; c++) {
-    lenRule_(sh, c, LIMITS.scheduleSubject, 'שם מקצוע');
+  /* Which columns are rooms is read back from the HEADER rather than
+     computed from GRADES, so a sheet whose grade list differs from this
+     script's — a school with a seventh grade column, or one still on the
+     subject-only shape — gets the right rule on every column it has. */
+  var last = Math.max(SCHEDULE_FIXED_COLS + 1, sh.getLastColumn());
+  var headers = sh.getRange(1, 1, 1, last).getValues()[0];
+  for (var c = SCHEDULE_FIXED_COLS + 1; c <= last; c++) {
+    if (isRoomHeader_(headers[c - 1])) {
+      lenRule_(sh, c, LIMITS.scheduleRoom, 'חדר');
+    } else {
+      lenRule_(sh, c, LIMITS.scheduleSubject, 'שם מקצוע');
+    }
   }
 }
 
@@ -1075,41 +1137,59 @@ function colLetter_(n) {
 }
 
 /* ---------- the timetable's fixed shape ----------
-   Eleven period rows — numbered 0 through 10, matching PERIODS' own
-   indices — for every day except Friday. The principal fills in the
-   subjects and leaves the rest empty — an empty cell simply means no
-   class, so the day ends after the last subject entered. Nothing to add
-   or delete, and no day to pick from a dropdown.
+   Fourteen period rows — numbered 1 to 14, the numbers the school's own
+   bell schedule uses — for every day except Friday. There is NO period
+   0: the school day starts at 08:15 with period 1, and a "0" anywhere in
+   this tab means the sheet is still on the old shape.
 
-   Period 0 (08:15-08:30) is deliberately short, but it is a real taught
-   lesson like every other period — not an attendance slot. It gets its
-   own row for the same reason every period does: the board and the
-   sheet both key everything — colour, the locked columns, the merge
-   blocks — off a period's ROW.
+   The principal fills in subjects and rooms and leaves the rest empty —
+   an empty cell simply means no class, so the day ends after the last
+   subject entered. Nothing to add or delete, and no day to pick from a
+   dropdown.
 
-   Friday (יום ו׳) ends after period 4 (11:40): the school day there is
-   shorter, so it never reaches periods 5-10 at all. That is what
+   Friday (יום ו׳) ends after period 6 (13:30): the school day there is
+   shorter, so it never reaches periods 7-14 at all. That is what
    SHORT_DAYS below encodes, and it is also why nothing in this file may
-   assume "every day has PERIODS.length rows" any more — the three
-   functions that used to make that assumption now go through
-   scheduleLayout_ instead, which is what lets a future change to which
-   days are short (or how short) stay a one-line edit here.
+   assume "every day has PERIODS.length rows" — the functions that used
+   to make that assumption go through scheduleGeometry_ instead.
 
-   styleSchedule_ needs this geometry as much as seedSchedule_ does: the
-   thick day boxes are drawn from it, on a sheet whose contents it never
-   reads. */
+   TWO SHAPES OF ROW live in this tab, and the difference matters to
+   every function below:
+
+     • the SEEDED GRID — one row per day per period, 5x14 + 6 = 76 rows
+       plus the header, written once into an empty tab;
+     • rows the principal INSERTS herself, because one period splits into
+       concurrent classes (a grade divided into groups, each group with
+       its own subject and its own room). Real timetables here reach five
+       concurrent classes in a single period.
+
+   An inserted row repeats nothing: its יום/שיעור/התחלה/סיום cells stay
+   blank, because those four columns are locked and she cannot type in
+   them. The board reads a row with no time of its own as belonging to
+   the lesson slot above it, and Sheets makes the day column agree by
+   itself — a row inserted inside a merged block extends that merge, so
+   the day letter still covers it.
+
+   The cost of that freedom is that ROW NUMBERS STOP BEING PREDICTABLE
+   the moment the sheet goes live. scheduleLayout_ below describes the
+   grid as SEEDED; readDayBlocks_ reads back the blocks as they now
+   ACTUALLY stand; scheduleGeometry_ picks between them. Everything that
+   styles, locks or merges asks scheduleGeometry_, never the arithmetic. */
 var PERIODS = [
-  [0,  '08:15', '08:30'], [1,  '08:30', '09:00'], [2,  '09:00', '09:45'],
-  [3,  '10:10', '10:55'], [4,  '10:55', '11:40'], [5,  '12:00', '12:45'],
-  [6,  '12:45', '13:30'], [7,  '14:00', '14:45'], [8,  '14:45', '15:30'],
-  [9,  '15:30', '16:15'], [10, '16:15', '17:00']
+  [1,  '08:15', '09:00'], [2,  '09:00', '09:45'],
+  [3,  '10:10', '10:55'], [4,  '10:55', '11:40'],
+  [5,  '12:00', '12:45'], [6,  '12:45', '13:30'],
+  [7,  '14:00', '14:45'], [8,  '14:45', '15:30'],
+  [9,  '15:30', '16:15'], [10, '16:15', '17:00'],
+  [11, '17:00', '17:45'], [12, '17:45', '18:30'],
+  [13, '18:30', '19:15'], [14, '19:15', '20:00']
 ];
 
 /* Days that do not use every row in PERIODS, keyed by the DAYS label so
    this stays readable and stays data — not a scatter of "if day is ו"
-   checks through the three functions below. A day absent from this map
-   gets the full PERIODS.length, via periodCount_'s fallback. */
-var SHORT_DAYS = { 'ו': 5 };
+   checks through the functions below. A day absent from this map gets
+   the full PERIODS.length, via periodCount_'s fallback. */
+var SHORT_DAYS = { 'ו': 6 };
 
 /** How many of PERIODS the given day actually uses. */
 function periodCount_(day) {
@@ -1117,14 +1197,14 @@ function periodCount_(day) {
 }
 
 /**
- * The מערכת tab's row geometry, computed once from DAYS and
- * periodCount_ and shared by writeDayColumn_, styleSchedule_ and
- * seedSchedule_ — so the three agree on exactly where each day's block
- * starts and ends without three separate copies of the same arithmetic
- * (which is exactly how a uniform-row assumption would creep back in).
+ * The מערכת tab's row geometry AS SEEDED — five fourteen-period days
+ * and a six-period Friday, 76 data rows in all, ending at row 77.
  *
  * offsets[i] is the 0-based row offset of day i, relative to row 2 (the
  * first data row); total is every day's rows added together.
+ *
+ * This is the shape a fresh tab is built to. It is NOT necessarily the
+ * shape a live tab is in — see readDayBlocks_.
  */
 function scheduleLayout_() {
   var counts = DAYS.map(periodCount_);
@@ -1138,28 +1218,150 @@ function scheduleLayout_() {
 }
 
 function scheduleHeaders_() {
-  return ['יום', 'שיעור', 'התחלה', 'סיום'].concat(GRADES);
+  var head = ['יום', 'שיעור', 'התחלה', 'סיום'];
+  GRADES.forEach(function (g) { head.push(g, roomHeader_(g)); });
+  return head;
+}
+
+/**
+ * The last row of the timetable, judged only by the columns the
+ * timetable owns.
+ *
+ * getLastRow() answers for the whole sheet, so a note someone left in
+ * column T at row 400 would stretch Friday's block to four hundred rows.
+ * Scanning the header's own width keeps that out.
+ */
+function scheduleLastRow_(sh) {
+  var width = Math.min(scheduleHeaders_().length, sh.getMaxColumns());
+  var vals = sh.getRange(1, 1, sh.getMaxRows(), width).getValues();
+  for (var r = vals.length - 1; r >= 1; r--) {
+    for (var c = 0; c < width; c++) {
+      if (String(vals[r][c]).trim() !== '') return r + 1;
+    }
+  }
+  return 1;
+}
+
+/**
+ * The day blocks as they ACTUALLY stand in the sheet, read back out of
+ * column A — or null when column A holds nothing this script recognises.
+ *
+ * This is what makes an inserted split row safe. Sheets extends a merged
+ * block when a row is inserted inside it, so the day letter stays on top
+ * and the new row exports blank underneath: reading the letters back
+ * gives the true per-day heights, where scheduleLayout_ would still be
+ * describing the 76-row grid the tab had on the day it was seeded.
+ * Writing THAT over a sheet with split rows in it would slide every day
+ * letter up the sheet and silently reassign lessons to the wrong day.
+ *
+ * Returns null — meaning "no skeleton here, use the canonical one" — for
+ * a fresh tab, and for the older shape that repeats the letter on every
+ * row, which is a migration rather than a geometry worth preserving.
+ */
+function readDayBlocks_(sh) {
+  var last = scheduleLastRow_(sh);
+  if (last < 2) return null;
+  var vals = sh.getRange(2, 1, last - 1, 1).getValues();
+  var offsets = [];
+  for (var i = 0; i < vals.length; i++) {
+    var v = String(vals[i][0]).trim();
+    if (!v) continue;
+    /* the letters must be the days, once each, in order */
+    if (v !== DAYS[offsets.length]) return null;
+    offsets.push(i);
+  }
+  if (offsets.length !== DAYS.length) return null;
+  if (offsets[0] !== 0) return null;             /* must start at row 2 */
+  var counts = [];
+  for (var d = 0; d < DAYS.length; d++) {
+    counts.push((d + 1 < DAYS.length ? offsets[d + 1] : vals.length) -
+                offsets[d]);
+  }
+  return { counts: counts, offsets: offsets, total: vals.length };
+}
+
+/** Does the tab hold anything the principal typed — a subject or room? */
+function scheduleHasSubjects_(sh) {
+  var first = SCHEDULE_FIXED_COLS + 1;
+  if (sh.getMaxColumns() < first) return false;
+  var last = scheduleLastRow_(sh);
+  if (last < 2) return false;
+  var width =
+    Math.min(scheduleHeaders_().length, sh.getMaxColumns()) - first + 1;
+  if (width < 1) return false;
+  var vals = sh.getRange(2, first, last - 1, width).getValues();
+  for (var r = 0; r < vals.length; r++) {
+    for (var c = 0; c < width; c++) {
+      if (String(vals[r][c]).trim() !== '') return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The geometry styleSchedule_ and writeDayColumn_ must agree on, in
+ * three cases:
+ *
+ *   • no readable skeleton (a fresh tab, or the old repeated-letter
+ *     shape) → the canonical grid, which is also the migration;
+ *   • the current shape, at or above the canonical height → ITS OWN
+ *     blocks, so rows inserted for concurrent classes survive;
+ *   • a SHORTER shape that still holds subjects → an error. That is a
+ *     sheet built to a previous version's geometry (eleven periods, no
+ *     room columns), and restating the canonical skeleton over it would
+ *     leave every subject under the wrong day, the wrong period and the
+ *     wrong grade. This script may only write column A, so it cannot
+ *     repair that — it has to refuse, and say why.
+ */
+function scheduleGeometry_(sh) {
+  var canonical = scheduleLayout_();
+  var actual = readDayBlocks_(sh);
+  if (!actual) return canonical;
+
+  var shorter = false;
+  for (var i = 0; i < canonical.counts.length; i++) {
+    if (actual.counts[i] < canonical.counts[i]) shorter = true;
+  }
+  if (!shorter) return actual;
+  if (!scheduleHasSubjects_(sh)) return canonical;
+
+  throw new Error(
+    'לשונית "מערכת" בנויה לפי מבנה ישן: ' + actual.total +
+    ' שורות נתונים במקום ' + canonical.total + ', וכבר יש בה מקצועות. ' +
+    'כדי לא להזיז שיעורים ליום ולשיעור הלא נכונים, הסקריפט לא נגע בה. ' +
+    'יש להעתיק את התוכן לגיליון צדדי, למחוק את שורות הנתונים בלשונית ' +
+    '"מערכת" (בלי למחוק את הלשונית עצמה) ולהריץ שוב.');
 }
 
 /* ---------- seeds: example content for an EMPTY tab only ---------- */
 
+/**
+ * Lay down the GRID and almost nothing else.
+ *
+ * The school's real timetable is transcribed from the principal's own
+ * per-grade sheets, so a seed full of invented lessons is not a head
+ * start — it is 76 rows of fiction to delete first. What the seed owes
+ * her is the skeleton she cannot type herself: every day, every period,
+ * its bell times, and an empty subject/room pair per grade.
+ *
+ * Two example lessons on Sunday stay, and only two: they show what a
+ * filled subject-and-room pair looks like, which is not obvious from an
+ * empty grid, and they are meant to be typed straight over.
+ */
 function seedSchedule_(sh) {
-  var SUBJECTS = ['מתמטיקה', 'אנגלית', 'לשון', 'היסטוריה', 'ביולוגיה',
-                  'פיזיקה', 'כימיה', 'ספרות', 'תנ"ך', 'אזרחות',
-                  'חינוך גופני', 'מחשבים'];
+  var EXAMPLE = [
+    ['מתמטיקה', 'חדר 12'], ['אנגלית', 'חדר 8'], ['לשון', 'חדר 3'],
+    ['היסטוריה', 'חדר 21'], ['ביולוגיה', 'מעבדה'], ['פיזיקה', 'חדר 14']
+  ];
   var rows = [];
   DAYS.forEach(function (day, di) {
-    /* every day gets all of its own rows (periodCount_); only some are
-       filled with a subject. Friday is already short, so nothing thins
-       it further. */
     var count = periodCount_(day);
-    var filled = day === 'ו' ? count : (di % 2 === 0 ? 9 : 7);
     for (var p = 0; p < count; p++) {
       var row = [day].concat(PERIODS[p]);
       GRADES.forEach(function (g, gi) {
-        /* upper grades keep going later than the lower ones */
-        var has = p < filled && !(p >= 7 && gi < 2);
-        row.push(has ? SUBJECTS[(di * 5 + p * 3 + gi * 7) % SUBJECTS.length] : '');
+        var show = di === 0 && p < 2;
+        var ex = EXAMPLE[(gi + p) % EXAMPLE.length];
+        row.push(show ? ex[0] : '', show ? ex[1] : '');
       });
       rows.push(row);
     }
@@ -1241,49 +1443,61 @@ function ensureSettingRows_(sh) {
    read or replace what is typed in those rows. */
 
 function styleSchedule_(sh) {
+  /* Geometry first, and before anything is written: on a tab built to an
+     older, shorter shape this throws, and setup() reports that one tab
+     as failed instead of restating a skeleton its contents no longer
+     fit. On a live tab with split rows in it, this is what returns the
+     blocks as they really stand. */
+  var layout = scheduleGeometry_(sh);
   var headers = scheduleHeaders_();
   writeHeader_(sh, headers);
-  var layout = scheduleLayout_();
   var rows = layout.total;
 
-  /* Day and period are structural: the board groups rows by them, and a
-     stray edit here silently moves classes to another day. Times stay
-     editable — bell schedules genuinely differ between schools. */
-  lock_(sh.getRange(2, 1, rows, 2), 'יום ומספר שיעור — לא לשינוי');
+  /* Day, period and BOTH times are structural and script-written: the
+     board groups rows by day and orders them by start time, so a stray
+     edit here silently moves a class. Locking all four is also what
+     makes an inserted split row unambiguous — the principal cannot fill
+     them in, so a row with no time of its own can only mean "the same
+     lesson slot as the row above", which is exactly what it does mean. */
+  lock_(sh.getRange(2, 1, rows, SCHEDULE_FIXED_COLS), SCHEDULE_LOCK);
   /* Protection stops other editors but never the owner, so locked cells
      also LOOK locked. The grey BACKGROUND carries that signal on its own,
      like a form field you cannot type in; the text stays black, because
-     these two columns are the ones you actually read while finding the
-     right row, and dimming them made the sheet harder to use for no gain
-     in clarity about what is editable. */
-  sh.getRange(2, 1, rows, 2)
+     these are the columns you actually read while finding the right row,
+     and dimming them made the sheet harder to use for no gain in clarity
+     about what is editable. */
+  sh.getRange(2, 1, rows, SCHEDULE_FIXED_COLS)
     .setHorizontalAlignment('center')
     .setBackground('#f0f0f0')
     .setFontColor('#000000');
   /* after the block styling above, so the day letter's own size wins */
-  writeDayColumn_(sh);
-  /* a faint band per day, so 60 rows stay readable */
+  writeDayColumn_(sh, layout);
+  /* a faint band per day, so 76 rows stay readable */
   sh.getRange(2, 1, rows, headers.length).setBorder(
     null, null, null, null, null, true, '#d9d9d9',
     SpreadsheetApp.BorderStyle.SOLID);
 
-  /* One colour per grade column, matching that grade's card on the
-     board. Sixty rows of undifferentiated grid is hard to read; the
-     colour makes the six groups obvious at a glance, and means a
-     subject typed into the wrong grade stands out. */
+  /* One colour per grade, matching that grade's card on the board, over
+     BOTH of its columns — subject and room read as one group that way,
+     and a subject typed into the next grade's column still stands out.
+     The room itself is set smaller and grey: it is an annotation on the
+     lesson beside it, not a second lesson. */
   GRADES.forEach(function (g, gi) {
-    var col = 5 + gi;
-    sh.getRange(1, col).setBackground(GRADE_HEADER_TINTS[gi % GRADE_HEADER_TINTS.length]);
-    sh.getRange(2, col, rows)
+    var col = gradeColumn_(gi);
+    sh.getRange(1, col, 1, 2)
+      .setBackground(GRADE_HEADER_TINTS[gi % GRADE_HEADER_TINTS.length]);
+    sh.getRange(2, col, rows, 2)
       .setBackground(GRADE_TINTS[gi % GRADE_TINTS.length]);
+    sh.getRange(2, col + 1, rows)
+      .setFontSize(9)
+      .setFontColor('#666666');
   });
 
-  /* A thick box around each day's own rows — eleven for every day except
-     Friday, whose block is five. The height comes from layout.counts
-     rather than a flat PERIODS.length, which is what keeps the boxes
-     right now that the days are not all the same length. Sixty rows of
-     timetable is one undifferentiated block otherwise, and the day
-     column alone is easy to lose track of when scrolling. */
+  /* A thick box around each day's own rows — fourteen for every day
+     except Friday, whose block is six, PLUS whatever rows have been
+     inserted into it for concurrent classes. The height comes from
+     layout.counts, which is why an inserted row lands inside its day's
+     box instead of pushing the boxes out of step with the content. */
   DAYS.forEach(function (day, di) {
     sh.getRange(2 + layout.offsets[di], 1, layout.counts[di], headers.length)
       .setBorder(true, true, true, true, null, null,
@@ -1293,16 +1507,22 @@ function styleSchedule_(sh) {
   sh.setColumnWidth(1, 60);
   sh.setColumnWidth(2, 70);
   sh.setColumnWidths(3, 2, 80);
-  sh.setColumnWidths(5, GRADES.length, 130);
+  GRADES.forEach(function (g, gi) {
+    sh.setColumnWidth(gradeColumn_(gi), 120);
+    sh.setColumnWidth(gradeColumn_(gi) + 1, 75);
+  });
   sh.getRange('A1').setNote(
-    'אחד-עשר שיעורים בימים א׳-ה׳ (מספרים 0 עד 10), מוכנים מראש.\n' +
-    'ביום ו׳ יש חמישה בלבד (מספרים 0 עד 4) — יום הלימודים שם מסתיים\n' +
-    'ב-11:40, ולכן אין טעם בשורות מעבר לכך.\n\n' +
-    'ממלאים רק את שמות המקצועות בעמודות השכבות.\n' +
+    'ארבעה-עשר שיעורים בימים א׳-ה׳, ממוספרים 1 עד 14, מוכנים מראש.\n' +
+    'ביום ו׳ יש שישה בלבד (1 עד 6) — הלימודים שם מסתיימים ב-13:30.\n' +
+    'אין "שיעור 0": היום מתחיל בשיעור 1 בשעה 08:15.\n\n' +
+    'לכל שכבה שתי עמודות: המקצוע, ולידו החדר. ממלאים רק אותן.\n' +
     'תא ריק = אין שיעור. יום הלימודים מסתיים אחרי המקצוע האחרון\n' +
     'שהוזן, וכל מה שאחריו לא יוצג על הלוח.\n\n' +
-    'עמודות "יום" ו"שיעור" נעולות — אין צורך לשנות אותן.\n' +
-    'כל עמודה אחרי "סיום" היא שכבה — הלוח מתאים את עצמו אוטומטית.');
+    'שיעור שמתפצל לכמה קבוצות באותה שעה: לוחצים לחיצה ימנית על שורת\n' +
+    'השיעור ובוחרים "הוספת שורה מתחת", ובשורה החדשה ממלאים רק את\n' +
+    'המקצוע והחדר של הקבוצה הנוספת. משאירים את עמודות היום, השיעור\n' +
+    'והשעות ריקות — הלוח מבין ששורה כזו שייכת לשיעור שמעליה.\n\n' +
+    'העמודות "יום", "שיעור", "התחלה" ו"סיום" נעולות — אין למלא בהן.');
 }
 
 function styleExams_(sh) {

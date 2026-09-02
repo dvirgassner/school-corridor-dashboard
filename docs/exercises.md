@@ -91,18 +91,21 @@ it. Number 5 is why every piece of sheet text passes through `esc()`.
 
 Set `?time=08:00` so every card is full. Watch a card with many classes.
 
-1. In `app.js`, find `layoutPages()`. What is `perPage`, and where does
-   the number come from?
-2. `ROW_H` is 52 and there is a comment saying it must match the CSS.
-   Change `.period`'s height in the CSS to 70 but *don't* change
-   `ROW_H`. What breaks, and why?
-3. Fix it properly. Then explain why this duplication exists at all —
-   and how you would remove it. (This is a real weakness in the code,
-   not a trick question.)
+1. In `app.js`, find `layoutCard()`. Where do the numbers it packs come
+   from — the stylesheet, or the rendered page?
+2. This function replaced `perPage = floor(paneH / 52)`, where 52 was a
+   constant that had to match `.period`'s height in the CSS. Find
+   `packPages()` in `logic.js` and work out what changed about the rows
+   that made a single constant impossible.
+3. `packPages()` is given whole `.slot` boxes, never lines. Try to write
+   a version that could show 2 of 3 concurrent classes. Why can't you —
+   and why is that a better guarantee than a check that the page did not
+   split a group?
 
-**What this teaches:** duplicated constants between CSS and JS are a
-classic source of bugs. Finding this kind of coupling is most of what
-code review actually is.
+**What this teaches:** a constant duplicated between CSS and JS is a
+classic source of bugs, and the usual fix is to measure instead of
+assume. The second half is about the stronger move: choosing a data
+structure in which the bug cannot be expressed.
 
 ## 6. Set up your own Pi (an afternoon)
 

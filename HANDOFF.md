@@ -1,6 +1,6 @@
 # Handoff — school corridor dashboard
 
-State as of **2026-09-02**. Board `0.202`, Apps Script `0.201`, 232 tests
+State as of **2026-09-02**. Board `0.210`, Apps Script `0.201`, 285 tests
 passing.
 
 ## What it is
@@ -20,7 +20,13 @@ outside the repo. Without it you cannot reach the Pi.
 ## Live right now
 
 - Board deployed, showing real data.
-- Sheet has six tabs; the principal is using it.
+- Sheet has the five shared tabs plus **six per-grade timetable tabs**
+  (`מערכת ז` … `מערכת יב`); the principal is using it.
+- **The board now reads the six per-grade tabs and renders concurrent
+  classes with rooms** (`0.210`, the approved card redesign). The Pi is
+  still on its OLD kiosk URL and therefore still reading the single
+  legacy `מערכת` tab — that path is kept working deliberately. See
+  *Repointing the Pi* below; that is the only step left.
 - Remote access via a reverse-SSH relay on port 443 (Tailscale and
   Cloudflare are both blocked by the school's SNI filter — do not retry
   them without new evidence).
@@ -47,7 +53,17 @@ outside the repo. Without it you cannot reach the Pi.
    ministry feed also ships one malformed 369-day record that would blank
    the board for a year if believed.
 
-4. **A second Chromium on the kiosk's shared profile crashes both.** Manual
+4. **Two tabs can spell the same grade differently and never match.**
+   The per-grade timetable tabs title themselves `מערכת שעות לכיתה ז'`
+   with an ASCII apostrophe; the events and closures tabs head their
+   tick-box columns `ז׳` with a Hebrew geresh. Identical on screen, not
+   equal in code — so every event chip and every per-grade closure would
+   have silently stopped matching the moment the grade list started
+   coming from the timetable tabs. `gradeCell()` in `logic.js` matches on
+   the letters instead. Anything that compares a grade name across tabs
+   must go through it.
+
+5. **A second Chromium on the kiosk's shared profile crashes both.** Manual
    SSH launch for debugging competes with the autostarted instance for one
    profile directory, corrupting both. Exit of the manual one kills both
    instances together — live board down. The crash is often silent but may
@@ -70,6 +86,7 @@ outside the repo. Without it you cannot reach the Pi.
 | **Under-voltage** | Unresolved. `0x50005` — throttled *now*, not historically. Needs a 5.1 V / 2.5 A supply with a captive cable. Can masquerade as a TV fault. |
 | **CEC end-to-end** | Untested. First real trial is the 07:00 wake on Sunday 30 Aug; it has never once worked. |
 | **Run `setup()`** | Pending, on `0.201`. It must rebuild the `מערכת` grid to periods 1-14 — the tab is still half-migrated, column A on the new geometry and B-D on the old. Confirm the toast says `מערכת: הלוח נבנה מחדש ואומת ✓`; anything else means it did not take. Also for the renamed theme dropdown — then re-pick the theme, the cell holds a superseded name. |
+| **Repoint the Pi to the six tabs** | Pending. Append `&s=<six gids>` to `DASH_URL` in `~/.dashboard-env` and reboot — a pure URL change, reversible, no code involved. Exact format and the check to run after it: `pi/README.md`. |
 | **Service worker offline** | Never verified, and must not be tested on the wall Pi. |
 | **`gviz` by name** | Would remove tab gids from the board URL entirely; verified it works and sends CORS. Trade-off: a gid survives a tab rename, a name does not. Argued in `docs/decisions.md`, not acted on. |
 | **Relay VPS has no monitoring of its own** | The 2026-08 IPv4 lockout (see `docs/decisions.md`) was found by a human, not an alert — the Pi/TV healthchecks both depend on the relay already working. No check currently watches the relay itself. |

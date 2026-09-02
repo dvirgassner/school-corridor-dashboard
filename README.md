@@ -53,8 +53,8 @@ Useful URL parameters:
 |---|---|
 | `?time=13:00` | pretend it is a different time of day |
 | `?date=2027-03-14` | pretend it is another date (day-of-the-day strip, weekday) |
-| `?theme=light` | preview a theme (`dark`, `light`, `colorful`) |
-| `?demo7` | preview the layout with a 7th grade added |
+| `?theme=light` | preview a theme (`dark`, `light`, `colorful`, `colorful2`) |
+| `?allday=1` / `?allday=0` | show the whole day, or drop each class as it finishes — the `אופן הצגת שיעורים` setting, without editing the sheet |
 | `?upd` | preview the "עודכן" badge on a changed class |
 | `?err=sheets` | preview the fault indicator (`sheets`, `github`, `offline`) |
 
@@ -118,13 +118,14 @@ rules for which rows to show.
 ## Deploying it
 
 1. **The sheet**: follow [`sheet-template/README.md`](sheet-template/README.md).
-   You end with a document id (or publish token) and five gids — do
-   **not** commit them.
+   You end with a document id (or publish token), five gids for the
+   shared tabs and six more for the per-grade timetables — do **not**
+   commit them.
 2. **The page**: push this repo to GitHub, then **Settings → Pages →
    Deploy from a branch → `main` / root**. Your board lives at
    `https://<your-user>.github.io/<your-repo>/dashboard/`.
 3. **The Pi**: follow [`pi/README.md`](pi/README.md), giving it
-   `DASH_URL` = the Pages URL **plus** the `#d=…&g=…` fragment.
+   `DASH_URL` = the Pages URL **plus** the `#d=…&g=…&s=…` fragment.
 4. **The TV**: follow [`docs/tv-setup.md`](docs/tv-setup.md).
 
 Do them in that order — each step wants the output of the one before it.

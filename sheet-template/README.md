@@ -14,9 +14,11 @@ the board, and Google handles the accounts.
 5. Google will ask for authorization the first time ("This app isn't
    verified" → Advanced → Go to project). That is expected: the script
    is yours and only touches this one spreadsheet.
-6. When it finishes you get a confirmation dialog and five tabs:
+6. When it finishes you get a confirmation dialog and the tabs:
    `מערכת`, `מבחנים`, `אירועים`, `הודעות`, `הגדרות` — with headers,
-   sample rows, and validation already in place.
+   sample rows, and validation already in place. The six per-grade
+   timetable tabs (`מערכת ז` … `מערכת יב`) are maintained by hand in
+   the school's own sheet; `setup.gs` does not build them yet.
 
 ### Re-running `setup` is safe, at any point in the sheet's life
 
@@ -90,18 +92,29 @@ https://docs.google.com/spreadsheets/d/e/<TOKEN>/pub?gid=<GID>&single=true&outpu
                                      same for all four   one per tab
 ```
 
-So the sheet is identified by **one token plus four gids**. Rather than
-committing those to this repository — which is public, and would let
+So the sheet is identified by **one token plus a list of gids**. Rather
+than committing those to this repository — which is public, and would let
 anyone read the school's sheet — they are given to the board at runtime
 in the **URL fragment**, which lives only on the Pi:
 
 ```
-https://<you>.github.io/<repo>/dashboard/#t=<TOKEN>&g=<gid-מערכת>,<gid-מבחנים>,<gid-אירועים>,<gid-הודעות>,<gid-הגדרות>
+https://<you>.github.io/<repo>/dashboard/#t=<TOKEN>&g=<gid-מערכת>,<gid-מבחנים>,<gid-אירועים>,<gid-הודעות>,<gid-הגדרות>&s=<gid-מערכת‑ז>,<gid-ח>,<gid-ט>,<gid-י>,<gid-יא>,<gid-יב>
 ```
 
-**The gid order matters:** מערכת, מבחנים, אירועים, הודעות, הגדרות.
-The fifth (הגדרות) is optional — leave it out and the board uses the
-default dark theme.
+**The gid order matters in both keys.** `g=` is מערכת, מבחנים,
+אירועים, הודעות, הגדרות; the fifth (הגדרות) is
+optional — leave it out and the board uses the default dark theme.
+
+`s=` is the **six per-grade timetable tabs** — `מערכת ז` through
+`מערכת יב`, in grade order — and it is what the board actually
+renders. Its order is the order the grade cards appear in and take
+their colours from.
+
+`g=`'s first entry is the **old single all-grades `מערכת` tab**, kept
+so that an older board still finds a timetable and a newer one has
+something to fall back to. A URL with no `s=` uses it; a malformed `s=`
+is ignored rather than rejected, for the same reason. See
+[`../pi/README.md`](../pi/README.md) for the full rationale.
 
 Collect the token and the gids from the URLs you copied in step 2,
 assemble that one line, and give it to the Pi as `DASH_URL`
@@ -125,7 +138,7 @@ school's real content.
 
 ### Simpler alternative: link sharing instead of publishing
 
-Publishing five tabs one by one is tedious. There is a second form the
+Publishing eleven tabs one by one is tedious. There is a second form the
 board accepts, which needs **one** setting instead of five publishes:
 
 1. In the sheet: **Share → General access → Anyone with the link →
@@ -135,7 +148,7 @@ board accepts, which needs **one** setting instead of five publishes:
 3. Use `#d=` instead of `#t=`:
 
 ```
-https://<you>.github.io/<repo>/dashboard/#d=<DOCUMENT-ID>&g=<gid>,<gid>,<gid>,<gid>,<gid>
+https://<you>.github.io/<repo>/dashboard/#d=<DOCUMENT-ID>&g=<gid>,<gid>,<gid>,<gid>,<gid>&s=<gid>,<gid>,<gid>,<gid>,<gid>,<gid>
 ```
 
 The gids are the same numbers, visible in the address bar as `#gid=…`
@@ -224,10 +237,12 @@ English-headed sheet keeps working.)
 
 | Tab | Column | Meaning |
 |---|---|---|
-| מערכת | `יום` | א–ו (Sunday–Friday), one merged cell per day |
-| | `שיעור`, `התחלה`, `סיום` | period 1–14 (1–6 on Friday; there is no period 0) and `HH:MM` times — all four leading columns are script-written and locked |
-| | two columns per grade | the subject, then `<grade> חדר` for the room; empty = no class |
-| | a row with the four leading columns BLANK | a concurrent class in the slot above: the principal inserts it to split one period into groups, and fills in only that group's subject and room |
+| `מערכת <grade>` ×6 | A1 | the grade's own name, e.g. `מערכת שעות לכיתה ז'` — this is the heading the board puts on that grade's card |
+| | row 2 | the six day letters א–ו, each over a MERGED pair of columns, so the letter lands on the first column of the pair |
+| | row 3 | `מ-` / `עד`, then `שיעור` / `מיקום` per day pair |
+| | column A / B / C | period 1–14 and its `HH:MM` bell times, on the FIRST row of each block only; script-written and locked |
+| | a four-row block per period | one row per concurrent class, up to four. A plain period fills only the block's first row; a period that splits fills one row per group with that group's subject and room. An empty `מיקום` is a lesson with no room (חנ״ג outdoors) and still displays |
+| מערכת (single, legacy) | `יום`, `שיעור`, `התחלה`, `סיום`, then two columns per grade | the pre-migration all-grades tab. Still parsed, so a board on the old kiosk URL keeps working; a row with the four leading columns blank is a concurrent class in the slot above |
 | מבחנים | `תאריך`, `שכבה`, `מקצוע`, `התחלה`, `סיום`, `חדר` | one grade per exam; enter the subject only — the board displays "מבחן ב…" |
 | אירועים | `תאריך`, `כותרת`, `התחלה`, `סיום`, `מקום`, then one **checkbox column per grade**, plus `כולם` | tick every grade the event applies to, or tick `כולם` for a whole-school activity; `כולם` or 4+ grades display as "כולם" |
 | הודעות | `הודעה`, `סוג`, `קישור`, `מתאריך`, `עד תאריך`, `פעיל` | `סוג`: רגילה / דחופה / וידאו · `פעיל`: כן / לא · empty dates = always |

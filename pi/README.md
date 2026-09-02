@@ -54,16 +54,66 @@ adjust twice a year.)
 sudo apt install -y git
 git clone https://github.com/<your-user>/<your-repo>.git
 cd <your-repo>
-DASH_URL="https://<your-user>.github.io/<your-repo>/dashboard/#t=<TOKEN>&g=<gid>,<gid>,<gid>,<gid>" \
+DASH_URL="https://<your-user>.github.io/<your-repo>/dashboard/#t=<TOKEN>&g=<gid>,<gid>,<gid>,<gid>,<gid>&s=<gid>,<gid>,<gid>,<gid>,<gid>,<gid>" \
   bash pi/setup.sh
 ```
 
-**The `#t=…&g=…` part is what points the board at the school's Google
-Sheet, and this Pi is the only place it exists.** It is deliberately not
-in the repository, so the repository can be public without exposing the
-sheet. Get the token and the four gids (מערכת, מבחנים, אירועים, הודעות —
-in that order) from
+**The fragment is what points the board at the school's Google Sheet,
+and this Pi is the only place it exists.** It is deliberately not in the
+repository, so the repository can be public without exposing the sheet.
+Get the token and the gids from
 [`../sheet-template/README.md`](../sheet-template/README.md).
+
+### The fragment format, in full
+
+```
+#t=<TOKEN>   or   #d=<DOCUMENT-ID>      how the sheet is named
+&g=<gid>,<gid>,<gid>,<gid>,<gid>        legacy-schedule, מבחנים, אירועים,
+                                        הודעות, הגדרות — IN THAT ORDER
+&s=<gid>,<gid>,<gid>,<gid>,<gid>,<gid>  the six per-grade timetable tabs:
+                                        מערכת ז, ח, ט, י, יא, יב — IN THAT ORDER
+```
+
+`s=` is the timetable the board renders: one tab per grade. Its order
+is the order the grade cards appear in and the order they take their
+colours from, so getting it wrong repaints the board rather than
+breaking it — check the six card headings after any change.
+
+`g=` is unchanged from before the six-tab migration, **including its
+first entry**, the old single all-grades `מערכת` gid. Three things
+follow from keeping it, and they are the reason the six gids went into
+their own key instead of being appended to `g=`:
+
+- a board still running the **old code** works with the **new URL** —
+  it reads `g=` exactly as before and ignores a key it has never heard
+  of, so the repoint is not a flag day;
+- a board running the **new code** works with the **old URL** — no
+  `s=`, so it falls back to the single `מערכת` tab;
+- the repoint is therefore a **pure URL change, and reversible**.
+
+A malformed `s=` (wrong count, a non-numeric gid) is **ignored, not
+rejected**: the board falls back to the legacy tab rather than dropping
+to demo data, because a bundled sample timetable looks entirely real on
+a corridor wall and would be believed. So after changing the URL,
+**confirm the cards show the current timetable** — a board that silently
+kept the old single tab is the failure this choice trades for.
+
+The closures tab (`ימים ללא לימודים`) is still **not** in the URL: its
+gid lives in `dashboard/config.js` as `closuresGid`, so adding it never
+required restarting the kiosk. A 6th gid in `g=` overrides it.
+
+### Repointing an existing board to the six tabs
+
+```bash
+ssh dvir@kit
+nano ~/.dashboard-env          # append &s=<six gids> to DASH_URL
+sudo reboot
+```
+
+Nothing else changes. Then check the board shows the six grade cards
+with rooms beside the subjects; if it still shows one lesson per grade
+per hour with no rooms, the `s=` was not accepted and the board is on
+the legacy tab.
 
 Without the fragment the board still runs, but shows **demo data** — a
 useful way to test the Pi before the sheet exists.

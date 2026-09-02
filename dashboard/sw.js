@@ -19,7 +19,7 @@
    straight through: their freshness is the app's business, and it
    already falls back to localStorage when they fail.
    ================================================================== */
-const CACHE = "corridor-board-v5";
+const CACHE = "corridor-board-v6";
 
 const CORE = [
   "./",

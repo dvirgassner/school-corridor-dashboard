@@ -1603,6 +1603,37 @@ test("grade tab: a room with no lesson beside it is dropped", () => {
     "a leftover room cell invented a blank lesson with a pin and no name");
 });
 
+test("grade tab: a short room code passes through verbatim, never expanded with חדר", () => {
+  /* The real sheet's per-grade tabs deliberately drop the word "חדר" when
+     the room is typed in — a room cell just says "ז", not "חדר ז". The
+     board must show exactly what the cell says: no prefixing, no
+     expansion, no normalisation of the display string. */
+  const m = [
+    ["מערכת שעות לכיתה ז'"],
+    ["", "", "", "א", "", "ב", "", "ג", "", "ד", "", "ה", "", "ו", ""],
+    ["", "מ-", "עד", "שיעור", "מיקום"],
+    ["1", "08:15", "09:00", "מדעים", "ז"]
+  ];
+  const t = L.parseGradeTab(m, "?");
+  assert.deepEqual(t.byDay["א"][0].classes, [{ subject: "מדעים", room: "ז" }],
+    "the short room code was rewritten instead of passed through as-is");
+});
+
+test("mergeGradeSchedules: a short room code stays short through the merge", () => {
+  const tab = L.parseGradeTab([
+    ["מערכת שעות לכיתה ז'"],
+    ["", "", "", "א", "", "ב", "", "ג", "", "ד", "", "ה", "", "ו", ""],
+    ["", "מ-", "עד", "שיעור", "מיקום"],
+    ["1", "08:15", "09:00", "מדעים", "ז"]
+  ], "ז׳");
+  const s = L.mergeGradeSchedules([tab], ["ז׳"]);
+  const g = s.grades[0];             /* tab.label wins over the fallback,
+                                         and A1 wrote an ASCII apostrophe */
+  const p = s.byDay["א"][0];
+  assert.equal(p.rooms[g], "ז", "the merged model expanded the room name");
+  assert.deepEqual(p.entries[g], [{ subject: "מדעים", room: "ז" }]);
+});
+
 test("grade tab: an entirely empty block produces no period at all", () => {
   const t = L.parseGradeTab(FIX, "?");
   ["א", "ב", "ג", "ד", "ה", "ו"].forEach((d) => assert.ok(

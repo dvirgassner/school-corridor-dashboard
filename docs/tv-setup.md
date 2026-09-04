@@ -93,9 +93,9 @@ Turn it off, with the remote, at the set:
 (the menu was renamed between firmware years; check both paths.)
 
 Disabling this is the real fix. Until someone is at the TV to do it, the
-Pi's cron re-sends `on 0` hourly through the school day as a remote-only
-workaround — it defeats the idle timer but does nothing to the setting
-itself.
+Pi's cron re-sends `on 0` every 30 minutes through the school day as a
+remote-only workaround — it defeats the idle timer but does nothing to
+the setting itself.
 
 To check CEC is alive from the Pi:
 

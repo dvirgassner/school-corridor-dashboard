@@ -365,11 +365,19 @@ cat >> "$CRON_TMP" <<EOF
 # and a CEC power-on does not reset it, so the 07:00 wake above does not
 # stop it firing again mid-morning. Found 2026-08-30 when the TV probe
 # caught the set in standby during school hours with CEC otherwise
-# healthy. Re-sending "on 0" hourly defeats the idle timer; it is a no-op
-# when the TV is already on. Each day's last wake stays before that day's
-# standby line below, so the two never fight.
-0 8-17 * * 0-4 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
-0 8-13 * * 5 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+# healthy. Re-sending "on 0" defeats the idle timer; it is a no-op when
+# the TV is already on.
+#
+# Every 30 minutes, not hourly. Healthchecks history read on 2026-09-04
+# shows the wake itself works — the idle timer fires, the next wake
+# recovers the set — so the interval buys exactly one thing: how long the
+# corridor stares at a dark screen in between. Hourly meant up to 60
+# minutes dark; :00 and :30 halves that to 30. Only the minute field
+# changed. The hour windows still stop one hour short of each day's
+# standby, so the last wake is 17:30 Sun-Thu (standby 18:00) and 13:30
+# Fri (standby 14:00), and the two never fight.
+0,30 8-17 * * 0-4 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
+0,30 8-13 * * 5 echo "on 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
 # corridor-board: TV to standby 18:00 Sun-Thu, 14:00 Fri
 0 18 * * 0-4 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board
 0 14 * * 5 echo "standby 0" | cec-client -s -d 1 >/dev/null 2>&1 # corridor-board

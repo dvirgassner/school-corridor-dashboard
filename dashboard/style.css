@@ -639,8 +639,10 @@
   /* All of today's classes are over. The end time comes from the card's
      own last row via attr(), so each grade states its own finishing time
      rather than a single time for the whole school — the panes genuinely
-     end at different hours. The bare fallback covers a grade with no
-     classes listed at all, where there is no time to name. */
+     end at different hours. tick() always sets data-endtime alongside
+     "empty" for a card that had lessons, and always routes a card with
+     none to .noschool below instead (never both at once) — so this bare
+     rule is a defensive fallback, not a state tick() produces. */
   .periods.empty::after { content: "יום הלימודים הסתיים";
                           display: block;
                           color: var(--muted); font-size: 24px;
@@ -648,6 +650,12 @@
   .periods.empty[data-endtime]::after {
     content: "יום הלימודים הסתיים בשעה " attr(data-endtime);
   }
+  /* "No classes listed at all" is a different statement from "the day
+     is over" — the bare .empty fallback above used to conflate them, so
+     a grade with nothing in the sheet today (e.g. כיתה יב on Friday)
+     read as though its day had ended, which it never started. Source
+     order: this must come after both rules above to win over them. */
+  .periods.empty.noschool::after { content: "אין לימודים היום"; }
   /* ================================================================
      THE CONCURRENT-CLASS GROUP — the point of the card redesign.
 

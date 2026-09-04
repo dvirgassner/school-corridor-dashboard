@@ -37,7 +37,7 @@ window.DASH_CONFIG = {
   /* Shown bottom-left so you can tell at a glance which build a screen
      is running when someone reports a problem. Bump it when you deploy
      something you might need to identify later. */
-  version: "0.213",
+  version: "0.214",
 
   refreshSeconds: 60,        /* how often to re-read the sheet        */
   /* How often to check whether a new build has been published. On a
@@ -50,7 +50,10 @@ window.DASH_CONFIG = {
      The last class of the day therefore stays on the board this long
      after its official end time, and only then does the pane switch to
      "יום הלימודים הסתיים". Applies to the final class only — earlier
-     ones still make way for the next as soon as they end. */
+     ones still make way for the next as soon as they end. A grade with
+     no lessons in the sheet at all skips this grace entirely: there is
+     no last class to wait out, and its pane reads "אין לימודים היום"
+     from the first tick. */
   endOfDayGraceMinutes: 5,
 
   /* Does a class disappear once it is over?
@@ -65,7 +68,10 @@ window.DASH_CONFIG = {
      wider view.
      Two consequences of `false` worth knowing: every pane pages all day
      rather than settling down in the afternoon, and "יום הלימודים
-     הסתיים" never appears, since the pane is never empty.
+     הסתיים" never appears for a grade that HAD lessons today, since its
+     pane is never empty. A grade with no lessons in the sheet at all is
+     unaffected by this setting either way — "אין לימודים היום" still
+     appears, because that pane was never showing lessons to hide.
      Also switchable per-URL for a side-by-side look, without editing
      anything: ?allday=1 shows the whole day, ?allday=0 hides passed. */
   hidePassedClasses: false,

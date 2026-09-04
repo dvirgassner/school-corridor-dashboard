@@ -958,8 +958,12 @@ function tick() {
      "יום הלימודים הסתיים" over the closure reason. */
   document.querySelectorAll(".periods:not(.closedpane)").forEach((c) => {
     const slots = [...c.querySelectorAll(".slot")];
-    if (!slots.length) {                    /* no classes at all today */
-      c.classList.add("empty");
+    if (!slots.length) {
+      /* An empty sheet day (e.g. כיתה יב on Friday) is not a finished
+         day — there was never anything to finish — so it gets its own
+         class and its own CSS message instead of sharing "empty" with
+         a grade whose last lesson has simply ended. */
+      c.classList.add("empty", "noschool");
       c.removeAttribute("data-endtime");
       return;
     }
@@ -986,6 +990,7 @@ function tick() {
 
     c.dataset.endtime = lastEndText;       /* read by the CSS message */
     c.classList.toggle("empty", shown.length === 0);
+    c.classList.remove("noschool");   /* this card has slots: never a no-school day */
   });
   markAgendaDone(nowMin);
   layoutCards();   /* slot visibility changed → re-measure pages */

@@ -393,7 +393,15 @@ fi
 # see pi/tv-probe.sh.
 if [ -n "$TV_HEALTHCHECK_URL" ]; then
   install -m 0755 "$(dirname "$0")/tv-probe.sh" "$HOME/tv-probe.sh"
-  echo "*/10 * * * * $HOME/tv-probe.sh # corridor-board" >> "$CRON_TMP"
+  # The offset minutes are load-bearing. Do NOT "tidy" this back to */10.
+  # The CEC wakes above fire at :00 and :30, and the 07:00 wake at :00
+  # too. A */10 probe therefore runs in the same second as a wake, reads
+  # the set while "on 0" is still in flight, sees "standby" and pages —
+  # which is why this check sent a false-alarm email every single
+  # morning until 2026-09-04. 5,15,25,35,45,55 is still six probes an
+  # hour, so the healthchecks period and grace need no change, but each
+  # one now lands 5 minutes AFTER a wake instead of on top of one.
+  echo "5,15,25,35,45,55 * * * * $HOME/tv-probe.sh # corridor-board" >> "$CRON_TMP"
 fi
 crontab "$CRON_TMP"
 rm -f "$CRON_TMP"

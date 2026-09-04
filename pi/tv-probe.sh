@@ -1,9 +1,11 @@
 #!/bin/sh
 # tv-probe.sh — is the TV actually ON when it is supposed to be?
 #
-# Installed by setup.sh as a cron job every 10 minutes, but only when
-# TV_HEALTHCHECK_URL is set in ~/.dashboard-env. Reports to a healthchecks
-# check SEPARATE from the Pi's own heartbeat, so "the Pi died" and "the TV
+# Installed by setup.sh as a cron job every 10 minutes — at 5,15,25,35,
+# 45,55, deliberately offset from the CEC wakes at :00 and :30 so a probe
+# never reads the set mid-wake and reports a false standby — but only
+# when TV_HEALTHCHECK_URL is set in ~/.dashboard-env. Reports to a
+# healthchecks check SEPARATE from the Pi's own heartbeat, so "the Pi died" and "the TV
 # died" arrive as different alerts.
 #
 # ---------------------------------------------------------------------

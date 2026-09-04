@@ -256,10 +256,12 @@ knows.
 
 Set `TV_HEALTHCHECK_URL` (a **second** healthchecks.io check, separate
 from the Pi's own heartbeat) and `setup.sh` installs `pi/tv-probe.sh` on
-a 10-minute cron. It fails loudly when the TV is off during school hours
-or the HDMI connector disappears, pings OK when standby is expected, and
-stays silent when it cannot get an answer — so a single flaky CEC reply
-never raises an alert.
+a 10-minute cron, at 5,15,25,35,45,55 rather than `*/10` so no probe
+coincides with a CEC wake at :00 or :30 and reads the set mid-wake. It
+fails loudly when the TV is off during school hours or the HDMI
+connector disappears, pings OK when standby is expected, and stays silent
+when it cannot get an answer — so a single flaky CEC reply never raises
+an alert.
 
 ## Everyday maintenance
 

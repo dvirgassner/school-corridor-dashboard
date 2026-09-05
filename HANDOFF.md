@@ -1,6 +1,6 @@
 # Handoff — school corridor dashboard
 
-State as of **2026-09-05**. Board `0.214`, Apps Script `0.202`, 311 tests
+State as of **2026-09-05**. Board `0.214`, Apps Script `0.203`, 311 tests
 passing.
 
 ## What it is
@@ -42,6 +42,16 @@ to the Pi, the relay, or the sheet's structure.
   The PDFs store Hebrew character-mirrored — `pdfplumber` table extraction
   + reverse each cell, then un-reverse digit runs. `markitdown` alone loses
   the grid.
+- **Video messages are switched off** (Apps Script `0.203`, 2026-09-05):
+  the principal must not be able to put a clip on the corridor screen.
+  One flag, `VIDEO_MESSAGES = false` in `setup.gs`, drops `וידאו` from
+  the `סוג` dropdown and stops the script styling/validating columns C-D
+  of `הודעות`; the columns themselves were deleted in the sheet by hand.
+  Nothing that plays a video was removed — `app.js`/`logic.js` are
+  untouched and the column names and rules stay in the script behind the
+  flag. To bring it back: flip the flag, bump the version, `clasp push`,
+  run `setup()` once (re-creates C-D), and restore the video section in
+  `docs/admin-guide.md` (now a one-line "switched off" note).
 - **The board reads the six per-grade tabs and renders concurrent
   classes with rooms** (`0.210`, the approved card redesign). **The Pi
   is repointed**: its kiosk URL carries `&s=<six gids>` and the board

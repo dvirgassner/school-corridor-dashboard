@@ -26,7 +26,7 @@
    Apps Script project is actually executing — Apps Script merges every
    file in the project, so an old Code.gs left behind will quietly win
    over a newer paste. */
-var SCRIPT_VERSION = '0.202';
+var SCRIPT_VERSION = '0.203';
 
 /**
  * Report to whoever is watching, without ever throwing.
@@ -147,7 +147,15 @@ var NO_PII_NOTE =
   'אישי אחר. מותר: מערכת שעות, מבחנים, אירועים והודעות כלליות.';
 
 var DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
-var TYPES = ['רגילה', 'דחופה', 'וידאו'];
+/* Video messages are switched OFF (Dvir, 2026-09-05): the principal must
+   not be able to put a clip on the corridor screen. Nothing that plays a
+   video is deleted — the board still handles a וידאו row with a link, and
+   every column name and rule below is kept — it is all gated on this one
+   flag. To turn it back on: set true, bump SCRIPT_VERSION, clasp push,
+   then run setup() once so styleMessages_ re-creates columns C-D. */
+var VIDEO_MESSAGES = false;
+
+var TYPES = VIDEO_MESSAGES ? ['רגילה', 'דחופה', 'וידאו'] : ['רגילה', 'דחופה'];
 var YESNO = ['כן', 'לא'];
 var THEMES = ['כהה', 'בהירה', 'צבעונית 1', 'צבעונית 2'];
 
@@ -194,8 +202,9 @@ var TAB_RULES = ['מערכת', 'מבחנים', 'אירועים', 'הודעות',
 /* The link header spells out what belongs in it, because "קישור" alone
    invites any URL. The board matches this column by its leading word,
    so the parenthetical can be reworded freely. */
-var MESSAGE_HEADERS = ['הודעה', 'סוג',
-                       'קישור לוידאו (Google Drive או YouTube)', 'סאונד'];
+var MESSAGE_HEADERS = VIDEO_MESSAGES
+  ? ['הודעה', 'סוג', 'קישור לוידאו (Google Drive או YouTube)', 'סאונד']
+  : ['הודעה', 'סוג'];
 
 /* Pale tints of the board's grade colours, so the timetable's columns
    read as the same six groups on screen and in the sheet. Backgrounds
@@ -1186,6 +1195,7 @@ function rulesMessages_(sh) {
   sh.getRange(2, 1, msgRows).setDataValidation(textRule);
 
   listRule_(sh, 2, TYPES, 'סוג');
+  if (!VIDEO_MESSAGES) return;        /* no סאונד column while videos are off */
   listRule_(sh, 4, YESNO, 'סאונד');   /* audio on/off, only read for וידאו */
 
   /* Grey out סאונד on rows that are not videos, so it is visibly
@@ -1744,12 +1754,16 @@ function seedEvents_(sh) {
 }
 
 function seedMessages_(sh) {
-  return seedIfEmpty_(sh, [
+  var rows = [
     ['אסיפת הורים ביום שלישי בשעה 19:00', 'רגילה', '', ''],
     ['מחר: יום כחול-לבן — באים בלבוש חגיגי', 'רגילה', '', ''],
     ['שיעורי שכבת ז׳ מסתיימים היום ב-13:20', 'דחופה', '', ''],
     ['ההסעה לקו הדרומי יוצאת ב-14:00 מהשער האחורי', 'דחופה', '', '']
-  ]);
+  ];
+  /* only as wide as the header — no stray cells under absent columns */
+  return seedIfEmpty_(sh, rows.map(function (r) {
+    return r.slice(0, MESSAGE_HEADERS.length);
+  }));
 }
 
 function seedSettings_(sh) {
@@ -1930,6 +1944,14 @@ function styleMessages_(sh) {
   writeHeader_(sh, MESSAGE_HEADERS);
   sh.setColumnWidth(1, 460);
   sh.setColumnWidth(2, 90);
+  if (VIDEO_MESSAGES) styleVideoColumns_(sh);
+  sh.getRange('A1').setNote(
+    'הרשימה מציגה את מה שרלוונטי עכשיו — מוסיפים שורה כשצריך\n' +
+    'ומוחקים אותה כשההודעה כבר לא רלוונטית.\n\n' + NO_PII_NOTE);
+}
+
+/* Columns C-D exist only while VIDEO_MESSAGES is on. */
+function styleVideoColumns_(sh) {
   sh.setColumnWidth(3, 320);
   sh.setColumnWidth(4, 80);
   sh.getRange('C1').setNote(
@@ -1944,9 +1966,6 @@ function styleMessages_(sh) {
     'ריק או "לא" = סרטון מושתק (ברירת המחדל, כדי לא להפריע במסדרון).\n' +
     '"כן" = עם סאונד.\n\n' +
     'בהודעות רגילות ודחופות הערך נעלם מעצמו ואינו משפיע על כלום.');
-  sh.getRange('A1').setNote(
-    'הרשימה מציגה את מה שרלוונטי עכשיו — מוסיפים שורה כשצריך\n' +
-    'ומוחקים אותה כשההודעה כבר לא רלוונטית.\n\n' + NO_PII_NOTE);
 }
 
 /* Presentation settings the principal can change without touching code.

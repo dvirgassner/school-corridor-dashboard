@@ -1,6 +1,6 @@
 # Handoff — school corridor dashboard
 
-State as of **2026-09-02**. Board `0.210`, Apps Script `0.201`, 285 tests
+State as of **2026-09-05**. Board `0.214`, Apps Script `0.202`, 311 tests
 passing.
 
 ## What it is
@@ -22,11 +22,19 @@ outside the repo. Without it you cannot reach the Pi.
 - Board deployed, showing real data.
 - Sheet has the five shared tabs plus **six per-grade timetable tabs**
   (`מערכת ז` … `מערכת יב`); the principal is using it.
-- **The board now reads the six per-grade tabs and renders concurrent
+- **The board reads the six per-grade tabs and renders concurrent
   classes with rooms** (`0.210`, the approved card redesign). **The Pi
   is repointed**: its kiosk URL carries `&s=<six gids>` and the board
   reads eleven tabs a cycle, all returning 200 — verified from inside
   the live page (408 responses observed, 407×200 and the one 400 below).
+- **A grade with no lessons at all today says so** (`0.214`). כיתה יב on
+  a Friday has nothing in the sheet; it used to share the "empty" state
+  with a grade whose lessons had finished, so both read "יום הלימודים
+  הסתיים". `tick()` in `app.js` now adds a `.noschool` class on the
+  zero-slots branch (and clears it whenever a card does have slots, so it
+  cannot survive stale across ticks); `style.css` gives that combination
+  "אין לימודים היום". The "day over" wording is unchanged for a grade
+  that actually had a day.
 - **The legacy single-`מערכת` path is DEAD, not a fallback.** `g=`
   position 0 names the all-grades tab the six-tab migration replaced,
   and that gid now answers **HTTP 400**. Anything that falls back to it
@@ -39,10 +47,33 @@ outside the repo. Without it you cannot reach the Pi.
   Cloudflare are both blocked by the school's SNI filter — do not retry
   them without new evidence).
 - Ministry vacation dates auto-refresh weekly via a GitHub Action.
-- TV state monitored every 10 minutes over CEC to its own healthchecks
-  check, separate from the Pi's heartbeat.
+- **The TV schedule works end to end.** This was an open question for
+  weeks and the 2026-09-04 audit closed it: the healthchecks flip history
+  for 30.08–04.09 shows every outage ending *exactly* at a CEC wake, so
+  every `on 0` lands. What darkens the corridor is the set's own **Auto
+  Power Off** (~4 h idle → standby), which no CEC command resets — hence
+  the recurring drop around 11:00. Stopgaps live since 2026-09-04: wake
+  every 30 minutes (`0,30 8-17 * * 0-4`, `0,30 8-13 * * 5`) and probe at
+  `5,15,25,35,45,55` so a probe never shares a second with a wake. The
+  real fix is to disable Auto Power Off at the set, in person; Dvir
+  intends to within days.
+- **TV identity.** The set is labelled **Samsung QE65S95B**, but over
+  HDMI — EDID, `wlr-randr`, CEC — it reports as **`QBQ90S`**. Both are
+  correct. Write it as "QE65S95B (reports as QBQ90S over HDMI)" and do
+  not "correct" either name into the other.
+- **Monitoring: three healthchecks.io checks.** The Pi heartbeat is solid
+  and has been up continuously since 28.08; the TV state check is the one
+  that flips; and a **"Relay" check exists but has never been pinged**
+  (`n_pings` 0) — it is a placeholder, not coverage. A read-only API key
+  is in the private notes: with it `/api/v3/checks/` and
+  `/api/v3/checks/<unique_key>/flips/` work, `/pings/` does not (that
+  needs a full-access key).
+- **journald on the Pi is persistent** since 2026-08-31, three boots
+  retained. That is the only reason the 03.09 reboot and the wake/probe
+  history could be reconstructed at all — do not let it revert to
+  volatile.
 
-## The three traps that cost the most time
+## The traps that cost the most time
 
 1. **Forcing the HDMI mode disables CEC.** `video=…@60D` in `cmdline.txt`
    makes the Pi boot with a picture when the TV is asleep — and skips the
@@ -78,6 +109,34 @@ outside the repo. Without it you cannot reach the Pi.
    trigger a gnome-keyring modal on the TV (unanswerable without a
    keyboard) before watchdog recovery ~5 seconds later. Fix: `--user-data-dir=/tmp/check --headless`.
 
+6. **Re-running `pi/setup.sh` would delete the live watchdog cron.** Its
+   cleanup step filters the crontab with `grep -v "corridor-board"`, and
+   the live watchdog line is tagged `# corridor-board-watchdog` — so the
+   filter eats it, and setup.sh does not put it back: `board-watchdog.sh`
+   is **not in this repository at all**. The `*/3 * * * *
+   /home/dvir/board-watchdog.sh` job would simply vanish, leaving nothing
+   to restart a dead kiosk. The live crontab has drifted from setup.sh in
+   other ways too — the `-tv` / `-wake` / `-watchdog` tags, line order,
+   missing comment blocks. **Do not run setup.sh on the wall Pi** until
+   the two are reconciled and the watchdog script is in the repo.
+
+7. **The probe and the wake must never share a minute.** The TV probe used
+   to run at `*/10`, so the 07:00 probe fired in the same second as the
+   07:00 CEC wake, read the set while `on 0` was still in flight, saw
+   standby during school hours and paged — one false DOWN email every
+   morning. The offset schedule `5,15,25,35,45,55` is deliberate, not
+   untidy: leave it alone, because "simplifying" it back to `*/10`
+   silently restores the daily false alarm.
+
+8. **The dead position-0 gid serves a stale board from cache.** The hidden
+   tab at `g=` position 0 answers HTTP 400 through the CSV export, so any
+   old bookmark *without* `&s=` fails every fetch and falls back to the
+   localStorage copy — which can be a full day old, and renders perfectly
+   while doing it. That is how Dvir saw the stale word "חדר" on a laptop
+   on 03.09 while the wall was showing the correct board. Always share
+   the URL **with `&s=`**. Retiring or clearing that tab is still an open
+   decision.
+
 ## Standing rules
 
 - **Never risk the Pi's network connection.** Losing it costs the data
@@ -87,18 +146,40 @@ outside the repo. Without it you cannot reach the Pi.
   `tests/setup-safety.js`, which pins the only permitted write.
 - Test failure modes on a bench machine, never on the wall.
 
+## Working on this project efficiently
+
+- **One task per fresh Claude session**, started in the repo directory.
+  Sessions here get long and Pi-heavy; a clean one is cheaper than a
+  confused one.
+- **Never `--resume` an old long session.** Re-read this file instead.
+- **State lives in files, not in chat.** If a fact only exists in a
+  transcript, it is lost — put it in `HANDOFF.md`, `docs/decisions.md`
+  or the private notes.
+- **Refresh this file at the end of every session**, while the reasons
+  are still fresh. Update in place; this is not a changelog.
+- **Sonnet for routine edits** (board code, docs, tests), **Opus for Pi
+  debugging** — the Pi failures are the ones where a wrong guess costs a
+  trip to the school.
+- **Anything touching the Pi goes through a subagent** carrying the
+  safety rules from `CLAUDE.md` verbatim, not from memory.
+- **Verify on the wall, not in a browser tab.** Take a Pi screenshot
+  (`pi/screenshot.sh`); a laptop tab can be serving a day-old cache
+  (trap 8) and tells you nothing about what the corridor sees.
+
 ## Open items
 
 | Item | State |
 |---|---|
-| **Under-voltage** | Unresolved. `0x50005` — throttled *now*, not historically. Needs a 5.1 V / 2.5 A supply with a captive cable. Can masquerade as a TV fault. |
-| **CEC end-to-end** | Untested. First real trial is the 07:00 wake on Sunday 30 Aug; it has never once worked. |
-| **Run `setup()`** | Pending, on `0.201`. It must rebuild the `מערכת` grid to periods 1-14 — the tab is still half-migrated, column A on the new geometry and B-D on the old. Confirm the toast says `מערכת: הלוח נבנה מחדש ואומת ✓`; anything else means it did not take. Also for the renamed theme dropdown — then re-pick the theme, the cell holds a superseded name. |
+| **Under-voltage** | Downgraded. `get_throttled` now reads `0x80008` — thermal soft-limit at 60 °C on a Pi 3B+, no under-voltage bit set. Covers only since the 03.09 reboot. Watch the temperature; the UV problem is gone. |
+| **TV's Auto Power Off** | The wake works (see *Live right now*); the idle timer is what darkens the corridor. Must be disabled at the set, in person — `docs/tv-setup.md`. The half-hourly wake only masks it. |
+| **Theme re-pick in הגדרות** | `setup()` has run on `0.202` and rebuilt the grid, but the theme cell still holds a superseded name from before the dropdown was renamed. Re-pick it in the sheet. |
 | **Repoint the Pi to the six tabs** | **Done.** The kiosk URL carries `&s=<six gids>`; all six grade tabs read 200 from the board itself. Not reversible after all: dropping `s=` now falls back to a tab that answers HTTP 400. |
+| **Relay VPS has no monitoring of its own** | A healthchecks "Relay" check exists but **nothing has ever pinged it**. Needs its ping URL (Dvir to supply) and a cron on the VPS — ideally one that also asserts the reverse tunnel's port 2222 is listening, because the 2026-08 lockout was IPv4-only sockets on a perfectly healthy VPS, not a dead one. |
+| **Unclean reboot, Thu 2026-09-03 ~09:19–09:20** | Mid school day, no shutdown sequence in the journal — a power interruption or the hardware watchdog. Persistent journald was enabled before it, and still shows nothing; the cause is unrecoverable after the fact. Open in case it repeats. |
+| **Dead position-0 tab** | Retire it, clear it, or leave it as a tombstone — pending Dvir's decision. See trap 8. |
+| **`setup.sh` ↔ live crontab** | They have drifted, and setup.sh would delete the watchdog job (trap 6). Reconcile them, and bring `board-watchdog.sh` into the repo — it currently exists only on the Pi. |
 | **Service worker offline** | Never verified, and must not be tested on the wall Pi. |
 | **`gviz` by name** | Would remove tab gids from the board URL entirely; verified it works and sends CORS. Trade-off: a gid survives a tab rename, a name does not. Argued in `docs/decisions.md`, not acted on. |
-| **Relay VPS has no monitoring of its own** | The 2026-08 IPv4 lockout (see `docs/decisions.md`) was found by a human, not an alert — the Pi/TV healthchecks both depend on the relay already working. No check currently watches the relay itself. |
-| **TV's Auto Power Off still enabled** | Samsung's own idle timer drops the TV to standby a few hours after waking, even after a CEC power-on. Needs disabling in person (see `docs/tv-setup.md`); the half-hourly CEC wake now masks it. |
 
 ## Conventions worth keeping
 

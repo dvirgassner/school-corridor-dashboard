@@ -17,6 +17,13 @@ Read next, in this order: `README.md` (how it fits together),
 this repository.** They are in `corridor-board-PRIVATE-notes.md`, kept
 outside the repo. Without it you cannot reach the Pi.
 
+On Dvir's PC that file is `C:/Users/DvirGassner/projects/corridor-board-PRIVATE-notes.md`.
+Offline backups of the Pi's live scripts/configs, the relay VPS config and
+the Google Sheet (xlsx + per-tab CSV) live beside it in
+`C:/Users/DvirGassner/projects/corridor-board-backups/<component>-<date>/`,
+each folder self-describing (see its README). Refresh them after any change
+to the Pi, the relay, or the sheet's structure.
+
 ## Live right now
 
 - Board deployed, showing real data.

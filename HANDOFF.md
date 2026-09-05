@@ -29,6 +29,19 @@ to the Pi, the relay, or the sheet's structure.
 - Board deployed, showing real data.
 - Sheet has the five shared tabs plus **six per-grade timetable tabs**
   (`מערכת ז` … `מערכת יב`); the principal is using it.
+- **Timetables rewritten 2026-09-05 from the school's new PDFs** (one
+  PDF per grade; kept out of this public repo, in the backups folder as
+  `timetables-2026-09-05/` — private notes §8). 113 cell ranges across
+  the six tabs, values only — the grid is a fixed 4-rows-per-period
+  template (main row = sheet row 4P, plus 3 continuation rows; day columns
+  D/E … N/O), so nothing was inserted or deleted. Before/after snapshots
+  and the exact write plan are in the backups folder (private notes §8).
+  Diff rules agreed with Dvir: teacher names are ignored except in a
+  period split between several groups; same-subject groups sharing a room
+  are one entry with both names; order inside a split is not a change.
+  The PDFs store Hebrew character-mirrored — `pdfplumber` table extraction
+  + reverse each cell, then un-reverse digit runs. `markitdown` alone loses
+  the grid.
 - **The board reads the six per-grade tabs and renders concurrent
   classes with rooms** (`0.210`, the approved card redesign). **The Pi
   is repointed**: its kiosk URL carries `&s=<six gids>` and the board
